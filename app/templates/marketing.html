@@ -1,19 +1,10 @@
 {% extends "base.html" %}
-{% block title %}CarrierOS | Run the fleet. Know the profit.{% endblock %}
-{% block meta %}
-  <meta name="description" content="Dispatch, flexible driver pay, and load-level profit in one clear workspace for owner-operators and small fleets.">
-  <meta property="og:title" content="CarrierOS | Run the fleet. Know the profit.">
-  <meta property="og:description" content="Dispatch, seven driver-pay structures, and load-level profit in one clear workspace.">
-  <meta property="og:type" content="website">
-  <meta property="og:image" content="{{ request.base_url }}static/carrieros-launch-og.png">
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:image" content="{{ request.base_url }}static/carrieros-launch-og.png">
-{% endblock %}
+{% block title %}{{ seo_title }}{% endblock %}
 {% block content %}
 <main class="public-marketing" id="top">
   <header class="public-nav">
     <a class="public-brand" href="/"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a>
-    <nav aria-label="Primary navigation"><a href="#platform">Platform</a><a href="#pay">Driver pay</a><a href="#pricing">Pricing</a></nav>
+    <nav aria-label="Primary navigation"><a href="#platform">Platform</a><a href="#pay">Driver pay</a><a href="#pricing">Pricing</a><a href="#resources">Resources</a></nav>
     <div class="public-nav-actions"><a class="public-signin" href="/login">Customer login</a><a class="public-btn public-btn-dark" href="/demo">Open live demo <span aria-hidden="true">&rarr;</span></a></div>
   </header>
 
@@ -68,7 +59,16 @@
     </div>
   </section>
 
+  <section class="public-section public-resources" id="resources">
+    <div class="public-section-intro"><span class="public-eyebrow">Built around small-carrier decisions</span><h2>Start with the problem you need to solve.</h2><p>See how CarrierOS supports the operating questions fleet owners search for every day.</p></div>
+    <div class="public-resource-grid">
+      <a href="/small-fleet-trucking-software"><span>Fleet operations</span><h3>Small fleet trucking software</h3><p>Connect dispatch, driver pay, costs, receivables, and profit in one workspace.</p><b>Explore the platform &rarr;</b></a>
+      <a href="/driver-settlement-software"><span>Driver pay</span><h3>Driver settlement software</h3><p>Calculate seven compensation structures and track what is earned and paid.</p><b>Review settlement tools &rarr;</b></a>
+      <a href="/load-profitability-calculator"><span>Load economics</span><h3>Truck load profitability calculator</h3><p>Compare revenue with fuel, pay, maintenance, fixed cost, fees, and overhead.</p><b>See profitability tools &rarr;</b></a>
+    </div>
+  </section>
+
   <section class="public-launch"><span class="public-eyebrow">Built for the people moving freight</span><h2>Trade spreadsheet archaeology for a clear operating picture.</h2><p>Explore the sample fleet, then open your own private workspace when you are ready.</p><div><a class="public-btn public-btn-orange" href="/signup">Start free beta <span aria-hidden="true">&rarr;</span></a><a class="public-btn public-btn-outline" href="/demo">Explore the demo</a></div></section>
-  <footer class="public-footer"><a class="public-brand" href="#top"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a><p>A product of Outside The Wire Logistics LLC.</p><nav><a href="/login">Customer login</a><a href="/demo">Live demo</a><a href="mailto:{{ support_email }}">Contact</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav><small>Beta software. CarrierOS does not provide tax, legal, payroll, accounting, insurance, or regulatory advice.</small></footer>
+  <footer class="public-footer"><a class="public-brand" href="#top"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a><p>A product of <a href="https://www.outsidethewirelogistics.com/">Outside The Wire Logistics LLC</a>.</p><nav><a href="/small-fleet-trucking-software">Small fleet software</a><a href="/driver-settlement-software">Driver settlements</a><a href="/load-profitability-calculator">Load profitability</a><a href="/login">Customer login</a><a href="/demo">Live demo</a><a href="mailto:{{ support_email }}">Contact</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav><small>Beta software. CarrierOS does not provide tax, legal, payroll, accounting, insurance, or regulatory advice.</small></footer>
 </main>
 {% endblock %}

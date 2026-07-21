@@ -79,6 +79,46 @@ def test_public_marketing_home_uses_launch_pricing_and_real_app_links(
         assert "Up to 20 active power units" in response.text
         assert "$100" in response.text
         assert '/signup?plan=starter_fleet' in response.text
+        assert '<link rel="canonical" href="https://otwcarrieros.com/">' in response.text
+        assert 'type="application/ld+json"' in response.text
+        assert 'Small Fleet Trucking Software' in response.text
+        assert '/driver-settlement-software' in response.text
+        assert response.headers["cache-control"].startswith("public")
+
+
+def test_search_pages_sitemap_and_crawl_controls(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "seo.db"))
+    with TestClient(app) as client:
+        expected = {
+            "/small-fleet-trucking-software": "Small Fleet Trucking Software",
+            "/driver-settlement-software": "Driver Settlement Software",
+            "/load-profitability-calculator": "Truck Load Profitability Calculator",
+        }
+        for path, phrase in expected.items():
+            response = client.get(path)
+            assert response.status_code == 200
+            assert phrase in response.text
+            assert f'<link rel="canonical" href="https://otwcarrieros.com{path}">' in response.text
+            assert 'content="index, follow' in response.text
+            assert '"@type": "FAQPage"' in response.text
+
+        sitemap = client.get("/sitemap.xml")
+        assert sitemap.status_code == 200
+        assert sitemap.headers["content-type"].startswith("application/xml")
+        for path in ("/", "/demo", *expected):
+            assert f"https://otwcarrieros.com{path}" in sitemap.text
+        assert "/login" not in sitemap.text
+
+        robots = client.get("/robots.txt")
+        assert robots.status_code == 200
+        assert "Sitemap: https://otwcarrieros.com/sitemap.xml" in robots.text
+        assert "Disallow: /dashboard" in robots.text
+
+        login = client.get("/login")
+        assert 'content="noindex, nofollow"' in login.text
+        assert login.headers["x-robots-tag"] == "noindex, nofollow"
 
 
 def test_public_demo_is_sample_only_and_includes_all_pay_models(

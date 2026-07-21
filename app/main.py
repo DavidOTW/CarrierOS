@@ -55,9 +55,12 @@ from .stripe_billing import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
-VERSION = "0.6.0-beta"
+VERSION = "0.7.0-beta"
 ENVIRONMENT = os.getenv("CARRIEROS_ENV", "development").strip().lower()
 IS_PRODUCTION = ENVIRONMENT == "production"
+CANONICAL_BASE_URL = os.getenv(
+    "CARRIEROS_CANONICAL_URL", "https://otwcarrieros.com"
+).strip().rstrip("/")
 SESSION_SECRET = os.getenv("CARRIEROS_SECRET", "")
 if IS_PRODUCTION and len(SESSION_SECRET) < 32:
     raise RuntimeError("CARRIEROS_SECRET must be at least 32 characters in production.")
@@ -77,6 +80,93 @@ PLAN_LIMITS = {
     "small_fleet": {"name": "Small Fleet", "units": 10, "price": 75},
     "growing_fleet": {"name": "Growing Fleet", "units": 20, "price": 100},
 }
+
+SEO_PAGES = {
+    "small-fleet-trucking-software": {
+        "title": "Small Fleet Trucking Software | CarrierOS",
+        "description": "Small fleet trucking software for owner-operators and carriers with 1–20 trucks. Connect dispatch, driver pay, settlements, expenses, and profit per load.",
+        "eyebrow": "Small fleet trucking software",
+        "heading": "Run a small trucking fleet without running it from five spreadsheets.",
+        "lead": "CarrierOS gives owner-operators and small carrier teams one browser-based workspace for loads, driver pay, operating costs, receivables, and the profit each load actually keeps.",
+        "audience": "Built for owner-operators growing beyond one truck, fleet owners managing 2–20 power units, and the dispatch or office people keeping those operations moving.",
+        "problem_title": "A practical operating system for the part of the market enterprise TMS platforms overlook.",
+        "problem_copy": "Small fleets need more than a load list, but they should not need enterprise software, dedicated IT staff, or a long implementation. CarrierOS keeps the daily operating picture focused on the decisions that affect cash and margin.",
+        "benefits": [
+            ("Dispatch and load control", "Keep lanes, dates, drivers, units, revenue, miles, and load status connected."),
+            ("Driver pay flexibility", "Use profit split, percent of revenue, per mile, flat rate, hourly, day rate, or salary by driver."),
+            ("Profit per load", "Compare revenue with fuel, driver pay, maintenance, direct costs, fixed costs, and overhead."),
+            ("Carrier administration", "Track receivables, detention, compliance dates, onboarding records, and operating documents."),
+        ],
+        "workflow_title": "From booked load to a clearer carrier result",
+        "workflow": [
+            ("Enter the load", "Record the lane, dates, miles, revenue, assigned driver, and power unit."),
+            ("Apply your real costs", "CarrierOS uses your fuel, maintenance, fixed-cost, fee, and driver-pay assumptions."),
+            ("Review the result", "See estimated carrier profit, margin, driver obligation, and the items that need attention."),
+        ],
+        "faqs": [
+            ("Who is CarrierOS built for?", "Owner-operators and small U.S. motor carriers that want a clearer view of dispatch, driver pay, and profitability without enterprise complexity."),
+            ("Does CarrierOS replace my ELD or accounting system?", "No. CarrierOS is an operations and profitability workspace. It does not replace an ELD, payroll provider, tax professional, or regulated accounting system."),
+            ("Can office users and drivers be added?", "Plans are based on active power units and include unlimited driver records and office users."),
+        ],
+    },
+    "driver-settlement-software": {
+        "title": "Driver Settlement Software for Small Fleets | CarrierOS",
+        "description": "Driver settlement software for small trucking fleets. Calculate seven driver pay structures, record payments, and keep load pay and carrier profit connected.",
+        "eyebrow": "Driver settlement software",
+        "heading": "Driver pay that follows the agreement—not a one-size-fits-all formula.",
+        "lead": "CarrierOS helps small carriers calculate, review, and track driver pay across seven compensation structures while keeping the load economics visible.",
+        "audience": "For carrier owners, dispatchers, and back-office teams paying company drivers, contractors, and owner-operators under different agreements.",
+        "problem_title": "Make every settlement easier to explain and repeat.",
+        "problem_copy": "Mixed pay arrangements become fragile when the math lives in memory or separate spreadsheets. CarrierOS keeps each driver's method attached to the operating record so pay and carrier margin can be reviewed together.",
+        "benefits": [
+            ("Profit split", "Calculate the agreed driver share after the allowed load costs in your operating model."),
+            ("Mileage and flat pay", "Support per-mile rates or a fixed amount for a load or trip."),
+            ("Revenue percentage", "Calculate driver pay as an agreed percentage of gross load revenue."),
+            ("Time-based compensation", "Support hourly, day-rate, and salary-based settlement reporting."),
+        ],
+        "workflow_title": "A consistent driver-pay workflow",
+        "workflow": [
+            ("Choose the driver's model", "Set the compensation structure and rate that match the operating agreement."),
+            ("Connect pay to the load", "Use the load's revenue, miles, dates, and allowed costs to calculate the obligation."),
+            ("Track what was paid", "Record payments against cumulative driver or contractor balances for a clearer audit trail."),
+        ],
+        "faqs": [
+            ("Which driver pay methods are supported?", "Profit split, per mile, flat rate, percent of revenue, hourly, day rate, and salary."),
+            ("Can different drivers use different pay models?", "Yes. CarrierOS keeps compensation settings driver-specific, so a fleet can use mixed models."),
+            ("Is CarrierOS a payroll processor?", "No. CarrierOS calculates and tracks operating pay obligations; it does not file payroll taxes or replace professional payroll, tax, legal, or accounting advice."),
+        ],
+    },
+    "load-profitability-calculator": {
+        "title": "Truck Load Profitability Calculator | CarrierOS",
+        "description": "Calculate truck load profitability using revenue, miles, fuel, driver pay, maintenance, fixed costs, fees, and overhead. Try the free CarrierOS live demo.",
+        "eyebrow": "Truck load profitability calculator",
+        "heading": "Know what a load can keep—not only what it pays per mile.",
+        "lead": "CarrierOS turns a load's rate, miles, fuel, driver pay, direct costs, fixed costs, and company assumptions into a clearer estimate of carrier profit and margin.",
+        "audience": "For owner-operators, dispatchers, and small fleet owners comparing freight opportunities or reviewing completed load performance.",
+        "problem_title": "Rate per mile is useful. It is not the whole profit story.",
+        "problem_copy": "Two loads with the same rate per mile can produce different results after deadhead, fuel, driver compensation, maintenance, fixed-cost days, fees, and overhead. CarrierOS keeps those inputs together so the tradeoff is visible before or after booking.",
+        "benefits": [
+            ("Cost-based lane quotes", "Estimate break-even, target, and opening quote from your operating assumptions."),
+            ("Fuel and maintenance", "Apply fuel price, MPG, maintenance reserve, and total-mile assumptions."),
+            ("Driver pay", "Compare the effect of the driver's actual compensation model on the load result."),
+            ("Carrier margin", "See estimated profit dollars and margin instead of relying on gross revenue alone."),
+        ],
+        "workflow_title": "Turn a rate confirmation into a decision",
+        "workflow": [
+            ("Enter the freight economics", "Add rate, loaded and empty miles, dates, and direct load expenses."),
+            ("Apply company assumptions", "Use the unit, driver, fuel, maintenance, fees, fixed costs, and overhead that fit your operation."),
+            ("Compare the outcome", "Review break-even, target quote, driver pay, carrier profit, and margin before relying on the number."),
+        ],
+        "faqs": [
+            ("What costs should be included in load profitability?", "CarrierOS can model fuel, driver or contractor pay, maintenance, direct load costs, fixed costs, company fees, and overhead using the assumptions you enter."),
+            ("Can I use the calculator before booking a load?", "Yes. The lane quote tool is designed to compare break-even, target, and opening quote values before a load is accepted."),
+            ("Are the calculated results financial advice?", "No. Results are operational estimates based on user-entered assumptions and should be reviewed before business, tax, accounting, payroll, or compliance decisions."),
+        ],
+    },
+}
+
+INDEXABLE_PATHS = {"/", "/demo", *(f"/{slug}" for slug in SEO_PAGES)}
+PUBLIC_CRAWL_FILES = {"/robots.txt", "/sitemap.xml"}
 LOGIN_WINDOW_SECONDS = 15 * 60
 LOGIN_MAX_ATTEMPTS = 10
 SIGNUP_WINDOW_SECONDS = 60 * 60
@@ -104,6 +194,7 @@ app.add_middleware(
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
+        path = request.url.path
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
@@ -111,8 +202,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
         response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
         response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
-        if not request.url.path.startswith("/static/"):
+        if request.method == "GET" and (path in INDEXABLE_PATHS or path in PUBLIC_CRAWL_FILES):
+            response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=3600"
+        elif not path.startswith("/static/"):
             response.headers["Cache-Control"] = "no-store"
+        if path not in INDEXABLE_PATHS and path not in PUBLIC_CRAWL_FILES and not path.startswith("/static/"):
+            response.headers["X-Robots-Tag"] = "noindex, nofollow"
         production_upgrade = "; upgrade-insecure-requests" if IS_PRODUCTION else ""
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
@@ -228,6 +323,105 @@ def render(request: Request, name: str, context: dict[str, Any] | None = None, s
         "flash": request.session.pop("flash", None) if hasattr(request, "session") else None,
     })
     return templates.TemplateResponse(request=request, name=name, context=context, status_code=status_code)
+
+
+def seo_context(
+    path: str,
+    title: str,
+    description: str,
+    *,
+    page_type: str = "WebPage",
+    faqs: list[tuple[str, str]] | None = None,
+) -> dict[str, Any]:
+    canonical_url = f"{CANONICAL_BASE_URL}{path}"
+    graph: list[dict[str, Any]] = [
+        {
+            "@type": "Organization",
+            "@id": f"{CANONICAL_BASE_URL}/#organization",
+            "name": "Outside The Wire Logistics LLC",
+            "url": "https://www.outsidethewirelogistics.com/",
+            "email": SUPPORT_EMAIL,
+            "brand": {"@type": "Brand", "name": "CarrierOS"},
+        },
+        {
+            "@type": page_type,
+            "@id": f"{canonical_url}#webpage",
+            "url": canonical_url,
+            "name": title,
+            "description": description,
+            "inLanguage": "en-US",
+            "isPartOf": {"@id": f"{CANONICAL_BASE_URL}/#website"},
+            "publisher": {"@id": f"{CANONICAL_BASE_URL}/#organization"},
+        },
+        {
+            "@type": "WebSite",
+            "@id": f"{CANONICAL_BASE_URL}/#website",
+            "url": f"{CANONICAL_BASE_URL}/",
+            "name": "CarrierOS",
+            "description": "Fleet operations and profitability software for owner-operators and small motor carriers.",
+            "publisher": {"@id": f"{CANONICAL_BASE_URL}/#organization"},
+        },
+    ]
+    if path == "/":
+        graph.append(
+            {
+                "@type": "WebApplication",
+                "@id": f"{CANONICAL_BASE_URL}/#software",
+                "name": "CarrierOS",
+                "url": f"{CANONICAL_BASE_URL}/",
+                "applicationCategory": "BusinessApplication",
+                "applicationSubCategory": "Trucking management software",
+                "operatingSystem": "Any operating system with a modern web browser",
+                "browserRequirements": "Requires JavaScript and a modern web browser",
+                "description": description,
+                "featureList": [
+                    "Dispatch and load tracking",
+                    "Seven driver compensation structures",
+                    "Driver settlement tracking",
+                    "Load profitability calculations",
+                    "Cost-based freight lane quotes",
+                    "Receivables and detention tracking",
+                ],
+                "audience": {
+                    "@type": "BusinessAudience",
+                    "audienceType": "Owner-operators and small motor carriers with 1 to 20 power units",
+                },
+                "provider": {"@id": f"{CANONICAL_BASE_URL}/#organization"},
+                "offers": [
+                    {
+                        "@type": "Offer",
+                        "name": plan["name"],
+                        "price": plan["price"],
+                        "priceCurrency": "USD",
+                        "description": f"Up to {plan['units']} active power units; unlimited driver records and office users.",
+                        "url": f"{CANONICAL_BASE_URL}/signup?plan={code}",
+                    }
+                    for code, plan in PLAN_LIMITS.items()
+                ],
+            }
+        )
+    if faqs:
+        graph.append(
+            {
+                "@type": "FAQPage",
+                "mainEntity": [
+                    {
+                        "@type": "Question",
+                        "name": question,
+                        "acceptedAnswer": {"@type": "Answer", "text": answer},
+                    }
+                    for question, answer in faqs
+                ],
+            }
+        )
+    return {
+        "seo_title": title,
+        "seo_description": description,
+        "canonical_url": canonical_url,
+        "robots_content": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+        "social_image_url": f"{CANONICAL_BASE_URL}/static/carrieros-launch-og.png",
+        "structured_data": {"@context": "https://schema.org", "@graph": graph},
+    }
 
 
 async def verified_form(request: Request):
@@ -353,12 +547,62 @@ def service_worker() -> Response:
     return Response((BASE_DIR / "static" / "service-worker.js").read_text(encoding="utf-8"), media_type="application/javascript")
 
 
+@app.get("/robots.txt")
+def robots() -> Response:
+    blocked_paths = (
+        "/billing",
+        "/compliance",
+        "/dashboard",
+        "/detention/",
+        "/documents",
+        "/drivers",
+        "/financials",
+        "/fuel",
+        "/health",
+        "/idle",
+        "/loads",
+        "/onboard/",
+        "/onboarding",
+        "/payments",
+        "/quotes",
+        "/receivables",
+        "/settings",
+        "/stripe/",
+        "/vehicles",
+    )
+    body = "User-agent: *\n" + "".join(f"Disallow: {path}\n" for path in blocked_paths)
+    body += f"\nSitemap: {CANONICAL_BASE_URL}/sitemap.xml\n"
+    return Response(body, media_type="text/plain")
+
+
+@app.get("/sitemap.xml")
+def sitemap() -> Response:
+    updated = "2026-07-21"
+    paths = ["/", "/demo", *(f"/{slug}" for slug in SEO_PAGES)]
+    urls = "".join(
+        f"<url><loc>{CANONICAL_BASE_URL}{path}</loc><lastmod>{updated}</lastmod></url>"
+        for path in paths
+    )
+    xml = f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{urls}</urlset>'
+    return Response(xml, media_type="application/xml")
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
+    description = "Small fleet trucking software for owner-operators and carriers with 1–20 trucks. Manage dispatch, seven driver pay models, settlements, and profit per load."
     return render(
         request,
         "marketing.html",
-        {"public_page": True, "plans": PLAN_LIMITS},
+        {
+            "public_page": True,
+            "plans": PLAN_LIMITS,
+            **seo_context(
+                "/",
+                "Small Fleet Trucking Software | CarrierOS",
+                description,
+                page_type="WebPage",
+            ),
+        },
     )
 
 
@@ -367,7 +611,40 @@ def demo(request: Request):
     return render(
         request,
         "demo.html",
-        {"public_page": True, "plans": PLAN_LIMITS},
+        {
+            "public_page": True,
+            "plans": PLAN_LIMITS,
+            **seo_context(
+                "/demo",
+                "CarrierOS Live Demo | Small Fleet Trucking Software",
+                "Try the CarrierOS live demo with fictional fleet data. Explore dispatch, seven driver pay structures, settlements, pricing, and profit per load.",
+            ),
+        },
+    )
+
+
+@app.get("/small-fleet-trucking-software", response_class=HTMLResponse)
+@app.get("/driver-settlement-software", response_class=HTMLResponse)
+@app.get("/load-profitability-calculator", response_class=HTMLResponse)
+def seo_landing_page(request: Request):
+    seo_slug = request.url.path.strip("/")
+    page = SEO_PAGES.get(seo_slug)
+    if not page:
+        raise HTTPException(status_code=404, detail="Not found")
+    return render(
+        request,
+        "seo_page.html",
+        {
+            "public_page": True,
+            "page": page,
+            "seo_slug": seo_slug,
+            **seo_context(
+                f"/{seo_slug}",
+                page["title"],
+                page["description"],
+                faqs=page["faqs"],
+            ),
+        },
     )
 
 

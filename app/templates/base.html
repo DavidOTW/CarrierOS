@@ -7,7 +7,24 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="CarrierOS">
-  <title>{% block title %}CarrierOS{% endblock %}</title>
+  <title>{% block title %}{{ seo_title or 'CarrierOS' }}{% endblock %}</title>
+  <meta name="robots" content="{{ robots_content or 'noindex, nofollow' }}">
+  {% if seo_description %}<meta name="description" content="{{ seo_description }}">{% endif %}
+  {% if canonical_url %}<link rel="canonical" href="{{ canonical_url }}">{% endif %}
+  {% if seo_title and seo_description %}
+  <meta property="og:site_name" content="CarrierOS">
+  <meta property="og:title" content="{{ seo_title }}">
+  <meta property="og:description" content="{{ seo_description }}">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="{{ canonical_url }}">
+  <meta property="og:image" content="{{ social_image_url }}">
+  <meta property="og:image:alt" content="CarrierOS — Run the fleet. Know the profit.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ seo_title }}">
+  <meta name="twitter:description" content="{{ seo_description }}">
+  <meta name="twitter:image" content="{{ social_image_url }}">
+  {% endif %}
+  {% if structured_data %}<script type="application/ld+json">{{ structured_data|tojson }}</script>{% endif %}
   {% block meta %}{% endblock %}
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/static/icon-192.png">
