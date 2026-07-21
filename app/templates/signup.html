@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% block title %}Start your trial &middot; CarrierOS{% endblock %}
+{% block content %}
+<div class="login-page">
+  <section class="login-hero">
+    <div class="brand" style="border:0;padding:0;margin-bottom:32px"><div class="brand-mark">CO</div><div><strong>CarrierOS</strong><small style="color:#cae0eb">Your fleet. Your numbers.</small></div></div>
+    <h1>Open a real fleet workspace.</h1>
+    <p>Create a private workspace, then securely add a payment method through Stripe to begin your 14-day trial.</p>
+    <div class="login-bullets"><span>&check; No sample financial data</span><span>&check; Plan limits follow active power units</span><span>&check; Cancel subscription anytime</span></div>
+  </section>
+  <section class="login-panel"><div class="login-card">
+    <h2>Start your trial</h2><p class="muted">Create the owner account for your company.</p>
+    {% if error %}<div class="notice bad">{{ error }}</div>{% endif %}
+    {% set values = values or {} %}
+    <form method="post" action="/signup">
+      <div class="field"><label>Your name</label><input name="full_name" value="{{ values.full_name or '' }}" autocomplete="name" required></div>
+      <div class="field"><label>Company name</label><input name="company_name" value="{{ values.company_name or '' }}" autocomplete="organization" required></div>
+      <div class="field"><label>Business email</label><input type="email" name="email" value="{{ values.email or '' }}" autocomplete="email" required></div>
+      <div class="field"><label>Starting plan</label><select name="plan">{% for code, plan in plans.items() %}<option value="{{ code }}" {% if code == selected_plan %}selected{% endif %}>{{ plan.name }} &middot; up to {{ plan.units }} units &middot; ${{ plan.price }}/month after trial</option>{% endfor %}</select></div>
+      <div class="field"><label>Password</label><input type="password" name="password" autocomplete="new-password" minlength="12" required><small>12+ characters with uppercase, lowercase, a number, and a symbol.</small></div>
+      <div class="form-actions"><button class="btn btn-primary" style="width:100%">Continue to secure trial setup</button></div>
+    </form>
+    <div class="demo-box">Already have an account? <a href="/login">Sign in</a></div>
+  </div></section>
+</div>
+{% endblock %}

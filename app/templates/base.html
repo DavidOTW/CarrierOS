@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0f2f46">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="CarrierOS">
+  <title>{% block title %}CarrierOS{% endblock %}</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/static/icon-192.png">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <link rel="stylesheet" href="/static/app.css?v={{ version }}">
+</head>
+<body>
+{% if not public_page %}
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand"><div class="brand-mark">CO</div><div><strong>CarrierOS</strong><small>Carrier financial command center</small></div></div>
+    <nav class="nav">
+      <div class="nav-section">Operate</div>
+      <a href="/dashboard">Dashboard</a><a href="/loads">Loads &amp; profit</a><a href="/quotes">Lane quote</a><a href="/fuel">Weekly fuel</a><a href="/payments">Driver payments</a>
+      <div class="nav-section">Fleet &amp; finance</div>
+      <a href="/drivers">Driver &amp; equipment setup</a><a href="/vehicles">Units</a><a href="/financials">Company financials</a><a href="/idle">Idle fixed cost</a><a href="/settings">Assumptions &amp; overhead</a>
+      <div class="nav-section">Administration</div>
+      <a href="/compliance">Compliance</a><a href="/onboarding">Onboarding</a><a href="/documents">Documents</a><a href="/receivables">Detention &amp; A/R</a><a href="/billing">Billing</a>
+    </nav>
+    <div class="sidebar-footer">Version {{ version }}<br>Your company data is private to your workspace. Review financial calculations, documents, and compliance decisions before relying on them.</div>
+  </aside>
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-left"><h1>{{ user.organization_name if user else 'CarrierOS' }}</h1></div>
+      <div class="user-chip">{{ user.full_name if user else '' }}{% if user %} &middot; <a href="/logout">Log out</a>{% endif %}</div>
+      <details class="mobile-nav"><summary>Menu</summary><div class="mobile-menu-panel">
+        <a href="/dashboard">Dashboard</a><a href="/loads">Loads</a><a href="/quotes">Quote</a><a href="/fuel">Fuel</a><a href="/payments">Payments</a><a href="/drivers">Drivers</a><a href="/vehicles">Units</a><a href="/financials">Financials</a><a href="/idle">Idle cost</a><a href="/compliance">Compliance</a><a href="/onboarding">Onboarding</a><a href="/documents">Documents</a><a href="/receivables">A/R</a><a href="/settings">Settings</a><a href="/billing">Billing</a><a href="/logout">Log out</a>
+      </div></details>
+    </header>
+    <div class="content">{% if flash %}<div class="notice good">{{ flash }}</div>{% endif %}
+{% endif %}
+{% block content %}{% endblock %}
+{% if not public_page %}
+    </div>
+  </main>
+</div>
+{% endif %}
+<script>
+  const carrierCsrfToken = {{ csrf_token|tojson }};
+  document.querySelectorAll('form[method="post"]').forEach((form) => {
+    if (form.querySelector('input[name="_csrf"]')) return;
+    const field = document.createElement('input');
+    field.type = 'hidden';
+    field.name = '_csrf';
+    field.value = carrierCsrfToken;
+    form.appendChild(field);
+  });
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('/service-worker.js').catch(() => {}));
+  }
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

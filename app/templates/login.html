@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% block title %}Sign in &middot; CarrierOS{% endblock %}
+{% block content %}
+<div class="login-page">
+  <section class="login-hero">
+    <div class="brand" style="border:0;padding:0;margin-bottom:32px"><div class="brand-mark">CO</div><div><strong>CarrierOS</strong><small style="color:#cae0eb">Fleet financial command center</small></div></div>
+    <h1>Know the money before you move the freight.</h1>
+    <p>Load profit, flexible driver pay, lane quoting, fixed-cost coverage, compliance, receivables, and operating documents in one mobile-ready workspace.</p>
+    <div class="login-bullets"><span>&check; Private company workspace</span><span>&check; Seven driver-pay structures</span><span>&check; Fourteen-day live trial</span></div>
+  </section>
+  <section class="login-panel"><div class="login-card">
+    <h2>Sign in</h2><p class="muted">Open your CarrierOS workspace.</p>
+    {% if error %}<div class="notice bad">{{ error }}</div>{% endif %}
+    <form method="post" action="/login">
+      <div class="field"><label>Email</label><input type="email" name="email" autocomplete="username" required></div>
+      <div class="field" style="margin-top:13px"><label>Password</label><input type="password" name="password" autocomplete="current-password" required></div>
+      <div class="form-actions"><button class="btn btn-primary" style="width:100%">Sign in</button></div>
+    </form>
+    <div class="demo-box"><strong>New to CarrierOS?</strong><br><a href="/signup">Start a 14-day live trial</a><br><span class="muted">No payment information is collected in the application.</span></div>
+  </div></section>
+</div>
+{% endblock %}

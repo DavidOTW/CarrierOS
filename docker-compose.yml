@@ -1,0 +1,23 @@
+services:
+  carrieros:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      CARRIEROS_ENV: production
+      CARRIEROS_DB: /data/carrieros.db
+      CARRIEROS_SECRET: ${CARRIEROS_SECRET:?Set CARRIEROS_SECRET to a random value of at least 32 characters}
+      CARRIEROS_PUBLIC_URL: ${CARRIEROS_PUBLIC_URL:-http://localhost:8000}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRICE_OWNER_OPERATOR: ${STRIPE_PRICE_OWNER_OPERATOR:-}
+      STRIPE_PRICE_SMALL_FLEET: ${STRIPE_PRICE_SMALL_FLEET:-}
+      STRIPE_PRICE_GROWING_FLEET: ${STRIPE_PRICE_GROWING_FLEET:-}
+      STRIPE_PORTAL_CONFIGURATION_ID: ${STRIPE_PORTAL_CONFIGURATION_ID:-}
+      STRIPE_TAX_ENABLED: ${STRIPE_TAX_ENABLED:-false}
+    volumes:
+      - carrieros-data:/data
+    restart: unless-stopped
+
+volumes:
+  carrieros-data:

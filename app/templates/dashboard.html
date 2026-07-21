@@ -1,0 +1,42 @@
+{% extends "base.html" %}{% block title %}Dashboard &middot; CarrierOS{% endblock %}
+{% block content %}
+<div class="page-title"><div><h2>Carrier command center</h2><p>Your load, pay, fuel, payment, idle-time, and company assumptions recalculate together as the business changes.</p></div><div class="actions"><a class="btn btn-primary" href="/loads/new">Add load</a><a class="btn btn-secondary" href="/quotes">Quote a lane</a></div></div>
+{% if not bundle.drivers or not bundle.vehicles %}<div class="notice"><strong>Start here:</strong> add an active unit, then create its driver and pay profile. Your workspace contains no shared or sample financial data.</div>{% endif %}
+<div class="grid grid-5">
+  <div class="card stat"><div class="label">Total revenue</div><div class="value">{{ money(stats.total_revenue) }}</div><div class="hint">Included loads</div></div>
+  <div class="card stat"><div class="label">Operating expense</div><div class="value">{{ money(stats.operating_expense) }}</div><div class="hint">Fuel, fixed, maintenance and fees</div></div>
+  <div class="card stat good"><div class="label">Company profit</div><div class="value {% if stats.load_company_profit_before_owner_distribution >= 0 %}positive{% else %}negative{% endif %}">{{ money(stats.load_company_profit_before_owner_distribution) }}</div><div class="hint">Before owner distribution</div></div>
+  <div class="card stat warn"><div class="label">Load pay remaining</div><div class="value warning">{{ money(stats.total_load_pay_remaining) }}</div><div class="hint">Cumulative driver obligations</div></div>
+  <div class="card stat"><div class="label">Current diesel</div><div class="value">{{ money(stats.current_average_diesel) }}</div><div class="hint">Latest weekly price per gallon</div></div>
+</div>
+<div class="grid grid-4" style="margin-top:18px">
+  <div class="card stat"><div class="label">Driver/contractor earned</div><div class="value">{{ money(stats.driver_contractor_earned) }}</div></div>
+  <div class="card stat"><div class="label">Owner-operator load pay</div><div class="value">{{ money(stats.owner_operator_pay) }}</div></div>
+  <div class="card stat"><div class="label">Owner distribution</div><div class="value">{{ money(stats.owner_profit_distribution) }}</div><div class="hint">{{ percent(bundle.settings.owner_distribution_pct / 100) }} of positive company profit</div></div>
+  <div class="card stat"><div class="label">Monthly overhead</div><div class="value">{{ money(stats.monthly_company_overhead) }}</div></div>
+</div>
+<div class="grid grid-2" style="margin-top:18px">
+  <section class="card"><div class="section-title"><h3>{{ month.strftime('%B %Y') }} company view</h3><a href="/financials">Full financials</a></div>{% if monthly %}<div class="kpi-list">
+    <div class="kpi-row"><span>Revenue / loads</span><strong>{{ money(monthly.revenue) }} · {{ monthly.loads }}</strong></div>
+    <div class="kpi-row"><span>Load company profit</span><strong class="{% if monthly.load_company_profit >= 0 %}positive{% else %}negative{% endif %}">{{ money(monthly.load_company_profit) }}</strong></div>
+    <div class="kpi-row"><span>Company idle fixed cost</span><strong>{{ money(monthly.company_idle_fixed_cost) }}</strong></div>
+    <div class="kpi-row"><span>Company overhead</span><strong>{{ money(monthly.company_overhead) }}</strong></div>
+    <div class="kpi-row"><span>True net after overhead</span><strong class="{% if monthly.true_net_after_overhead >= 0 %}positive{% else %}negative{% endif %}">{{ money(monthly.true_net_after_overhead) }}</strong></div>
+    <div class="kpi-row"><span>Cash after reserves</span><strong>{{ money(monthly.cash_after_reserves) }}</strong></div>
+  </div>{% else %}<div class="empty">No month record.</div>{% endif %}</section>
+  <section class="card"><div class="section-title"><h3>Model alerts</h3><a href="/loads">Review loads</a></div><div class="grid grid-3">
+    <div><span class="badge {% if warnings.loss_making %}bad{% else %}good{% endif %}">{{ warnings.loss_making }}</span><div class="small muted" style="margin-top:6px">Loss-making loads</div></div>
+    <div><span class="badge {% if warnings.below_target %}warn{% else %}good{% endif %}">{{ warnings.below_target }}</span><div class="small muted" style="margin-top:6px">Below target</div></div>
+    <div><span class="badge {% if warnings.high_deadhead %}warn{% else %}good{% endif %}">{{ warnings.high_deadhead }}</span><div class="small muted" style="margin-top:6px">High deadhead</div></div>
+    <div><span class="badge {% if warnings.low_company_profit %}warn{% else %}good{% endif %}">{{ warnings.low_company_profit }}</span><div class="small muted" style="margin-top:6px">Low profit/mile</div></div>
+    <div><span class="badge {% if compliance_due %}warn{% else %}good{% endif %}">{{ compliance_due }}</span><div class="small muted" style="margin-top:6px">Compliance attention</div></div>
+    <div><span class="badge {% if warnings.fixed_cost_reviews or warnings.idle_input_errors %}bad{% else %}good{% endif %}">{{ warnings.fixed_cost_reviews + warnings.idle_input_errors }}</span><div class="small muted" style="margin-top:6px">Fixed-cost review</div></div>
+  </div><div class="notice warn" style="margin:16px 0 0"><strong>Receivables:</strong> {{ money(unpaid_total) }} unpaid; {{ money(overdue_total) }} overdue.</div></section>
+</div>
+<section class="card" style="margin-top:18px"><div class="section-title"><h3>Driver and contractor balances</h3><a href="/payments">Record payments</a></div><div class="table-wrap table-cards"><table><thead><tr><th>Payee</th><th>Model</th><th>Loads</th><th>Earned</th><th>Payments</th><th>Idle reduction</th><th>Remaining</th><th>Status</th></tr></thead><tbody>{% for b in balances %}<tr>
+  <td data-label="Payee"><strong>{{ b.driver_name }}</strong><br><span class="muted">{{ b.role }}</span></td><td data-label="Model">{{ b.pay_model }}</td><td data-label="Loads">{{ b.included_loads }}</td><td data-label="Earned">{{ money(b.load_pay_earned) }}</td><td data-label="Payments">{{ money(b.payments_applied) }}</td><td data-label="Idle reduction">{{ money(b.idle_fixed_cost_pay_reduction) }}</td><td data-label="Remaining"><strong class="{% if b.remaining_load_pay > 0 %}warning{% else %}positive{% endif %}">{{ money(b.remaining_load_pay) }}</strong></td><td data-label="Status"><span class="badge {% if b.status == 'PAID IN FULL' %}good{% elif b.company_credit_driver_owes > 0 %}info{% else %}warn{% endif %}">{{ b.status }}</span></td>
+</tr>{% endfor %}</tbody></table></div></section>
+<section class="card" style="margin-top:18px"><div class="section-title"><h3>Recent loads</h3><a href="/loads">View all</a></div><div class="table-wrap table-cards"><table><thead><tr><th>Load</th><th>Dates</th><th>Driver / unit</th><th>Revenue</th><th>Total miles</th><th>Company profit</th><th>Decision</th></tr></thead><tbody>{% for load in loads %}{% set r=load.result %}<tr>
+  <td data-label="Load"><a href="/loads/{{ load.id }}"><strong>{{ load.load_number }}</strong></a><br><span class="muted">{{ load.origin or '—' }} → {{ load.destination or '—' }}</span></td><td data-label="Dates">{{ load.pickup_date or '—' }}<br>{{ load.delivery_date or '—' }}</td><td data-label="Driver / unit">{{ load.driver.name if load.driver else 'Unassigned' }}<br><span class="muted">{{ load.vehicle.name if load.vehicle else '—' }}</span></td><td data-label="Revenue">{{ money(load.revenue) }}</td><td data-label="Total miles">{{ '%.0f'|format(r.total_miles) }}</td><td data-label="Company profit"><strong class="{% if r.company_profit_before_owner_distribution >= 0 %}positive{% else %}negative{% endif %}">{{ money(r.company_profit_before_owner_distribution) }}</strong></td><td data-label="Decision"><span class="badge {% if r.decision == 'OK' %}good{% elif r.decision == 'LOSS' %}bad{% else %}warn{% endif %}">{{ r.decision }}</span></td>
+</tr>{% else %}<tr><td class="empty" colspan="7">No loads entered.</td></tr>{% endfor %}</tbody></table></div></section>
+{% endblock %}

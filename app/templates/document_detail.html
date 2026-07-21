@@ -1,0 +1,2 @@
+{% extends "base.html" %}{% block title %}{{ document.title }} &middot; CarrierOS{% endblock %}
+{% block content %}<div class="page-title"><div><h2>{{ document.title }}</h2><p>Generated {{ document.created_at }} · Review before use.</p></div><div class="actions"><a class="btn btn-primary" href="/documents/{{ document.id }}/docx">Download Word</a><a class="btn btn-secondary" href="/documents">Back</a></div></div><div class="document">{{ document.body }}</div>{% endblock %}

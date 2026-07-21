@@ -1,0 +1,68 @@
+{% extends "base.html" %}{% block title %}Driver &amp; Equipment Setup &middot; CarrierOS{% endblock %}
+{% set pay_models = ['Profit Split','Contractor Gross Split','Owner-Operator','Flat Rate per Load','Per Loaded Mile','Per Total Mile','Day Rate'] %}
+{% block content %}
+<div class="page-title"><div><h2>Driver and equipment setup</h2><p>Choose the compensation structure that matches each operating agreement. CarrierOS keeps profit split, gross split, flat, mileage, and day-rate calculations separate.</p></div></div>
+<div class="notice"><strong>Seven pay structures:</strong> profit split, contractor gross split, owner-operator split, flat rate per load, loaded-mile rate, total-mile rate, and day rate.</div>
+<section class="card"><details><summary style="cursor:pointer;font-weight:800">Add a new driver or contractor profile</summary><div style="margin-top:16px">
+<form method="post" action="/drivers"><div class="form-grid-3">
+  <div class="field"><label>Name</label><input name="name" required></div>
+  <div class="field"><label>Role</label><select name="role"><option>Driver</option><option>Owner</option><option>Contractor</option></select></div>
+  <div class="field"><label>Pay model</label><select name="pay_model">{% for model in pay_models %}<option>{{ model }}</option>{% endfor %}</select></div>
+  <div class="field"><label>Assigned unit</label><select name="vehicle_id"><option value="">None</option>{% for v in vehicles %}<option value="{{ v.id }}">{{ v.name }}</option>{% endfor %}</select></div>
+  <div class="field"><label>Equipment type / trailer</label><input name="equipment_type"></div>
+  <div class="field"><label>Email</label><input type="email" name="email"></div>
+  <div class="field"><label>Phone</label><input name="phone"></div>
+  <div class="field"><label>Fixed-cost start</label><input type="date" name="fixed_cost_start"></div>
+  <div class="field"><label>Fixed-cost end</label><input type="date" name="fixed_cost_end"></div>
+  <div class="field"><label>Truck financing / month</label><input type="number" step="0.01" name="truck_financing_monthly" value="0"></div>
+  <div class="field"><label>Auto insurance / month</label><input type="number" step="0.01" name="auto_insurance_monthly" value="0"></div>
+  <div class="field"><label>Trailer financing / month</label><input type="number" step="0.01" name="trailer_financing_monthly" value="0"></div>
+  <div class="field"><label>Trailer insurance / month</label><input type="number" step="0.01" name="trailer_insurance_monthly" value="0"></div>
+  <div class="field"><label>Other fixed / month</label><input type="number" step="0.01" name="other_fixed_monthly" value="0"></div>
+  <div class="field"><label>MPG</label><input type="number" step="0.1" name="mpg" value="10"></div>
+  <div class="field"><label>Maintenance / mile</label><input type="number" step="0.01" name="maintenance_per_mile" value="0.20"></div>
+  <div class="field"><label>Profit split %</label><input type="number" step="0.01" name="driver_profit_split_pct" value="0"></div>
+  <div class="field"><label>Contractor gross split %</label><input type="number" step="0.01" name="contractor_gross_split_pct" value="0"></div>
+  <div class="field"><label>Owner-operator split %</label><input type="number" step="0.01" name="owner_operator_split_pct" value="0"></div>
+  <div class="field"><label>Flat rate / load</label><input type="number" step="0.01" name="flat_rate_per_load" value="0"></div>
+  <div class="field"><label>Rate / loaded mile</label><input type="number" step="0.001" name="pay_per_loaded_mile" value="0"></div>
+  <div class="field"><label>Rate / total mile</label><input type="number" step="0.001" name="pay_per_total_mile" value="0"></div>
+  <div class="field"><label>Day rate</label><input type="number" step="0.01" name="day_rate" value="0"></div>
+  <div class="field inline"><input id="new-burden" type="checkbox" name="payroll_burden_applies"><label for="new-burden">Payroll burden applies</label></div>
+  <div class="field inline"><input id="new-active" type="checkbox" name="active" checked><label for="new-active">Enabled</label></div>
+  <div class="field full"><label>Notes</label><textarea name="notes"></textarea></div>
+</div><div class="form-actions"><button class="btn btn-primary">Add profile</button></div></form>
+</div></details></section>
+
+<div style="margin-top:18px">{% for d in drivers %}<details class="details-card" id="driver-{{ d.id }}"><summary><span>{{ d.name }} &middot; {{ d.pay_model }}</span><span><span class="badge {% if d.active %}good{% else %}info{% endif %}">{{ 'Enabled' if d.active else 'Disabled' }}</span> <span class="badge info">{{ money(d.monthly_fixed) }}/mo fixed</span>{% if d.balance %}<span class="badge {% if d.balance.remaining_load_pay > 0 %}warn{% else %}good{% endif %}">{{ money(d.balance.remaining_load_pay) }} due</span>{% endif %}</span></summary><div class="details-body">
+<form method="post" action="/drivers/{{ d.id }}/update"><div class="form-grid-3">
+  <div class="field"><label>Name</label><input name="name" value="{{ d.name }}" required></div>
+  <div class="field"><label>Role</label><select name="role">{% for role in ['Driver','Owner','Contractor'] %}<option {% if d.role == role %}selected{% endif %}>{{ role }}</option>{% endfor %}</select></div>
+  <div class="field"><label>Pay model</label><select name="pay_model">{% for model in pay_models %}<option {% if d.pay_model == model %}selected{% endif %}>{{ model }}</option>{% endfor %}</select></div>
+  <div class="field"><label>Assigned unit</label><select name="vehicle_id"><option value="">None</option>{% for v in vehicles %}<option value="{{ v.id }}" {% if d.vehicle_id|string == v.id|string %}selected{% endif %}>{{ v.name }}</option>{% endfor %}</select></div>
+  <div class="field"><label>Equipment / trailer</label><input name="equipment_type" value="{{ d.equipment_type or '' }}"></div>
+  <div class="field"><label>Email</label><input type="email" name="email" value="{{ d.email or '' }}"></div>
+  <div class="field"><label>Phone</label><input name="phone" value="{{ d.phone or '' }}"></div>
+  <div class="field"><label>Fixed-cost start</label><input type="date" name="fixed_cost_start" value="{{ d.fixed_cost_start or '' }}"></div>
+  <div class="field"><label>Fixed-cost end</label><input type="date" name="fixed_cost_end" value="{{ d.fixed_cost_end or '' }}"></div>
+  <div class="field"><label>Truck financing / month</label><input type="number" step="0.01" name="truck_financing_monthly" value="{{ d.truck_financing_monthly }}"></div>
+  <div class="field"><label>Auto insurance / month</label><input type="number" step="0.01" name="auto_insurance_monthly" value="{{ d.auto_insurance_monthly }}"></div>
+  <div class="field"><label>Trailer financing / month</label><input type="number" step="0.01" name="trailer_financing_monthly" value="{{ d.trailer_financing_monthly }}"></div>
+  <div class="field"><label>Trailer insurance / month</label><input type="number" step="0.01" name="trailer_insurance_monthly" value="{{ d.trailer_insurance_monthly }}"></div>
+  <div class="field"><label>Other fixed / month</label><input type="number" step="0.01" name="other_fixed_monthly" value="{{ d.other_fixed_monthly }}"></div>
+  <div class="field"><label>Calculated monthly fixed</label><input value="{{ money(d.monthly_fixed) }}" disabled></div>
+  <div class="field"><label>MPG</label><input type="number" step="0.1" name="mpg" value="{{ d.mpg }}"></div>
+  <div class="field"><label>Maintenance / mile</label><input type="number" step="0.01" name="maintenance_per_mile" value="{{ d.maintenance_per_mile }}"></div>
+  <div class="field"><label>Profit split %</label><input type="number" step="0.01" name="driver_profit_split_pct" value="{{ d.driver_profit_split_pct }}"></div>
+  <div class="field"><label>Contractor gross split %</label><input type="number" step="0.01" name="contractor_gross_split_pct" value="{{ d.contractor_gross_split_pct }}"></div>
+  <div class="field"><label>Owner-operator split %</label><input type="number" step="0.01" name="owner_operator_split_pct" value="{{ d.owner_operator_split_pct }}"></div>
+  <div class="field"><label>Flat rate / load</label><input type="number" step="0.01" name="flat_rate_per_load" value="{{ d.flat_rate_per_load }}"></div>
+  <div class="field"><label>Rate / loaded mile</label><input type="number" step="0.001" name="pay_per_loaded_mile" value="{{ d.pay_per_loaded_mile }}"></div>
+  <div class="field"><label>Rate / total mile</label><input type="number" step="0.001" name="pay_per_total_mile" value="{{ d.pay_per_total_mile }}"></div>
+  <div class="field"><label>Day rate</label><input type="number" step="0.01" name="day_rate" value="{{ d.day_rate }}"></div>
+  <div class="field inline"><input id="burden-{{ d.id }}" type="checkbox" name="payroll_burden_applies" {% if d.payroll_burden_applies %}checked{% endif %}><label for="burden-{{ d.id }}">Payroll burden applies</label></div>
+  <div class="field inline"><input id="active-{{ d.id }}" type="checkbox" name="active" {% if d.active %}checked{% endif %}><label for="active-{{ d.id }}">Enabled</label></div>
+  <div class="field full"><label>Notes</label><textarea name="notes">{{ d.notes or '' }}</textarea></div>
+</div><div class="form-actions"><button class="btn btn-primary">Save {{ d.name }}</button></div></form>
+</div></details>{% else %}<section class="card empty">No driver profiles yet. Add an active unit first, then create the driver and pay structure.</section>{% endfor %}</div>
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% block title %}{% if editing %}Edit load{% else %}Add load{% endif %} &middot; CarrierOS{% endblock %}
+{% block content %}
+<div class="page-title"><div><h2>{% if editing %}Edit {{ values.load_number }}{% else %}Add a load{% endif %}</h2><p>Saving triggers a full recalculation, including shared fixed cost for loads that overlap on the same unit and date.</p></div><a class="btn btn-secondary" href="{% if editing %}/loads/{{ values.id }}{% else %}/loads{% endif %}">Cancel</a></div>
+<form class="card" method="post" action="{% if editing %}/loads/{{ values.id }}/edit{% else %}/loads/new{% endif %}"><div class="form-grid-3">
+<div class="field"><label>Load number</label><input name="load_number" value="{{ values.load_number or '' }}" placeholder="LOAD-0001"></div>
+<div class="field"><label>Status</label><select name="status">{% for status in ['Booked','Delivered','In Transit','Pending','Cancelled','Quote'] %}<option {% if values.status == status %}selected{% endif %}>{{ status }}</option>{% endfor %}</select></div>
+<div class="field inline" style="align-self:end"><input id="include" type="checkbox" name="include_in_model" {% if values.include_in_model %}checked{% endif %}><label for="include">Include in financial model</label></div>
+<div class="field"><label>Pickup date</label><input type="date" name="pickup_date" value="{{ values.pickup_date or '' }}" required></div>
+<div class="field"><label>Delivery date</label><input type="date" name="delivery_date" value="{{ values.delivery_date or '' }}" required></div>
+<div class="field"><label>Driver / pay profile</label><select name="driver_id" required><option value="">Select</option>{% for d in drivers %}<option value="{{ d.id }}" {% if values.driver_id|string == d.id|string %}selected{% endif %}>{{ d.name }} &middot; {{ d.pay_model }}</option>{% endfor %}</select></div>
+<div class="field"><label>Unit / truck</label><select name="vehicle_id"><option value="">Use driver default</option>{% for v in vehicles %}<option value="{{ v.id }}" {% if values.vehicle_id|string == v.id|string %}selected{% endif %}>{{ v.name }}</option>{% endfor %}</select></div>
+<div class="field"><label>Broker / customer</label><input name="broker" value="{{ values.broker or '' }}"></div>
+<div class="field"><label>Revenue</label><input type="number" step="0.01" name="revenue" value="{{ values.revenue if values.revenue is not none else '' }}" required></div>
+<div class="field"><label>Origin</label><input name="origin" value="{{ values.origin or '' }}"></div>
+<div class="field"><label>Destination</label><input name="destination" value="{{ values.destination or '' }}"></div>
+<div class="field"><label>Fuel override / gal</label><input type="number" step="0.001" name="fuel_override" value="{{ values.fuel_override if values.fuel_override is not none else '' }}" placeholder="Uses weekly {{ '%.3f'|format(current_fuel) }}"></div>
+<div class="field"><label>Loaded miles</label><input type="number" step="0.1" min="0" name="loaded_miles" value="{{ values.loaded_miles or 0 }}"></div>
+<div class="field"><label>Deadhead miles</label><input type="number" step="0.1" min="0" name="deadhead_miles" value="{{ values.deadhead_miles or 0 }}"></div>
+<div class="field"><label>Tolls / lumpers / misc.</label><input type="number" step="0.01" min="0" name="tolls_misc" value="{{ values.tolls_misc or 0 }}"></div>
+<div class="field"><label>Other direct costs</label><input type="number" step="0.01" min="0" name="other_direct_costs" value="{{ values.other_direct_costs or 0 }}"></div>
+<div class="field full"><label>Notes</label><textarea name="notes">{{ values.notes or '' }}</textarea></div>
+</div><div class="form-actions"><button class="btn btn-primary">{% if editing %}Save changes{% else %}Save and calculate{% endif %}</button><a class="btn btn-secondary" href="/loads">Back to loads</a></div></form>
+{% endblock %}
