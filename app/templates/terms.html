@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% block title %}Terms of Service &middot; CarrierOS{% endblock %}
+{% block content %}
+<main class="public-shell">
+  <header class="public-header"><a href="/login">&larr; CarrierOS</a></header>
+  <article class="public-card legal-copy">
+    <h1>Terms of Service</h1><p class="muted">Version {{ terms_version }} &middot; Effective July 21, 2026</p>
+    <h2>Service and beta status</h2><p>CarrierOS is fleet-management and financial-estimation software offered by Outside The Wire Logistics LLC. The founding beta is provided for evaluation, may change, and may be suspended or discontinued. We do not promise uninterrupted or error-free availability.</p>
+    <h2>Your account and responsibilities</h2><p>You must provide accurate account information, keep credentials secure, and use CarrierOS only for lawful business purposes. You are responsible for the accuracy of data entered, the users you authorize, your independent records and backups, and all operational decisions made from the service.</p>
+    <h2>Professional review required</h2><p>Calculations, quotes, reports, generated documents, compliance reminders, and driver-pay estimates are informational tools. CarrierOS does not provide legal, tax, accounting, payroll, insurance, safety, or regulatory advice. Review outputs and obtain qualified professional advice before relying on them.</p>
+    <h2>Prohibited data and use</h2><p>Do not store Social Security numbers, bank credentials, payment-card data, identity-document images, health records, unlawful content, malware, or information you do not have permission to use. Do not probe, disrupt, reverse engineer, resell, or misuse the service.</p>
+    <h2>Access, billing, and cancellation</h2><p>The current founding beta requires no payment method and carries no subscription charge. Plan pricing shown in the product is proposed pricing for a later paid release. We will provide notice and request separate authorization before charging for continued access. You may stop using the beta at any time and request account deletion by contacting support.</p>
+    <h2>Ownership and feedback</h2><p>You retain rights in the data you submit. We retain rights in CarrierOS and its software, design, and documentation. If you provide feedback, you permit us to use it to improve the service without compensation.</p>
+    <h2>Disclaimers and liability</h2><p>To the maximum extent permitted by law, the beta is provided “as is” without warranties. Outside The Wire Logistics LLC is not liable for indirect, incidental, special, consequential, or lost-profit damages arising from use of the beta. Any direct liability is limited to the amount you paid for CarrierOS in the prior three months, which is zero during the no-charge beta. Rights that cannot legally be limited remain unaffected.</p>
+    <h2>Changes and contact</h2><p>We may update these terms as CarrierOS evolves. Material changes will apply prospectively after notice. Questions or account requests may be sent to <a href="mailto:{{ support_email }}">{{ support_email }}</a>.</p>
+    <p><a href="/privacy">Privacy Policy</a> &middot; <a href="mailto:{{ support_email }}">Contact</a></p>
+  </article>
+</main>
+{% endblock %}
