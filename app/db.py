@@ -6,7 +6,7 @@ import os
 import secrets
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -49,6 +49,8 @@ CREATE TABLE IF NOT EXISTS organizations (
     billing_price_reference TEXT,
     subscription_current_period_end TEXT,
     subscription_cancel_at_period_end INTEGER NOT NULL DEFAULT 0,
+    terms_accepted_at TEXT,
+    terms_version TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -67,6 +69,17 @@ CREATE TABLE IF NOT EXISTS users (
     is_admin INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS audit_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    organization_id INTEGER,
+    user_id INTEGER,
+    event_type TEXT NOT NULL,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS overhead_items (
@@ -283,7 +296,8 @@ CREATE INDEX IF NOT EXISTS idx_fuel_org_week ON weekly_fuel(organization_id, wee
 CREATE INDEX IF NOT EXISTS idx_idle_org_dates ON idle_periods(organization_id, start_date, end_date);
 CREATE INDEX IF NOT EXISTS idx_compliance_expiry ON compliance_items(organization_id, expiration_date);
 CREATE INDEX IF NOT EXISTS idx_invoices_due ON invoices(organization_id, due_date);
-PRAGMA user_version = 5;
+CREATE INDEX IF NOT EXISTS idx_audit_events_org_created ON audit_events(organization_id, created_at);
+PRAGMA user_version = 6;
 """
 
 ORGANIZATION_MIGRATIONS = (
@@ -296,6 +310,8 @@ ORGANIZATION_MIGRATIONS = (
     ("billing_price_reference", "ALTER TABLE organizations ADD COLUMN billing_price_reference TEXT"),
     ("subscription_current_period_end", "ALTER TABLE organizations ADD COLUMN subscription_current_period_end TEXT"),
     ("subscription_cancel_at_period_end", "ALTER TABLE organizations ADD COLUMN subscription_cancel_at_period_end INTEGER NOT NULL DEFAULT 0"),
+    ("terms_accepted_at", "ALTER TABLE organizations ADD COLUMN terms_accepted_at TEXT"),
+    ("terms_version", "ALTER TABLE organizations ADD COLUMN terms_version TEXT"),
 )
 
 DRIVER_MIGRATIONS = (
@@ -334,6 +350,24 @@ def execute(sql: str, params: Iterable[Any] = ()) -> int:
     with db_session() as conn:
         cur = conn.execute(sql, tuple(params))
         return int(cur.lastrowid)
+
+
+def record_audit_event(
+    event_type: str,
+    organization_id: int | None = None,
+    user_id: int | None = None,
+    details: dict[str, Any] | None = None,
+) -> int:
+    """Append a minimal event without storing credentials or customer-entered records."""
+    payload = json.dumps(details or {}, separators=(",", ":"), sort_keys=True)
+    with db_session() as conn:
+        cursor = conn.execute(
+            """INSERT INTO audit_events
+            (organization_id, user_id, event_type, details_json)
+            VALUES (?, ?, ?, ?)""",
+            (organization_id, user_id, event_type, payload),
+        )
+        return int(cursor.lastrowid)
 
 
 def query_all(sql: str, params: Iterable[Any] = ()) -> list[sqlite3.Row]:
@@ -552,4 +586,4 @@ def new_onboarding_token() -> str:
 
 
 def utc_now_iso() -> str:
-    return datetime.utcnow().replace(microsecond=0).isoformat()
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()

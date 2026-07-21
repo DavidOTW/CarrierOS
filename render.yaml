@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: carrieros-otw
+    runtime: docker
+    plan: starter
+    region: ohio
+    branch: main
+    autoDeployTrigger: commit
+    healthCheckPath: /health
+    maxShutdownDelaySeconds: 30
+    envVars:
+      - key: CARRIEROS_ENV
+        value: production
+      - key: CARRIEROS_SECRET
+        generateValue: true
+      - key: CARRIEROS_DB
+        value: /data/carrieros.db
+      - key: CARRIEROS_BILLING_MODE
+        value: beta
+      - key: CARRIEROS_SUPPORT_EMAIL
+        value: david@outsidethewirelogistics.com
+      - key: STRIPE_TAX_ENABLED
+        value: "false"
+    disk:
+      name: carrieros-data
+      mountPath: /data
+      sizeGB: 1

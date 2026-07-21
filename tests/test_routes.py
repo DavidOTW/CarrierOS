@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date, timedelta
 from pathlib import Path
 import re
 
@@ -11,6 +12,15 @@ from app import main as main_module
 from app.main import app
 
 
+@pytest.fixture(autouse=True)
+def clear_rate_limit_state():
+    main_module.login_attempts.clear()
+    main_module.signup_attempts.clear()
+    yield
+    main_module.login_attempts.clear()
+    main_module.signup_attempts.clear()
+
+
 def signup(client: TestClient, email: str, company: str = "Acme Carrier", activate: bool = True):
     response = client.post(
         "/signup",
@@ -20,6 +30,7 @@ def signup(client: TestClient, email: str, company: str = "Acme Carrier", activa
             "email": email,
             "password": "StrongPassword!42",
             "plan": "owner_operator",
+            "accepted_terms": "on",
         },
         follow_redirects=False,
     )
@@ -53,6 +64,50 @@ def test_signup_requires_verified_billing_before_access(monkeypatch: pytest.Monk
         assert dashboard.headers["location"] == "/billing"
 
 
+def test_founding_beta_signup_grants_trial_and_records_consent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "beta.db"))
+    monkeypatch.setattr(main_module, "BILLING_MODE", "beta")
+    with TestClient(app) as client:
+        response = signup(client, "founder@example.com", activate=False)
+        assert response.status_code == 303
+        assert response.headers["location"] == "/dashboard"
+        organization = query_one("SELECT * FROM organizations")
+        assert organization["subscription_status"] == "trialing"
+        assert organization["trial_ends_at"] == (date.today() + timedelta(days=14)).isoformat()
+        assert organization["terms_version"] == main_module.TERMS_VERSION
+        assert organization["terms_accepted_at"]
+        assert client.get("/dashboard").status_code == 200
+        event = query_one("SELECT * FROM audit_events WHERE event_type='organization.created'")
+        assert event["organization_id"] == organization["id"]
+
+
+def test_signup_requires_terms_and_limits_account_creation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "terms.db"))
+    payload = {
+        "full_name": "Fleet Owner",
+        "company_name": "Consent Carrier",
+        "email": "consent@example.com",
+        "password": "StrongPassword!42",
+        "plan": "owner_operator",
+    }
+    with TestClient(app) as client:
+        rejected = client.post("/signup", data=payload)
+        assert rejected.status_code == 400
+        assert "Accept the Terms" in rejected.text
+        assert query_one("SELECT COUNT(*) AS total FROM organizations")["total"] == 0
+
+    monkeypatch.setattr(main_module, "SIGNUP_MAX_ATTEMPTS", 1)
+    with TestClient(app) as first_client:
+        assert signup(first_client, "first@example.com", activate=False).status_code == 303
+    with TestClient(app) as second_client:
+        limited = signup(second_client, "second@example.com", activate=False)
+        assert limited.status_code == 429
+
+
 def test_signup_empty_workspace_and_authenticated_pages(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "routes.db"))
     with TestClient(app) as client:
@@ -67,6 +122,10 @@ def test_signup_empty_workspace_and_authenticated_pages(monkeypatch: pytest.Monk
             response = client.get(page)
             assert response.status_code == 200, f"{page}: {response.text[:500]}"
         assert query_one("SELECT COUNT(*) AS total FROM loads")["total"] == 0
+
+    with TestClient(app) as public_client:
+        assert public_client.get("/privacy").status_code == 200
+        assert public_client.get("/terms").status_code == 200
 
 
 def test_unit_limit_and_flat_rate_driver(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -137,6 +196,8 @@ def test_security_headers_and_no_default_credentials(monkeypatch: pytest.MonkeyP
         assert page.status_code == 200
         assert page.headers["x-frame-options"] == "DENY"
         assert "frame-ancestors 'none'" in page.headers["content-security-policy"]
+        assert page.headers["cache-control"] == "no-store"
+        assert page.headers["cross-origin-opener-policy"] == "same-origin"
         assert "ChangeMe" not in page.text
         assert "admin@" not in page.text
 
@@ -154,6 +215,7 @@ def test_production_forms_require_valid_csrf_token(monkeypatch: pytest.MonkeyPat
             "email": "secure@example.com",
             "password": "StrongPassword!42",
             "plan": "owner_operator",
+            "accepted_terms": "on",
         }
         assert client.post("/signup", data=payload).status_code == 403
         payload["_csrf"] = token_match.group(1)

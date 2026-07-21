@@ -36,6 +36,7 @@ from .db import (
     new_onboarding_token,
     query_all,
     query_one,
+    record_audit_event,
     utc_now_iso,
     verify_password,
 )
@@ -54,13 +55,21 @@ from .stripe_billing import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
-VERSION = "0.4.0-beta"
+VERSION = "0.5.0-beta"
 ENVIRONMENT = os.getenv("CARRIEROS_ENV", "development").strip().lower()
 IS_PRODUCTION = ENVIRONMENT == "production"
 SESSION_SECRET = os.getenv("CARRIEROS_SECRET", "")
 if IS_PRODUCTION and len(SESSION_SECRET) < 32:
     raise RuntimeError("CARRIEROS_SECRET must be at least 32 characters in production.")
 SESSION_SECRET = SESSION_SECRET or "development-only-change-me-v04"
+BILLING_MODE = os.getenv("CARRIEROS_BILLING_MODE", "stripe").strip().lower()
+if BILLING_MODE not in {"stripe", "beta"}:
+    raise RuntimeError("CARRIEROS_BILLING_MODE must be 'stripe' or 'beta'.")
+TRIAL_DAYS = 14
+TERMS_VERSION = "2026-07-21"
+SUPPORT_EMAIL = os.getenv(
+    "CARRIEROS_SUPPORT_EMAIL", "david@outsidethewirelogistics.com"
+).strip().lower()
 
 PLAN_LIMITS = {
     "owner_operator": {"name": "Owner-Operator", "units": 2, "price": 19},
@@ -69,7 +78,10 @@ PLAN_LIMITS = {
 }
 LOGIN_WINDOW_SECONDS = 15 * 60
 LOGIN_MAX_ATTEMPTS = 10
+SIGNUP_WINDOW_SECONDS = 60 * 60
+SIGNUP_MAX_ATTEMPTS = 5
 login_attempts: dict[str, list[float]] = {}
+signup_attempts: dict[str, list[float]] = {}
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -95,9 +107,16 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+        response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+        response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
+        if not request.url.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "no-store"
+        production_upgrade = "; upgrade-insecure-requests" if IS_PRODUCTION else ""
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
-            "script-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+            "script-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; "
+            f"base-uri 'self'; form-action 'self'{production_upgrade}"
         )
         if IS_PRODUCTION:
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
@@ -202,6 +221,8 @@ def render(request: Request, name: str, context: dict[str, Any] | None = None, s
         "percent": percent,
         "today": date.today(),
         "version": VERSION,
+        "support_email": SUPPORT_EMAIL,
+        "billing_mode": BILLING_MODE,
         "csrf_token": csrf_token,
         "flash": request.session.pop("flash", None) if hasattr(request, "session") else None,
     })
@@ -242,6 +263,14 @@ def login_rate_limited(request: Request) -> bool:
     return len(recent) >= LOGIN_MAX_ATTEMPTS
 
 
+def signup_rate_limited(request: Request) -> bool:
+    key = client_key(request)
+    cutoff = time.time() - SIGNUP_WINDOW_SECONDS
+    recent = [stamp for stamp in signup_attempts.get(key, []) if stamp >= cutoff]
+    signup_attempts[key] = recent
+    return len(recent) >= SIGNUP_MAX_ATTEMPTS
+
+
 def redirect(url: str) -> RedirectResponse:
     return RedirectResponse(url=url, status_code=303)
 
@@ -250,6 +279,9 @@ def public_url(request: Request) -> str:
     configured = os.getenv("CARRIEROS_PUBLIC_URL", "").strip().rstrip("/")
     if configured:
         return configured
+    render_hostname = os.getenv("RENDER_EXTERNAL_HOSTNAME", "").strip().rstrip("/")
+    if render_hostname:
+        return f"https://{render_hostname}"
     if IS_PRODUCTION:
         raise BillingConfigurationError("CARRIEROS_PUBLIC_URL is not configured.")
     return str(request.base_url).rstrip("/")
@@ -325,6 +357,20 @@ def index(request: Request):
     return redirect("/dashboard" if current_user(request) else "/login")
 
 
+@app.get("/privacy", response_class=HTMLResponse)
+def privacy(request: Request):
+    return render(request, "privacy.html", {"public_page": True})
+
+
+@app.get("/terms", response_class=HTMLResponse)
+def terms(request: Request):
+    return render(
+        request,
+        "terms.html",
+        {"public_page": True, "terms_version": TERMS_VERSION},
+    )
+
+
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
     if current_user(request):
@@ -350,6 +396,11 @@ async def login(request: Request):
     request.session["user_id"] = row["id"]
     request.session["csrf_token"] = secrets.token_urlsafe(32)
     login_attempts.pop(client_key(request), None)
+    record_audit_event(
+        "user.login",
+        organization_id=int(row["organization_id"]),
+        user_id=int(row["id"]),
+    )
     return redirect("/dashboard")
 
 
@@ -363,11 +414,19 @@ def signup_page(request: Request, plan: str = "owner_operator"):
 
 @app.post("/signup", response_class=HTMLResponse)
 async def signup(request: Request):
+    if signup_rate_limited(request):
+        return render(request, "signup.html", {
+            "error": "Too many accounts were created from this connection. Try again in one hour.",
+            "plans": PLAN_LIMITS,
+            "selected_plan": "owner_operator",
+            "public_page": True,
+        }, 429)
     form = await verified_form(request)
     full_name = str(form.get("full_name", "")).strip()
     company_name = str(form.get("company_name", "")).strip()
     email = str(form.get("email", "")).strip().lower()
     password = str(form.get("password", ""))
+    accepted_terms = yes(form.get("accepted_terms"))
     plan_code = str(form.get("plan", "owner_operator"))
     if plan_code not in PLAN_LIMITS:
         plan_code = "owner_operator"
@@ -377,6 +436,8 @@ async def signup(request: Request):
         error = "Enter your name, company, and a valid email address."
     elif not valid_password(password):
         error = "Use at least 12 characters with uppercase, lowercase, a number, and a symbol."
+    elif not accepted_terms:
+        error = "Accept the Terms of Service and Privacy Policy to create an account."
     elif query_one("SELECT id FROM users WHERE lower(email)=?", (email,)):
         error = "An account already exists for that email address."
     if error:
@@ -388,15 +449,21 @@ async def signup(request: Request):
             "public_page": True,
         }, 400)
 
+    trial_ends_at = (date.today() + timedelta(days=TRIAL_DAYS)).isoformat() if BILLING_MODE == "beta" else None
+    subscription_status = "trialing" if BILLING_MODE == "beta" else "incomplete"
+    accepted_at = utc_now_iso()
     with db_session() as conn:
         org_id = conn.execute(
             """INSERT INTO organizations
             (name, owner_name, owner_email, plan_code, active_unit_limit,
-             subscription_status, trial_ends_at, reporting_start_month, default_report_month)
-            VALUES (?, ?, ?, ?, ?, 'incomplete', NULL, ?, ?)""",
+             subscription_status, trial_ends_at, reporting_start_month, default_report_month,
+             terms_accepted_at, terms_version)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 company_name, full_name, email, plan_code, int(plan["units"]),
+                subscription_status, trial_ends_at,
                 date.today().replace(day=1).isoformat(), date.today().replace(day=1).isoformat(),
+                accepted_at, TERMS_VERSION,
             ),
         ).lastrowid
         user_id = conn.execute(
@@ -407,10 +474,17 @@ async def signup(request: Request):
             "INSERT INTO overhead_items (organization_id, name, monthly_cost, sort_order) VALUES (?, 'Other overhead', 0, 1)",
             (org_id,),
         )
+    signup_attempts.setdefault(client_key(request), []).append(time.time())
+    record_audit_event(
+        "organization.created",
+        organization_id=int(org_id),
+        user_id=int(user_id),
+        details={"billing_mode": BILLING_MODE, "plan_code": plan_code, "terms_version": TERMS_VERSION},
+    )
     request.session.clear()
     request.session["user_id"] = user_id
     request.session["csrf_token"] = secrets.token_urlsafe(32)
-    return redirect("/billing?new=1")
+    return redirect("/dashboard" if BILLING_MODE == "beta" else "/billing?new=1")
 
 
 @app.get("/billing", response_class=HTMLResponse)
@@ -423,6 +497,7 @@ def billing(request: Request, checkout: str | None = None, new: int = 0):
         "plan": plan,
         "plans": PLAN_LIMITS,
         "stripe_ready": stripe_configured(),
+        "billing_mode": BILLING_MODE,
         "has_access": subscription_allows_access(user),
         "checkout_result": checkout,
         "new_account": bool(new),
@@ -434,6 +509,9 @@ async def billing_checkout(request: Request):
     user = current_user(request)
     if not user:
         return redirect("/login")
+    if BILLING_MODE == "beta":
+        set_flash(request, "No payment is required during the founding beta.")
+        return redirect("/billing")
     form = await verified_form(request)
     plan_code = str(form.get("plan", user.get("plan_code") or "owner_operator"))
     if plan_code not in PLAN_LIMITS:
@@ -649,6 +727,13 @@ async def stripe_webhook(request: Request):
 
 @app.get("/logout")
 def logout(request: Request):
+    user = current_user(request)
+    if user:
+        record_audit_event(
+            "user.logout",
+            organization_id=int(user["organization_id"]),
+            user_id=int(user["id"]),
+        )
     request.session.clear()
     return redirect("/login")
 
