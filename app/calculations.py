@@ -650,13 +650,13 @@ def summarize_owner_pay(
         for p in payments
         if int(p.get("driver_id") or 0) in owner_ids
         and payment_counts(p.get("counts_against_load_pay"))
-        and _bool(p.get("include_in_reports"), True)
+        and str(p.get("payment_type") or "").strip().lower() != "owner profit draw"
     )
     distribution_draws = sum(
         max(0.0, _num(p.get("amount")))
         for p in payments
-        if str(p.get("payment_type") or "").strip().lower() == "owner profit draw"
-        and _bool(p.get("include_in_reports"), True)
+        if int(p.get("driver_id") or 0) in owner_ids
+        and str(p.get("payment_type") or "").strip().lower() == "owner profit draw"
     )
     owner_operator_remaining = max(0.0, owner_operator_earned - owner_operator_payments)
     distribution_remaining = max(0.0, distribution_earned - distribution_draws)
