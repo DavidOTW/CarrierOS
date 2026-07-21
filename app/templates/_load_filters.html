@@ -1,0 +1,50 @@
+<section class="card report-filter-card">
+  <div class="section-title">
+    <div>
+      <h3>Choose the loads to view</h3>
+      <p class="small muted">Filters work together, like Excel. Dates use the selected date column; driver, load, and status selections narrow the same results.</p>
+    </div>
+    {% if filters.date_swapped %}<span class="badge warn">Dates reordered</span>{% endif %}
+  </div>
+  <form method="get" action="{{ filter_action }}">
+    <div class="report-filter-grid">
+      <div class="field">
+        <label for="date-field">Date column</label>
+        <select id="date-field" name="date_field">
+          <option value="delivery_date" {% if filters.date_field == 'delivery_date' %}selected{% endif %}>Delivery date</option>
+          <option value="pickup_date" {% if filters.date_field == 'pickup_date' %}selected{% endif %}>Pickup date</option>
+        </select>
+      </div>
+      <div class="field"><label for="date-from">From</label><input id="date-from" type="date" name="date_from" value="{{ filters.date_from.isoformat() if filters.date_from else '' }}"></div>
+      <div class="field"><label for="date-to">Through</label><input id="date-to" type="date" name="date_to" value="{{ filters.date_to.isoformat() if filters.date_to else '' }}"></div>
+      <div class="field">
+        <label for="load-status">Status</label>
+        <select id="load-status" name="status"><option value="">All statuses</option>{% for value in statuses %}<option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select>
+      </div>
+      <div class="field">
+        <label for="load-sort">Sort results</label>
+        <select id="load-sort" name="sort">{% for value, label in sort_options %}<option value="{{ value }}" {% if filters.sort == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+      </div>
+    </div>
+    <div class="report-picker-grid">
+      <details class="filter-picker" {% if filters.driver_ids %}open{% endif %}>
+        <summary><span>Drivers</span><strong>{{ filters.driver_ids|length ~ ' selected' if filters.driver_ids else 'All drivers' }}</strong></summary>
+        <div class="filter-options">
+          {% for driver in drivers %}<label><input type="checkbox" name="driver_id" value="{{ driver.id }}" {% if driver.id in filters.driver_ids %}checked{% endif %}><span>{{ driver.name }}</span><small>{{ driver.role or driver.pay_model }}</small></label>{% else %}<p class="empty">No drivers available.</p>{% endfor %}
+        </div>
+      </details>
+      <details class="filter-picker" {% if filters.load_ids %}open{% endif %}>
+        <summary><span>Specific loads</span><strong>{{ filters.load_ids|length ~ ' selected' if filters.load_ids else 'All loads' }}</strong></summary>
+        <div class="filter-options">
+          {% for load in all_loads %}<label><input type="checkbox" name="load_id" value="{{ load.id }}" {% if load.id in filters.load_ids %}checked{% endif %}><span>{{ load.load_number }}</span><small>{{ load.delivery_date or load.pickup_date or 'No date' }} · {{ load.driver.name if load.driver else 'Unassigned' }}</small></label>{% else %}<p class="empty">No loads available.</p>{% endfor %}
+        </div>
+      </details>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Apply filters</button>
+      <a class="btn btn-secondary" href="{{ filter_action }}">Clear filters</a>
+      <a class="btn btn-ghost" href="/loads/export.csv{% if filter_query %}?{{ filter_query }}{% endif %}">Download filtered CSV</a>
+      {% if filter_page == 'loads' %}<a class="btn btn-ghost" href="/financials{% if filter_query %}?{{ filter_query }}{% endif %}">Financial report for this selection</a>{% else %}<a class="btn btn-ghost" href="/loads{% if filter_query %}?{{ filter_query }}{% endif %}">View selected load rows</a>{% endif %}
+    </div>
+  </form>
+</section>
