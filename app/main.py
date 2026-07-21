@@ -67,7 +67,7 @@ from .stripe_billing import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
-VERSION = "0.9.0"
+VERSION = "0.10.0"
 ENVIRONMENT = os.getenv("CARRIEROS_ENV", "development").strip().lower()
 IS_PRODUCTION = ENVIRONMENT == "production"
 CANONICAL_BASE_URL = os.getenv(
@@ -357,6 +357,83 @@ def normalized_external_url(value: Any) -> str | None:
     if parsed.username or parsed.password:
         return None
     return parsed.geturl()
+
+
+def callable_phone(value: Any) -> str | None:
+    raw = str(value or "").strip()
+    digits = "".join(character for character in raw if "0" <= character <= "9")
+    if not 7 <= len(digits) <= 15:
+        return None
+    return f"+{digits}" if raw.startswith("+") else digits
+
+
+def driver_availability(organization_id: int) -> list[dict[str, Any]]:
+    rows = query_all(
+        """SELECT d.id AS driver_id, d.name AS driver_name, d.phone,
+        d.vehicle_id AS assigned_vehicle_id, assigned_vehicle.name AS assigned_vehicle_name,
+        scheduled_load.id AS load_id, scheduled_load.load_number,
+        scheduled_load.delivery_date, scheduled_load.destination, scheduled_load.status,
+        scheduled_load.vehicle_id AS load_vehicle_id, load_vehicle.name AS load_vehicle_name
+        FROM drivers d
+        LEFT JOIN vehicles assigned_vehicle
+          ON assigned_vehicle.id=d.vehicle_id AND assigned_vehicle.organization_id=d.organization_id
+        LEFT JOIN loads scheduled_load ON scheduled_load.id=(
+          SELECT candidate.id FROM loads candidate
+          WHERE candidate.organization_id=d.organization_id
+            AND candidate.driver_id=d.id
+            AND lower(trim(candidate.status)) NOT IN ('cancelled', 'canceled', 'quote')
+          ORDER BY
+            CASE WHEN candidate.delivery_date IS NULL OR candidate.delivery_date='' THEN 1 ELSE 0 END,
+            candidate.delivery_date DESC,
+            candidate.id DESC
+          LIMIT 1
+        )
+        LEFT JOIN vehicles load_vehicle
+          ON load_vehicle.id=scheduled_load.vehicle_id
+          AND load_vehicle.organization_id=d.organization_id
+        WHERE d.organization_id=? AND d.active=1
+        ORDER BY lower(d.name)""",
+        (organization_id,),
+    )
+    today = date.today()
+    availability = []
+    for row in rows:
+        item = as_dict(row) or {}
+        delivery = parse_date(item.get("delivery_date"))
+        status = str(item.get("status") or "").strip()
+        completed = status.lower() == "delivered"
+        destination = str(item.get("destination") or "Destination not set")
+        item["vehicle_name"] = item.get("load_vehicle_name") or item.get("assigned_vehicle_name") or "No unit assigned"
+        item["phone_href"] = callable_phone(item.get("phone"))
+        item["delivery_display"] = (
+            delivery.strftime("%b %d, %Y").replace(" 0", " ") if delivery else None
+        )
+        if not item.get("load_id"):
+            item.update(
+                availability_label="Available now",
+                availability_detail="No scheduled load",
+                availability_tone="good",
+            )
+        elif not delivery:
+            item.update(
+                availability_label="Delivery date needed",
+                availability_detail=f"{item['load_number']} to {destination}",
+                availability_tone="warn",
+            )
+        elif completed or delivery < today:
+            item.update(
+                availability_label="Available now",
+                availability_detail=f"Last delivery: {destination} · {item['delivery_display']}",
+                availability_tone="good",
+            )
+        else:
+            item.update(
+                availability_label=f"Available {item['delivery_display']}",
+                availability_detail=f"Delivering {item['load_number']} to {destination}",
+                availability_tone="info",
+            )
+        availability.append(item)
+    return availability
 
 
 def percent(value: Any, digits: int = 1) -> str:
@@ -1342,6 +1419,7 @@ def dashboard(request: Request, month: str | None = None):
         "invoices": invoices[:5],
         "quick_links": [as_dict(row) for row in quick_link_rows],
         "open_exceptions": open_exceptions,
+        "driver_availability": driver_availability(int(user["organization_id"])),
     })
 
 
