@@ -88,6 +88,11 @@ def test_public_marketing_home_uses_launch_pricing_and_real_app_links(
         assert 'type="application/ld+json"' in response.text
         assert 'Small Fleet Trucking Software' in response.text
         assert '/driver-settlement-software' in response.text
+        assert "Marine Corps combat veteran" in response.text
+        assert "Purple Heart recipient" in response.text
+        assert "20 years of experience" in response.text
+        assert 'href="https://www.linkedin.com/in/davidbryant89"' in response.text
+        assert '"@type": "Person"' in response.text
         assert response.headers["cache-control"].startswith("public")
 
 
