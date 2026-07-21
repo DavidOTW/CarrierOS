@@ -48,8 +48,21 @@ def configure_stripe(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_example")
     monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_example")
     monkeypatch.setenv("STRIPE_PRICE_OWNER_OPERATOR", "price_owner")
+    monkeypatch.setenv("STRIPE_PRICE_STARTER_FLEET", "price_starter")
     monkeypatch.setenv("STRIPE_PRICE_SMALL_FLEET", "price_small")
     monkeypatch.setenv("STRIPE_PRICE_GROWING_FLEET", "price_growing")
+
+
+def test_launch_pricing_uses_active_power_units() -> None:
+    assert [
+        (code, plan["units"], plan["price"])
+        for code, plan in main_module.PLAN_LIMITS.items()
+    ] == [
+        ("owner_operator", 2, 25),
+        ("starter_fleet", 5, 50),
+        ("small_fleet", 10, 75),
+        ("growing_fleet", 20, 100),
+    ]
 
 
 def test_signup_requires_verified_billing_before_access(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -238,12 +251,12 @@ def test_checkout_uses_server_side_plan_whitelist(monkeypatch: pytest.MonkeyPatc
         signup(client, "checkout@example.com", activate=False)
         response = client.post(
             "/billing/checkout",
-            data={"plan": "small_fleet"},
+            data={"plan": "starter_fleet"},
             follow_redirects=False,
         )
         assert response.status_code == 303
         assert response.headers["location"] == "https://checkout.stripe.test/session"
-        assert captured["plan_code"] == "small_fleet"
+        assert captured["plan_code"] == "starter_fleet"
         assert captured["owner_email"] == "checkout@example.com"
         assert captured["success_url"].startswith("https://app.carrieros.example/billing")
         invalid = client.post(

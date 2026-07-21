@@ -7,7 +7,7 @@ CarrierOS is a multi-company fleet financial workspace for small carriers. Each 
 - Customer signup with versioned terms consent, sign-in, secure sessions, production CSRF checks, account throttling, security headers, and an append-only account audit trail
 - Organization-scoped loads, units, drivers, payments, fuel, quoting, financials, compliance, onboarding, documents, detention, and receivables
 - Seven driver-pay structures: profit split, contractor gross split, owner-operator split, flat rate per load, loaded-mile rate, total-mile rate, and day rate
-- Plans for 2, 10, and 25 active power units at $19, $49, and $99 per month
+- Plans for 2, 5, 10, and 20 active power units at $25, $50, $75, and $100 per month, with unlimited driver records and office users
 - No-charge beta access plus Stripe-hosted subscription Checkout, Customer Portal, and webhook-driven entitlements for the later paid launch
 - Docker packaging with a non-root process, dynamic platform port, health check, and persistent data volume
 - Public Privacy Policy and Terms of Service pages
@@ -47,7 +47,7 @@ The HTTPS reverse proxy or hosting platform must terminate TLS. Back up the pers
 
 Squarespace remains the marketing site. During the founding beta, plan links should send customers directly to CarrierOS signup and no payment method is collected. When `CARRIEROS_BILLING_MODE=stripe`, the application associates the authenticated organization with a server-created Stripe Checkout Session. Stripe Billing then becomes the subscription system of record. CarrierOS grants or removes paid access only after signature-verified, idempotently processed Stripe webhooks; the Checkout success redirect never grants access.
 
-Configure a Stripe webhook endpoint at `https://YOUR-APP/stripe/webhook` for `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `customer.subscription.trial_will_end`, `invoice.paid`, and `invoice.payment_failed`. The three standard monthly Price IDs must be supplied through the corresponding `STRIPE_PRICE_*` environment variables. Configure the Stripe Customer Portal to allow the plan changes and cancellation behavior you intend to support.
+Configure a Stripe webhook endpoint at `https://YOUR-APP/stripe/webhook` for `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `customer.subscription.trial_will_end`, `invoice.paid`, and `invoice.payment_failed`. The four standard monthly Price IDs must be supplied through the corresponding `STRIPE_PRICE_*` environment variables. Configure the Stripe Customer Portal to allow the plan changes and cancellation behavior you intend to support.
 
 Stripe Connect is intentionally not part of the initial SaaS billing release. Calculating contractor compensation does not by itself justify Connect, and Connect must not be treated as a general payroll or arbitrary payout service. Reassess Connect when CarrierOS has a defined underlying customer-to-fleet or customer-to-contractor payment flow.
 

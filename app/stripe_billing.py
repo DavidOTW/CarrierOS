@@ -9,6 +9,7 @@ import stripe
 
 PLAN_PRICE_ENV = {
     "owner_operator": "STRIPE_PRICE_OWNER_OPERATOR",
+    "starter_fleet": "STRIPE_PRICE_STARTER_FLEET",
     "small_fleet": "STRIPE_PRICE_SMALL_FLEET",
     "growing_fleet": "STRIPE_PRICE_GROWING_FLEET",
 }

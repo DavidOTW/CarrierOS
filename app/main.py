@@ -55,7 +55,7 @@ from .stripe_billing import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
-VERSION = "0.5.0-beta"
+VERSION = "0.5.1-beta"
 ENVIRONMENT = os.getenv("CARRIEROS_ENV", "development").strip().lower()
 IS_PRODUCTION = ENVIRONMENT == "production"
 SESSION_SECRET = os.getenv("CARRIEROS_SECRET", "")
@@ -72,9 +72,10 @@ SUPPORT_EMAIL = os.getenv(
 ).strip().lower()
 
 PLAN_LIMITS = {
-    "owner_operator": {"name": "Owner-Operator", "units": 2, "price": 19},
-    "small_fleet": {"name": "Small Fleet", "units": 10, "price": 49},
-    "growing_fleet": {"name": "Growing Fleet", "units": 25, "price": 99},
+    "owner_operator": {"name": "Owner-Operator", "units": 2, "price": 25},
+    "starter_fleet": {"name": "Starter Fleet", "units": 5, "price": 50},
+    "small_fleet": {"name": "Small Fleet", "units": 10, "price": 75},
+    "growing_fleet": {"name": "Growing Fleet", "units": 20, "price": 100},
 }
 LOGIN_WINDOW_SECONDS = 15 * 60
 LOGIN_MAX_ATTEMPTS = 10
