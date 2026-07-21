@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}CarrierOS | Run the fleet. Know the profit.{% endblock %}
+{% block meta %}
+  <meta name="description" content="Dispatch, flexible driver pay, and load-level profit in one clear workspace for owner-operators and small fleets.">
+  <meta property="og:title" content="CarrierOS | Run the fleet. Know the profit.">
+  <meta property="og:description" content="Dispatch, seven driver-pay structures, and load-level profit in one clear workspace.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="{{ request.base_url }}static/carrieros-launch-og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="{{ request.base_url }}static/carrieros-launch-og.png">
+{% endblock %}
+{% block content %}
+<main class="public-marketing" id="top">
+  <header class="public-nav">
+    <a class="public-brand" href="/"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a>
+    <nav aria-label="Primary navigation"><a href="#platform">Platform</a><a href="#pay">Driver pay</a><a href="#pricing">Pricing</a></nav>
+    <div class="public-nav-actions"><a class="public-signin" href="/login">Customer login</a><a class="public-btn public-btn-dark" href="/demo">Open live demo <span aria-hidden="true">&rarr;</span></a></div>
+  </header>
+
+  <section class="public-hero">
+    <div class="public-hero-copy">
+      <span class="public-release"><i></i> Private 14-day beta &middot; no payment method</span>
+      <h1>Run the fleet.<br>Know the <em>profit.</em></h1>
+      <p>CarrierOS brings dispatch, driver pay, and load-level profit into one clear workspace built for owner-operators and small fleets.</p>
+      <div class="public-hero-actions"><a class="public-btn public-btn-orange" href="/demo">Explore the live demo <span aria-hidden="true">&rarr;</span></a><a class="public-btn public-btn-light" href="/signup">Start a free 14-day beta</a></div>
+      <div class="public-trust"><span>No per-user fees</span><span>Seven pay structures</span><span>Built by a carrier</span></div>
+    </div>
+    <div class="public-product" aria-label="CarrierOS dashboard preview">
+      <div class="public-window-bar"><span><i></i><i></i><i></i></span><strong>FLEET OVERVIEW</strong><small>Sample data</small></div>
+      <div class="public-preview-metrics">
+        <article><span>Gross revenue</span><strong>$38,740</strong><small>+12.4% this month</small></article>
+        <article><span>Carrier profit</span><strong>$9,486</strong><small>24.5% margin</small></article>
+        <article><span>Active loads</span><strong>8</strong><small>3 delivering today</small></article>
+      </div>
+      <section class="public-preview-loads">
+        <div class="public-preview-heading"><span>Active loads</span><small>REAL-TIME VIEW</small></div>
+        <div class="public-preview-load"><i class="blue"></i><div><strong>OTW-1048</strong><small>Nashville, TN &rarr; Charlotte, NC</small></div><div><strong>$3,250</strong><small>Revenue</small></div><div><strong>$912</strong><small>Profit</small></div></div>
+        <div class="public-preview-load"><i class="green"></i><div><strong>OTW-1047</strong><small>Louisville, KY &rarr; Atlanta, GA</small></div><div><strong>$2,890</strong><small>Revenue</small></div><div><strong>$784</strong><small>Profit</small></div></div>
+        <div class="public-preview-load"><i class="orange"></i><div><strong>OTW-1046</strong><small>Memphis, TN &rarr; Dallas, TX</small></div><div><strong>$4,680</strong><small>Revenue</small></div><div><strong>$1,246</strong><small>Profit</small></div></div>
+      </section>
+      <div class="public-preview-profit"><div class="public-mini-donut"></div><span>Revenue allocation</span><p><strong>39%</strong> driver pay &middot; <strong>36%</strong> direct cost &middot; <strong>25%</strong> carrier profit</p></div>
+    </div>
+  </section>
+
+  <section class="public-proof" aria-label="CarrierOS benefits"><div><span>01</span><article><strong>One operating picture</strong><p>Loads, costs, pay, and margin stay connected.</p></article></div><div><span>02</span><article><strong>Real pay flexibility</strong><p>Mix seven compensation models across the fleet.</p></article></div><div><span>03</span><article><strong>Built around small carriers</strong><p>Enough structure to grow without enterprise bloat.</p></article></div></section>
+
+  <section class="public-section" id="platform">
+    <div class="public-section-intro"><span class="public-eyebrow">The operating layer your fleet was missing</span><h2>From rate confirmation to real profit.</h2><p>See the dispatch story, driver obligation, and company result without rebuilding the math across separate spreadsheets.</p></div>
+    <div class="public-story-grid">
+      <article class="public-story-card"><span>01 &middot; Dispatch</span><h3>Every load, lane, driver, and status.</h3><p>Keep the current plan visible and the handoffs accountable.</p><div class="public-route-map"><i></i><i></i><i></i></div></article>
+      <article class="public-story-card public-story-dark"><span>02 &middot; Profit</span><h3>Know what the load actually kept.</h3><p>Compare revenue against fuel, driver pay, direct cost, overhead, and reserves.</p><div class="public-profit-bars"><i style="height:38%"></i><i style="height:62%"></i><i style="height:48%"></i><i style="height:82%"></i><i style="height:70%"></i></div></article>
+      <article class="public-story-card public-story-green"><span>03 &middot; Settlement</span><h3>Make driver pay clear and repeatable.</h3><p>Use the compensation model that fits each driver and show how the number was calculated.</p><div class="public-settlement"><span>Driver settlement</span><strong>$1,842.50</strong><small>Approved &middot; Week 29</small></div></article>
+    </div>
+  </section>
+
+  <section class="public-section public-pay" id="pay">
+    <div class="public-pay-copy"><span class="public-eyebrow">Flexible by design</span><h2>Pay every driver the way you agreed.</h2><p>CarrierOS supports all seven common pay structures, driver by driver. Your profit-split model stays intact, and every other structure follows clear math.</p><a href="/demo">Try the pay calculator <span aria-hidden="true">&rarr;</span></a></div>
+    <div class="public-pay-list"><article><span>01</span><div><strong>Profit split</strong><p>Share a percentage of load profit after allowed costs.</p></div></article><article><span>02</span><div><strong>Per mile</strong><p>Pay loaded, empty, or total miles at an agreed rate.</p></div></article><article><span>03</span><div><strong>Flat rate</strong><p>Assign a fixed amount to a load or trip.</p></div></article><article><span>04</span><div><strong>Percent of revenue</strong><p>Calculate pay from gross load revenue.</p></div></article><article><span>05</span><div><strong>Hourly</strong><p>Track hours against a driver-specific rate.</p></div></article><article><span>06</span><div><strong>Day rate</strong><p>Pay a fixed rate for each qualifying day.</p></div></article><article><span>07</span><div><strong>Salary</strong><p>Translate weekly salary into settlement reporting.</p></div></article><article><span>&check;</span><div><strong>One fleet, mixed models</strong><p>Use different structures without separate spreadsheets.</p></div></article></div>
+  </section>
+
+  <section class="public-formula"><div><span class="public-eyebrow">The number that matters</span><h2>Your profit split is already solid. CarrierOS keeps it visible.</h2><p>The demo shows exactly how revenue becomes driver pay and carrier net using fictional sample values.</p></div><div class="public-formula-card"><span>Load revenue</span><strong>$4,680</strong><span>Allowed load costs</span><strong>&minus; $1,720</strong><b>= $2,960 split base</b><span>Driver share (40%)</span><strong>&minus; $1,184</strong><div><span>Carrier net before overhead</span><strong>$1,776</strong></div></div></section>
+
+  <section class="public-section public-pricing" id="pricing">
+    <div class="public-section-intro public-centered"><span class="public-eyebrow">Simple subscription plans</span><h2>Price the fleet, not the office.</h2><p>Unlimited driver records and office users. Choose a plan by active power units and keep overhead predictable.</p></div>
+    <div class="public-plans">
+      {% for code, plan in plans.items() %}<article class="{% if code == 'starter_fleet' %}featured{% endif %}">{% if code == 'starter_fleet' %}<span class="public-plan-badge">Popular</span>{% endif %}<h3>{{ plan.name }}</h3><p>Up to {{ plan.units }} active power units</p><div><strong>${{ plan.price }}</strong><span>/ month</span></div><small>Unlimited drivers and office users.</small><ul><li>Dispatch and load tracking</li><li>All seven pay structures</li><li>Profit and margin visibility</li><li>Private company workspace</li></ul><a href="/signup?plan={{ code }}">Start free beta <span aria-hidden="true">&rarr;</span></a></article>{% endfor %}
+      <article><h3>Custom Fleet</h3><p>More than 20 active power units</p><div><strong>Custom</strong></div><small>A plan shaped around your operation.</small><ul><li>Everything in Growing Fleet</li><li>Custom fleet capacity</li><li>Guided setup conversation</li><li>Unlimited drivers and office users</li></ul><a href="mailto:{{ support_email }}?subject=CarrierOS%20Custom%20Fleet">Request a quote <span aria-hidden="true">&rarr;</span></a></article>
+    </div>
+  </section>
+
+  <section class="public-launch"><span class="public-eyebrow">Built for the people moving freight</span><h2>Trade spreadsheet archaeology for a clear operating picture.</h2><p>Explore the sample fleet, then open your own private workspace when you are ready.</p><div><a class="public-btn public-btn-orange" href="/signup">Start free beta <span aria-hidden="true">&rarr;</span></a><a class="public-btn public-btn-outline" href="/demo">Explore the demo</a></div></section>
+  <footer class="public-footer"><a class="public-brand" href="#top"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a><p>A product of Outside The Wire Logistics LLC.</p><nav><a href="/login">Customer login</a><a href="/demo">Live demo</a><a href="mailto:{{ support_email }}">Contact</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav><small>Beta software. CarrierOS does not provide tax, legal, payroll, accounting, insurance, or regulatory advice.</small></footer>
+</main>
+{% endblock %}

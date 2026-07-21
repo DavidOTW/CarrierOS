@@ -353,9 +353,22 @@ def service_worker() -> Response:
     return Response((BASE_DIR / "static" / "service-worker.js").read_text(encoding="utf-8"), media_type="application/javascript")
 
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 def index(request: Request):
-    return redirect("/dashboard" if current_user(request) else "/login")
+    return render(
+        request,
+        "marketing.html",
+        {"public_page": True, "plans": PLAN_LIMITS},
+    )
+
+
+@app.get("/demo", response_class=HTMLResponse)
+def demo(request: Request):
+    return render(
+        request,
+        "demo.html",
+        {"public_page": True, "plans": PLAN_LIMITS},
+    )
 
 
 @app.get("/privacy", response_class=HTMLResponse)
