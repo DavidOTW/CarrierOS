@@ -84,6 +84,7 @@ TERMS_VERSION = "2026-07-21-subscription-v1"
 SUPPORT_EMAIL = os.getenv(
     "CARRIEROS_SUPPORT_EMAIL", "david@outsidethewirelogistics.com"
 ).strip().lower()
+FOUNDER_LINKEDIN_URL = "https://www.linkedin.com/in/davidbryant89"
 BACKUP_INTERVAL_SECONDS = max(
     3600, int(os.getenv("CARRIEROS_BACKUP_INTERVAL_HOURS", "24")) * 3600
 )
@@ -418,6 +419,16 @@ def seo_context(
             "url": "https://www.outsidethewirelogistics.com/",
             "email": SUPPORT_EMAIL,
             "brand": {"@type": "Brand", "name": "CarrierOS"},
+            "founder": {"@id": f"{CANONICAL_BASE_URL}/#founder"},
+        },
+        {
+            "@type": "Person",
+            "@id": f"{CANONICAL_BASE_URL}/#founder",
+            "name": "David Bryant",
+            "jobTitle": "Founder of CarrierOS and Outside The Wire Logistics LLC",
+            "description": "United States Marine Corps combat veteran, Purple Heart recipient, and logistics leader with 20 years of experience.",
+            "award": "Purple Heart",
+            "sameAs": [FOUNDER_LINKEDIN_URL],
         },
         {
             "@type": page_type,
@@ -496,6 +507,7 @@ def seo_context(
         "canonical_url": canonical_url,
         "robots_content": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
         "social_image_url": f"{CANONICAL_BASE_URL}/static/carrieros-launch-og.png",
+        "founder_linkedin_url": FOUNDER_LINKEDIN_URL,
         "structured_data": {"@context": "https://schema.org", "@graph": graph},
     }
 
