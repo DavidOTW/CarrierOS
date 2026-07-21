@@ -65,6 +65,44 @@ def test_launch_pricing_uses_active_power_units() -> None:
     ]
 
 
+def test_public_marketing_home_uses_launch_pricing_and_real_app_links(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "marketing.db"))
+    with TestClient(app) as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert "Run the fleet" in response.text
+        assert "live demo" in response.text.lower()
+        assert "Up to 2 active power units" in response.text
+        assert "$25" in response.text
+        assert "Up to 20 active power units" in response.text
+        assert "$100" in response.text
+        assert '/signup?plan=starter_fleet' in response.text
+
+
+def test_public_demo_is_sample_only_and_includes_all_pay_models(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "demo.db"))
+    with TestClient(app) as client:
+        response = client.get("/demo")
+        assert response.status_code == 200
+        assert "fictional sample data" in response.text.lower()
+        assert "changes are not saved" in response.text.lower()
+        for model in (
+            "Profit split",
+            "Per mile",
+            "Flat rate",
+            "Percent of revenue",
+            "Hourly",
+            "Day rate",
+            "Salary",
+        ):
+            assert model in response.text
+        assert not re.search(r"<form[^>]+method=[\"']post", response.text, re.IGNORECASE)
+
+
 def test_signup_requires_verified_billing_before_access(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "pending.db"))
     with TestClient(app) as client:
