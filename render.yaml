@@ -7,7 +7,6 @@ services:
     branch: main
     autoDeployTrigger: commit
     healthCheckPath: /health
-    maxShutdownDelaySeconds: 30
     envVars:
       - key: CARRIEROS_ENV
         value: production
