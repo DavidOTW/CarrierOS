@@ -15,9 +15,23 @@ services:
       - key: CARRIEROS_DB
         value: /data/carrieros.db
       - key: CARRIEROS_BILLING_MODE
-        value: beta
+        value: stripe
+      - key: CARRIEROS_PUBLIC_URL
+        value: https://otwcarrieros.com
       - key: CARRIEROS_SUPPORT_EMAIL
         value: david@outsidethewirelogistics.com
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_OWNER_OPERATOR
+        sync: false
+      - key: STRIPE_PRICE_STARTER_FLEET
+        sync: false
+      - key: STRIPE_PRICE_SMALL_FLEET
+        sync: false
+      - key: STRIPE_PRICE_GROWING_FLEET
+        sync: false
       - key: STRIPE_TAX_ENABLED
         value: "false"
     disk:

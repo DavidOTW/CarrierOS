@@ -4,8 +4,8 @@
   <section class="login-hero">
     <div class="brand" style="border:0;padding:0;margin-bottom:32px"><div class="brand-mark">CO</div><div><strong>CarrierOS</strong><small style="color:#cae0eb">Your fleet. Your numbers.</small></div></div>
     <h1>Open a real fleet workspace.</h1>
-    <p>Create a private workspace and begin a no-charge, 14-day founding beta. No payment method is required.</p>
-    <div class="login-bullets"><span>&check; No sample financial data</span><span>&check; Plans follow active power units, not drivers</span><span>&check; Unlimited driver records</span><span>&check; No charge during the founding beta</span></div>
+    <p>Create a private workspace, choose a monthly plan, and begin a free 14-day trial. Stripe securely collects your payment method; billing starts after the trial unless you cancel.</p>
+    <div class="login-bullets"><span>&check; No sample financial data</span><span>&check; Plans follow active power units, not drivers</span><span>&check; Unlimited driver records</span><span>&check; Cancel before the trial ends to avoid a charge</span></div>
   </section>
   <section class="login-panel"><div class="login-card">
     <h2>Start your trial</h2><p class="muted">Create the owner account for your company.</p>
@@ -15,10 +15,10 @@
       <div class="field"><label>Your name</label><input name="full_name" value="{{ values.full_name or '' }}" autocomplete="name" required></div>
       <div class="field"><label>Company name</label><input name="company_name" value="{{ values.company_name or '' }}" autocomplete="organization" required></div>
       <div class="field"><label>Business email</label><input type="email" name="email" value="{{ values.email or '' }}" autocomplete="email" required></div>
-      <div class="field"><label>Starting plan</label><select name="plan">{% for code, plan in plans.items() %}<option value="{{ code }}" {% if code == selected_plan %}selected{% endif %}>{{ plan.name }} &middot; up to {{ plan.units }} units &middot; planned ${{ plan.price }}/month</option>{% endfor %}</select></div>
+      <div class="field"><label>Starting plan</label><select name="plan">{% for code, plan in plans.items() %}<option value="{{ code }}" {% if code == selected_plan %}selected{% endif %}>{{ plan.name }} &middot; up to {{ plan.units }} units &middot; ${{ plan.price }}/month after trial</option>{% endfor %}</select></div>
       <div class="field"><label>Password</label><input type="password" name="password" autocomplete="new-password" minlength="12" required><small>12+ characters with uppercase, lowercase, a number, and a symbol.</small></div>
       <div class="field inline" style="margin-top:14px"><input id="accepted_terms" type="checkbox" name="accepted_terms" required><label for="accepted_terms">I agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and acknowledge the <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</label></div>
-      <div class="form-actions"><button class="btn btn-primary" style="width:100%">Create my beta workspace</button></div>
+      <div class="form-actions"><button class="btn btn-primary" style="width:100%">Create workspace and continue to Stripe</button></div>
     </form>
     <div class="demo-box">Already have an account? <a href="/login">Sign in</a><br><span class="muted">Questions? <a href="mailto:{{ support_email }}">{{ support_email }}</a></span></div>
   </div></section>

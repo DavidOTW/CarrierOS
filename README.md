@@ -1,6 +1,6 @@
-# CarrierOS public beta
+# CarrierOS
 
-CarrierOS is a multi-company fleet financial workspace for small carriers. Each signup receives an empty, isolated organization with a 14-day trial and an active-power-unit limit based on the selected plan. The launch configuration uses a no-charge founding beta; Stripe Billing can be enabled later without changing the account model.
+CarrierOS is a multi-company fleet financial workspace for small carriers. Each signup receives an empty, isolated organization with a 14-day Stripe subscription trial and an active-power-unit limit based on the selected plan.
 
 ## Included in this release candidate
 
@@ -8,7 +8,7 @@ CarrierOS is a multi-company fleet financial workspace for small carriers. Each 
 - Organization-scoped loads, units, drivers, payments, fuel, quoting, financials, compliance, onboarding, documents, detention, and receivables
 - Seven driver-pay structures: profit split, contractor gross split, owner-operator split, flat rate per load, loaded-mile rate, total-mile rate, and day rate
 - Plans for 2, 5, 10, and 20 active power units at $25, $50, $75, and $100 per month, with unlimited driver records and office users
-- No-charge beta access plus Stripe-hosted subscription Checkout, Customer Portal, and webhook-driven entitlements for the later paid launch
+- Stripe-hosted subscription Checkout, Customer Portal, webhook-driven entitlements, and a card-on-file 14-day trial
 - Docker packaging with a non-root process, dynamic platform port, health check, and persistent data volume
 - Public Privacy Policy and Terms of Service pages
 
@@ -31,7 +31,7 @@ python -m pytest
 
 ## Production configuration
 
-Copy `.env.example` to `.env`, generate a unique `CARRIEROS_SECRET` of at least 32 characters, and set the public HTTPS application URL. Keep `CARRIEROS_BILLING_MODE=beta` for the no-charge founding beta. To test paid billing later, switch the mode to `stripe` and add test-mode Stripe secrets and Price IDs through the host's secret manager. Never commit a real Stripe key or webhook signing secret.
+Copy `.env.example` to `.env`, generate a unique `CARRIEROS_SECRET` of at least 32 characters, and set the public HTTPS application URL. Use test-mode Stripe secrets and Price IDs until the full lifecycle passes. Never commit a real Stripe key or webhook signing secret.
 
 ```powershell
 docker compose up --build -d
@@ -41,11 +41,11 @@ The HTTPS reverse proxy or hosting platform must terminate TLS. Back up the pers
 
 ### Render deployment
 
-`render.yaml` defines a single Starter web service with a 1 GB persistent disk mounted at `/data`, a generated production session secret, beta billing mode, and a health check. Create a Render Blueprint from this repository and review the displayed recurring price before applying it. Do not remove the persistent disk or scale the SQLite service above one instance.
+`render.yaml` defines a single Starter web service with a 1 GB persistent disk mounted at `/data`, a generated production session secret, Stripe billing mode, required secret placeholders, the public application URL, and a health check. Create a Render Blueprint from this repository and review the displayed recurring price before applying it. Do not remove the persistent disk or scale the SQLite service above one instance.
 
 ## Billing architecture
 
-Squarespace remains the marketing site. During the founding beta, plan links should send customers directly to CarrierOS signup and no payment method is collected. When `CARRIEROS_BILLING_MODE=stripe`, the application associates the authenticated organization with a server-created Stripe Checkout Session. Stripe Billing then becomes the subscription system of record. CarrierOS grants or removes paid access only after signature-verified, idempotently processed Stripe webhooks; the Checkout success redirect never grants access.
+Squarespace remains the marketing site and sends plan links directly to CarrierOS signup; it does not create a second Squarespace Commerce subscription. CarrierOS associates the authenticated organization with a server-created Stripe Checkout Session. Stripe Billing is the subscription system of record. CarrierOS grants or removes paid access only after signature-verified, idempotently processed Stripe webhooks; the Checkout success redirect never grants access. Before every Checkout Session, CarrierOS retrieves the configured Stripe Price and refuses checkout unless its active status, USD amount, monthly recurrence, and licensed billing model match the selected CarrierOS plan.
 
 Configure a Stripe webhook endpoint at `https://YOUR-APP/stripe/webhook` for `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `customer.subscription.trial_will_end`, `invoice.paid`, and `invoice.payment_failed`. The four standard monthly Price IDs must be supplied through the corresponding `STRIPE_PRICE_*` environment variables. Configure the Stripe Customer Portal to allow the plan changes and cancellation behavior you intend to support.
 
@@ -56,8 +56,8 @@ Stripe Connect is intentionally not part of the initial SaaS billing release. Ca
 - Deploy the Docker image to an HTTPS host with persistent storage, platform health monitoring, and daily backups.
 - Keep the app on one instance, set the support email, and use a generated strong session secret in host-managed environment variables.
 - Review the included Privacy Policy and Terms of Service with a qualified attorney before paid sales.
-- Add verified email delivery and self-service password reset before unattended paid sales; beta account recovery is handled manually through support.
-- Before enabling `stripe` mode, create the three recurring Stripe Prices in test mode, configure the Customer Portal, and test every subscription lifecycle event.
+- Add verified email delivery and self-service password reset; account recovery is currently handled manually through support.
+- Before replacing test credentials with live credentials, create the four recurring Stripe Prices in live mode, configure the Customer Portal, and test every subscription lifecycle event.
 - Run an independent security review before storing regulated or highly sensitive data.
 
-CarrierOS operational and document outputs require professional review. Do not enter Social Security numbers, banking credentials, or identity-document images in this beta.
+CarrierOS operational and document outputs require professional review. Do not enter Social Security numbers, banking credentials, or identity-document images in CarrierOS.
