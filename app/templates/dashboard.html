@@ -9,13 +9,13 @@
 <section class="workspace-metrics" aria-label="Fleet summary">
   <article><span>Total revenue</span><strong>{{ money(stats.total_revenue) }}</strong><small>Included loads</small></article>
   <article><span>Company profit</span><strong class="{% if stats.load_company_profit_before_owner_distribution >= 0 %}positive{% else %}negative{% endif %}">{{ money(stats.load_company_profit_before_owner_distribution) }}</strong><small>Before owner distribution</small></article>
-  <article><span>Load pay remaining</span><strong class="{% if stats.total_load_pay_remaining > 0 %}warning{% endif %}">{{ money(stats.total_load_pay_remaining) }}</strong><small>Driver obligations</small></article>
+  <article><span>Cumulative unpaid driver balance</span><strong class="{% if stats.total_load_pay_remaining > 0 %}warning{% endif %}">{{ money(stats.total_load_pay_remaining) }}</strong><small>All included loads less payments</small></article>
   <article><span>Open exceptions</span><strong>{{ open_exceptions }}</strong><small>Model and compliance flags</small></article>
 </section>
 
 <section class="workspace-mini-metrics" aria-label="Additional fleet metrics">
   <div><span>Operating expense</span><strong>{{ money(stats.operating_expense) }}</strong></div>
-  <div><span>Driver earned</span><strong>{{ money(stats.driver_contractor_earned) }}</strong></div>
+  <div><span>Cumulative driver earned</span><strong>{{ money(stats.driver_contractor_earned) }}</strong></div>
   <div><span>Owner-operator pay</span><strong>{{ money(stats.owner_operator_pay) }}</strong></div>
   <div><span>Owner distribution</span><strong>{{ money(stats.owner_profit_distribution) }}</strong></div>
   <div><span>Current diesel</span><strong>{{ money(stats.current_average_diesel) }}</strong></div>
@@ -70,7 +70,7 @@
   </div><div class="receivable-strip"><span>Open receivables</span><strong>{{ money(unpaid_total) }}</strong><small>{{ money(overdue_total) }} overdue</small></div></section>
 </div>
 
-<section class="workspace-panel workspace-balances"><div class="workspace-panel-heading"><div><span>Payroll clarity</span><h3>Driver and contractor balances</h3></div><a href="/payments">Record payments</a></div><div class="table-wrap table-cards"><table><thead><tr><th>Payee</th><th>Model</th><th>Loads</th><th>Earned</th><th>Payments</th><th>Idle reduction</th><th>Remaining</th><th>Status</th></tr></thead><tbody>{% for b in balances %}<tr>
-  <td data-label="Payee"><strong>{{ b.driver_name }}</strong><small>{{ b.role }}</small></td><td data-label="Model">{{ b.pay_model }}</td><td data-label="Loads">{{ b.included_loads }}</td><td data-label="Earned">{{ money(b.load_pay_earned) }}</td><td data-label="Payments">{{ money(b.payments_applied) }}</td><td data-label="Idle reduction">{{ money(b.idle_fixed_cost_pay_reduction) }}</td><td data-label="Remaining"><strong class="{% if b.remaining_load_pay > 0 %}warning{% else %}positive{% endif %}">{{ money(b.remaining_load_pay) }}</strong></td><td data-label="Status"><span class="badge {% if b.status == 'PAID IN FULL' %}good{% elif b.company_credit_driver_owes > 0 %}info{% else %}warn{% endif %}">{{ b.status }}</span></td>
+<section class="workspace-panel workspace-balances"><div class="workspace-panel-heading"><div><span>Payroll clarity</span><h3>Driver and contractor balances</h3></div><a href="/payments">Record payments</a></div><div class="table-wrap table-cards"><table><thead><tr><th>Payee</th><th>Model</th><th>Loads</th><th>Cumulative earned</th><th>Payments applied</th><th>Idle reduction</th><th>Unpaid balance</th><th>Status</th></tr></thead><tbody>{% for b in balances %}<tr>
+  <td data-label="Payee"><strong>{{ b.driver_name }}</strong><small>{{ b.role }}</small></td><td data-label="Model">{{ b.pay_model }}</td><td data-label="Loads">{{ b.included_loads }}</td><td data-label="Cumulative earned">{{ money(b.load_pay_earned) }}</td><td data-label="Payments applied">{{ money(b.payments_applied) }}</td><td data-label="Idle reduction">{{ money(b.idle_fixed_cost_pay_reduction) }}</td><td data-label="Unpaid balance"><strong class="{% if b.remaining_load_pay > 0 %}warning{% else %}positive{% endif %}">{{ money(b.remaining_load_pay) }}</strong></td><td data-label="Status"><span class="badge {% if b.status == 'PAID IN FULL' %}good{% elif b.company_credit_driver_owes > 0 %}info{% else %}warn{% endif %}">{{ b.status }}</span></td>
 </tr>{% else %}<tr><td class="empty" colspan="8">Driver balances will appear after you add drivers and loads.</td></tr>{% endfor %}</tbody></table></div></section>
 {% endblock %}
