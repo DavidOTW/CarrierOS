@@ -67,7 +67,7 @@ from .stripe_billing import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
-VERSION = "0.10.2"
+VERSION = "0.11.0"
 ENVIRONMENT = os.getenv("CARRIEROS_ENV", "development").strip().lower()
 IS_PRODUCTION = ENVIRONMENT == "production"
 CANONICAL_BASE_URL = os.getenv(
@@ -1579,6 +1579,11 @@ async def create_load(request: Request):
     if not driver:
         raise HTTPException(400, "Select a valid driver")
     vehicle_id = integer(form.get("vehicle_id")) or integer(driver["vehicle_id"])
+    if vehicle_id and not query_one(
+        "SELECT 1 FROM vehicles WHERE id=? AND organization_id=?",
+        (vehicle_id, user["organization_id"]),
+    ):
+        raise HTTPException(400, "Select a valid unit")
     load_id = execute(
         """INSERT INTO loads
         (organization_id, load_number, pickup_date, delivery_date, driver_id, vehicle_id,
@@ -1594,6 +1599,12 @@ async def create_load(request: Request):
             number(form.get("tolls_misc")), number(form.get("other_direct_costs")), str(form.get("notes", "")).strip(),
             1 if yes(form.get("include_in_model")) else 0,
         ),
+    )
+    record_audit_event(
+        "load.created",
+        organization_id=int(user["organization_id"]),
+        user_id=int(user["id"]),
+        details={"load_id": load_id, "load_number": str(form.get("load_number", "")).strip()},
     )
     set_flash(request, "Load saved and the full model was recalculated.")
     return redirect(f"/loads/{load_id}")
@@ -1612,11 +1623,22 @@ def edit_load_page(request: Request, load_id: int):
 async def update_load(request: Request, load_id: int):
     user = require_user(request)
     form = await verified_form(request)
+    existing = query_one(
+        "SELECT * FROM loads WHERE id=? AND organization_id=?",
+        (load_id, user["organization_id"]),
+    )
+    if not existing:
+        raise HTTPException(404, "Load not found")
     driver_id = integer(form.get("driver_id"))
     driver = query_one("SELECT * FROM drivers WHERE id=? AND organization_id=?", (driver_id, user["organization_id"]))
     if not driver:
         raise HTTPException(400, "Select a valid driver")
     vehicle_id = integer(form.get("vehicle_id")) or integer(driver["vehicle_id"])
+    if vehicle_id and not query_one(
+        "SELECT 1 FROM vehicles WHERE id=? AND organization_id=?",
+        (vehicle_id, user["organization_id"]),
+    ):
+        raise HTTPException(400, "Select a valid unit")
     with db_session() as conn:
         conn.execute(
             """UPDATE loads SET load_number=?,pickup_date=?,delivery_date=?,driver_id=?,vehicle_id=?,
@@ -1633,7 +1655,37 @@ async def update_load(request: Request, load_id: int):
                 load_id, user["organization_id"],
             ),
         )
+    record_audit_event(
+        "load.updated",
+        organization_id=int(user["organization_id"]),
+        user_id=int(user["id"]),
+        details={"load_id": load_id, "load_number": str(existing["load_number"])},
+    )
     set_flash(request, "Load updated. Overlapping truck-day costs were recalculated across every included load.")
+    return redirect(f"/loads/{load_id}")
+
+
+@app.post("/loads/{load_id}/cancel")
+async def cancel_load(request: Request, load_id: int):
+    user = require_user(request)
+    await verified_form(request)
+    existing = query_one(
+        "SELECT * FROM loads WHERE id=? AND organization_id=?",
+        (load_id, user["organization_id"]),
+    )
+    if not existing:
+        raise HTTPException(404, "Load not found")
+    execute(
+        "UPDATE loads SET status='Cancelled',include_in_model=0 WHERE id=? AND organization_id=?",
+        (load_id, user["organization_id"]),
+    )
+    record_audit_event(
+        "load.cancelled",
+        organization_id=int(user["organization_id"]),
+        user_id=int(user["id"]),
+        details={"load_id": load_id, "load_number": str(existing["load_number"])},
+    )
+    set_flash(request, "Load cancelled and removed from pay and profitability calculations. Its history was retained.")
     return redirect(f"/loads/{load_id}")
 
 
@@ -1683,6 +1735,45 @@ async def create_vehicle(request: Request):
     except Exception as exc:
         raise HTTPException(400, "That unit name already exists") from exc
     set_flash(request, "Unit added. Assign it on Driver & Equipment Setup.")
+    return redirect("/vehicles")
+
+
+@app.post("/vehicles/{vehicle_id}/update")
+async def update_vehicle(request: Request, vehicle_id: int):
+    user = require_user(request)
+    form = await verified_form(request)
+    existing = query_one(
+        "SELECT * FROM vehicles WHERE id=? AND organization_id=?",
+        (vehicle_id, user["organization_id"]),
+    )
+    if not existing:
+        raise HTTPException(404, "Unit not found")
+    active = 1 if yes(form.get("active")) else 0
+    if active and not int(existing["active"]):
+        active_count = query_one(
+            "SELECT COUNT(*) AS total FROM vehicles WHERE organization_id=? AND active=1 AND id<>?",
+            (user["organization_id"], vehicle_id),
+        )
+        if int(active_count["total"] if active_count else 0) >= int(user.get("active_unit_limit") or 2):
+            set_flash(request, "Your plan's active-unit limit has been reached. Deactivate another unit or upgrade first.")
+            return redirect("/vehicles")
+    try:
+        execute(
+            "UPDATE vehicles SET name=?,equipment_type=?,active=? WHERE id=? AND organization_id=?",
+            (
+                str(form.get("name", "")).strip() or str(existing["name"]),
+                str(form.get("equipment_type", "Truck")).strip(), active,
+                vehicle_id, user["organization_id"],
+            ),
+        )
+    except Exception as exc:
+        raise HTTPException(400, "That unit name already exists") from exc
+    record_audit_event(
+        "vehicle.updated",
+        organization_id=int(user["organization_id"]), user_id=int(user["id"]),
+        details={"vehicle_id": vehicle_id, "active": bool(active)},
+    )
+    set_flash(request, "Unit updated. Existing assignments remain connected.")
     return redirect("/vehicles")
 
 
@@ -1768,16 +1859,26 @@ async def update_driver(request: Request, driver_id: int):
 
 
 @app.get("/fuel", response_class=HTMLResponse)
-def fuel_page(request: Request):
+def fuel_page(request: Request, edit_id: int | None = None):
     user = require_user(request)
     bundle = get_bundle(user["organization_id"])
     current_week = monday_for(date.today())
     current_effective = fuel_price_for(date.today(), bundle["weekly_fuel"], number(bundle["settings"]["fallback_diesel_price"]))
+    editing = None
+    if edit_id is not None:
+        row = query_one(
+            "SELECT * FROM weekly_fuel WHERE id=? AND organization_id=?",
+            (edit_id, user["organization_id"]),
+        )
+        if not row:
+            raise HTTPException(404, "Fuel record not found")
+        editing = dict(row)
     return render(request, "fuel.html", {
         "rows": list(reversed(bundle["weekly_fuel"])),
         "current_week": current_week,
         "current_effective": current_effective,
         "fallback": bundle["settings"]["fallback_diesel_price"],
+        "editing": editing,
     })
 
 
@@ -1789,6 +1890,10 @@ async def save_fuel(request: Request):
     if not week:
         raise HTTPException(400, "Enter a valid week-start date")
     week = monday_for(week)
+    existing = query_one(
+        "SELECT * FROM weekly_fuel WHERE organization_id=? AND week_start=?",
+        (user["organization_id"], week.isoformat()),
+    )
     with db_session() as conn:
         conn.execute(
             """INSERT INTO weekly_fuel (organization_id,week_start,average_price,source_notes,entered_by)
@@ -1796,6 +1901,11 @@ async def save_fuel(request: Request):
             average_price=excluded.average_price,source_notes=excluded.source_notes,entered_by=excluded.entered_by""",
             (user["organization_id"], week.isoformat(), number(form.get("average_price")), str(form.get("source_notes", "")).strip(), str(form.get("entered_by", user["full_name"])).strip()),
         )
+    record_audit_event(
+        "fuel.updated" if existing else "fuel.created",
+        organization_id=int(user["organization_id"]), user_id=int(user["id"]),
+        details={"week_start": week.isoformat()},
+    )
     set_flash(request, f"Diesel price saved for the week of {week:%b %d, %Y}. Loads were recalculated.")
     return redirect("/fuel")
 
@@ -1819,24 +1929,128 @@ def payments_page(request: Request):
     })
 
 
+def payment_form_values(user: dict[str, Any], form: Any) -> tuple[int, int | None, str, str, float]:
+    driver_id = integer(form.get("driver_id"))
+    if not query_one(
+        "SELECT 1 FROM drivers WHERE id=? AND organization_id=?",
+        (driver_id, user["organization_id"]),
+    ):
+        raise HTTPException(400, "Select a valid payee")
+    load_id = integer(form.get("load_id")) or None
+    if load_id and not query_one(
+        "SELECT 1 FROM loads WHERE id=? AND organization_id=?",
+        (load_id, user["organization_id"]),
+    ):
+        raise HTTPException(400, "Select a valid load")
+    paid_at = str(form.get("paid_at", ""))
+    if not parse_date(paid_at):
+        raise HTTPException(400, "Enter a valid payment date")
+    amount = number(form.get("amount"))
+    if amount <= 0:
+        raise HTTPException(400, "Payment amount must be greater than zero")
+    payment_type = str(form.get("payment_type", "Regular payout")).strip()
+    return driver_id, load_id, paid_at, payment_type, amount
+
+
 @app.post("/payments")
 async def add_payment(request: Request):
     user = require_user(request)
     form = await verified_form(request)
-    execute(
+    driver_id, load_id, paid_at, payment_type, amount = payment_form_values(user, form)
+    payment_id = execute(
         """INSERT INTO payments
         (organization_id,driver_id,load_id,paid_at,payment_type,amount,method,reference,notes,
          counts_against_load_pay,include_in_reports)
         VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
         (
-            user["organization_id"], integer(form.get("driver_id")) or None, integer(form.get("load_id")) or None,
-            str(form.get("paid_at", date.today().isoformat())), str(form.get("payment_type", "Regular payout")),
-            number(form.get("amount")), str(form.get("method", "")).strip(), str(form.get("reference", "")).strip(),
+            user["organization_id"], driver_id, load_id, paid_at, payment_type,
+            amount, str(form.get("method", "")).strip(), str(form.get("reference", "")).strip(),
             str(form.get("notes", "")).strip(), 1 if yes(form.get("counts_against_load_pay")) else 0,
             1 if yes(form.get("include_in_reports")) else 0,
         ),
     )
+    record_audit_event(
+        "payment.created",
+        organization_id=int(user["organization_id"]), user_id=int(user["id"]),
+        details={"payment_id": payment_id, "amount": amount},
+    )
     set_flash(request, "Payment recorded. Driver balances were recalculated cumulatively.")
+    return redirect("/payments")
+
+
+@app.get("/payments/{payment_id}/edit", response_class=HTMLResponse)
+def edit_payment_page(request: Request, payment_id: int):
+    user = require_user(request)
+    payment = query_one(
+        "SELECT * FROM payments WHERE id=? AND organization_id=?",
+        (payment_id, user["organization_id"]),
+    )
+    if not payment:
+        raise HTTPException(404, "Payment not found")
+    if payment["voided_at"]:
+        set_flash(request, "Voided payments are locked to preserve the audit trail.")
+        return redirect("/payments")
+    bundle = get_bundle(user["organization_id"])
+    return render(request, "payment_edit.html", {
+        "payment": dict(payment),
+        "drivers": bundle["drivers"],
+        "loads": list(reversed(bundle["loads"])),
+    })
+
+
+@app.post("/payments/{payment_id}/edit")
+async def update_payment(request: Request, payment_id: int):
+    user = require_user(request)
+    form = await verified_form(request)
+    existing = query_one(
+        "SELECT * FROM payments WHERE id=? AND organization_id=? AND voided_at IS NULL",
+        (payment_id, user["organization_id"]),
+    )
+    if not existing:
+        raise HTTPException(404, "Active payment not found")
+    driver_id, load_id, paid_at, payment_type, amount = payment_form_values(user, form)
+    execute(
+        """UPDATE payments SET driver_id=?,load_id=?,paid_at=?,payment_type=?,amount=?,method=?,
+        reference=?,notes=?,counts_against_load_pay=?,include_in_reports=?
+        WHERE id=? AND organization_id=? AND voided_at IS NULL""",
+        (
+            driver_id, load_id, paid_at, payment_type, amount,
+            str(form.get("method", "")).strip(), str(form.get("reference", "")).strip(),
+            str(form.get("notes", "")).strip(), 1 if yes(form.get("counts_against_load_pay")) else 0,
+            1 if yes(form.get("include_in_reports")) else 0,
+            payment_id, user["organization_id"],
+        ),
+    )
+    record_audit_event(
+        "payment.updated",
+        organization_id=int(user["organization_id"]), user_id=int(user["id"]),
+        details={"payment_id": payment_id, "previous_amount": number(existing["amount"]), "amount": amount},
+    )
+    set_flash(request, "Payment updated and every affected balance was recalculated.")
+    return redirect("/payments")
+
+
+@app.post("/payments/{payment_id}/void")
+async def void_payment(request: Request, payment_id: int):
+    user = require_user(request)
+    form = await verified_form(request)
+    existing = query_one(
+        "SELECT * FROM payments WHERE id=? AND organization_id=? AND voided_at IS NULL",
+        (payment_id, user["organization_id"]),
+    )
+    if not existing:
+        raise HTTPException(404, "Active payment not found")
+    reason = str(form.get("void_reason", "Correction requested from payment ledger")).strip()
+    execute(
+        "UPDATE payments SET voided_at=?,voided_by=?,void_reason=? WHERE id=? AND organization_id=? AND voided_at IS NULL",
+        (utc_now_iso(), user["id"], reason, payment_id, user["organization_id"]),
+    )
+    record_audit_event(
+        "payment.voided",
+        organization_id=int(user["organization_id"]), user_id=int(user["id"]),
+        details={"payment_id": payment_id, "amount": number(existing["amount"]), "reason": reason[:120]},
+    )
+    set_flash(request, "Payment voided. It remains in the ledger but no longer affects balances or reports.")
     return redirect("/payments")
 
 
@@ -1903,17 +2117,27 @@ def financials_page(request: Request):
 
 
 @app.get("/idle", response_class=HTMLResponse)
-def idle_page(request: Request, month: str | None = None):
+def idle_page(request: Request, month: str | None = None, edit_id: int | None = None):
     user = require_user(request)
     settings = query_one("SELECT default_report_month FROM organizations WHERE id=?", (user["organization_id"],))
     report_month = selected_month(month, settings["default_report_month"] if settings else None)
     bundle, state = get_state(user["organization_id"], report_month)
+    editing = None
+    if edit_id is not None:
+        row = query_one(
+            "SELECT * FROM idle_periods WHERE id=? AND organization_id=?",
+            (edit_id, user["organization_id"]),
+        )
+        if not row:
+            raise HTTPException(404, "Idle period not found")
+        editing = dict(row)
     return render(request, "idle.html", {
         "month": report_month,
         "bridges": state["selected_month_bridges"],
         "periods": list(reversed(state["idle_state"]["periods"])),
         "drivers": bundle["drivers"],
         "vehicles": bundle["vehicles"],
+        "editing": editing,
     })
 
 
@@ -1926,7 +2150,12 @@ async def add_idle_period(request: Request):
     if not driver:
         raise HTTPException(400, "Select a valid driver")
     vehicle_id = integer(form.get("vehicle_id")) or integer(driver["vehicle_id"])
-    execute(
+    if vehicle_id and not query_one(
+        "SELECT 1 FROM vehicles WHERE id=? AND organization_id=?",
+        (vehicle_id, user["organization_id"]),
+    ):
+        raise HTTPException(400, "Select a valid unit")
+    idle_id = execute(
         """INSERT INTO idle_periods
         (organization_id,start_date,end_date,driver_id,vehicle_id,situation,include_in_model,notes)
         VALUES (?,?,?,?,?,?,?,?)""",
@@ -1936,9 +2165,60 @@ async def add_idle_period(request: Request):
             1 if yes(form.get("include_in_model")) else 0, str(form.get("notes", "")).strip(),
         ),
     )
+    record_audit_event(
+        "idle_period.created",
+        organization_id=int(user["organization_id"]), user_id=int(user["id"]),
+        details={"idle_period_id": idle_id},
+    )
     month = str(form.get("start_date", ""))[:7]
     set_flash(request, "Idle/time-off period recorded. Load-covered days were excluded automatically.")
     return redirect(f"/idle?month={month}-01" if month else "/idle")
+
+
+@app.post("/idle/{idle_id}/edit")
+async def update_idle_period(request: Request, idle_id: int):
+    user = require_user(request)
+    form = await verified_form(request)
+    existing = query_one(
+        "SELECT * FROM idle_periods WHERE id=? AND organization_id=?",
+        (idle_id, user["organization_id"]),
+    )
+    if not existing:
+        raise HTTPException(404, "Idle period not found")
+    driver_id = integer(form.get("driver_id"))
+    driver = query_one(
+        "SELECT * FROM drivers WHERE id=? AND organization_id=?",
+        (driver_id, user["organization_id"]),
+    )
+    if not driver:
+        raise HTTPException(400, "Select a valid driver")
+    vehicle_id = integer(form.get("vehicle_id")) or integer(driver["vehicle_id"])
+    if vehicle_id and not query_one(
+        "SELECT 1 FROM vehicles WHERE id=? AND organization_id=?",
+        (vehicle_id, user["organization_id"]),
+    ):
+        raise HTTPException(400, "Select a valid unit")
+    start_date = str(form.get("start_date", ""))
+    end_date = str(form.get("end_date", ""))
+    if not parse_date(start_date) or not parse_date(end_date):
+        raise HTTPException(400, "Enter valid start and end dates")
+    execute(
+        """UPDATE idle_periods SET start_date=?,end_date=?,driver_id=?,vehicle_id=?,situation=?,
+        include_in_model=?,notes=? WHERE id=? AND organization_id=?""",
+        (
+            start_date, end_date, driver_id, vehicle_id or None,
+            str(form.get("situation", "Company Responsibility")),
+            1 if yes(form.get("include_in_model")) else 0,
+            str(form.get("notes", "")).strip(), idle_id, user["organization_id"],
+        ),
+    )
+    record_audit_event(
+        "idle_period.updated",
+        organization_id=int(user["organization_id"]), user_id=int(user["id"]),
+        details={"idle_period_id": idle_id},
+    )
+    set_flash(request, "Idle period updated and fixed-cost calculations were refreshed.")
+    return redirect(f"/idle?month={start_date[:7]}-01")
 
 
 @app.get("/settings", response_class=HTMLResponse)
@@ -2000,7 +2280,7 @@ async def export_company_data(request: Request):
 
 
 @app.get("/compliance", response_class=HTMLResponse)
-def compliance_page(request: Request):
+def compliance_page(request: Request, edit_id: int | None = None):
     user = require_user(request)
     rows = query_all("SELECT * FROM compliance_items WHERE organization_id=? ORDER BY expiration_date", (user["organization_id"],))
     items = []
@@ -2009,23 +2289,105 @@ def compliance_page(request: Request):
         item["status"], item["days"] = compliance_status(row["expiration_date"])
         items.append(item)
     bundle = get_bundle(user["organization_id"])
-    return render(request, "compliance.html", {"items": items, "vehicles": bundle["vehicles"], "drivers": bundle["drivers"]})
+    editing = None
+    if edit_id is not None:
+        row = query_one(
+            "SELECT * FROM compliance_items WHERE id=? AND organization_id=?",
+            (edit_id, user["organization_id"]),
+        )
+        if not row:
+            raise HTTPException(404, "Compliance item not found")
+        editing = dict(row)
+    return render(request, "compliance.html", {"items": items, "vehicles": bundle["vehicles"], "drivers": bundle["drivers"], "editing": editing})
+
+
+def validated_compliance_subject(user: dict[str, Any], form: Any) -> tuple[str, int | None]:
+    subject_type = str(form.get("subject_type", "Company")).strip()
+    if subject_type not in {"Company", "Vehicle", "Driver"}:
+        raise HTTPException(400, "Select a valid subject type")
+    subject_id = integer(form.get("subject_id")) or None
+    if subject_type == "Company":
+        return subject_type, None
+    table = "drivers" if subject_type == "Driver" else "vehicles"
+    if subject_id and not query_one(
+        f"SELECT 1 FROM {table} WHERE id=? AND organization_id=?",
+        (subject_id, user["organization_id"]),
+    ):
+        raise HTTPException(400, "Select a valid linked record")
+    return subject_type, subject_id
 
 
 @app.post("/compliance")
 async def create_compliance_item(request: Request):
     user = require_user(request)
     form = await verified_form(request)
-    execute(
+    subject_type, subject_id = validated_compliance_subject(user, form)
+    item_id = execute(
         """INSERT INTO compliance_items
         (organization_id,subject_type,subject_id,subject_name,document_type,expiration_date,notes)
         VALUES (?,?,?,?,?,?,?)""",
         (
-            user["organization_id"], str(form.get("subject_type", "Company")), integer(form.get("subject_id")) or None,
+            user["organization_id"], subject_type, subject_id,
             str(form.get("subject_name", user["organization_name"])).strip(), str(form.get("document_type", "Document")).strip(),
             str(form.get("expiration_date", "")) or None, str(form.get("notes", "")).strip(),
         ),
     )
+    record_audit_event(
+        "compliance_item.created",
+        organization_id=int(user["organization_id"]), user_id=int(user["id"]),
+        details={"compliance_item_id": item_id},
+    )
+    return redirect("/compliance")
+
+
+@app.post("/compliance/{item_id}/edit")
+async def update_compliance_item(request: Request, item_id: int):
+    user = require_user(request)
+    form = await verified_form(request)
+    if not query_one(
+        "SELECT 1 FROM compliance_items WHERE id=? AND organization_id=?",
+        (item_id, user["organization_id"]),
+    ):
+        raise HTTPException(404, "Compliance item not found")
+    subject_type, subject_id = validated_compliance_subject(user, form)
+    execute(
+        """UPDATE compliance_items SET subject_type=?,subject_id=?,subject_name=?,document_type=?,
+        expiration_date=?,notes=? WHERE id=? AND organization_id=?""",
+        (
+            subject_type, subject_id, str(form.get("subject_name", user["organization_name"])).strip(),
+            str(form.get("document_type", "Document")).strip(), str(form.get("expiration_date", "")) or None,
+            str(form.get("notes", "")).strip(), item_id, user["organization_id"],
+        ),
+    )
+    record_audit_event(
+        "compliance_item.updated",
+        organization_id=int(user["organization_id"]), user_id=int(user["id"]),
+        details={"compliance_item_id": item_id},
+    )
+    set_flash(request, "Compliance item updated.")
+    return redirect("/compliance")
+
+
+@app.post("/compliance/{item_id}/delete")
+async def delete_compliance_item(request: Request, item_id: int):
+    user = require_user(request)
+    await verified_form(request)
+    existing = query_one(
+        "SELECT * FROM compliance_items WHERE id=? AND organization_id=?",
+        (item_id, user["organization_id"]),
+    )
+    if not existing:
+        raise HTTPException(404, "Compliance item not found")
+    execute(
+        "DELETE FROM compliance_items WHERE id=? AND organization_id=?",
+        (item_id, user["organization_id"]),
+    )
+    record_audit_event(
+        "compliance_item.deleted",
+        organization_id=int(user["organization_id"]), user_id=int(user["id"]),
+        details={"compliance_item_id": item_id, "document_type": str(existing["document_type"])},
+    )
+    set_flash(request, "Compliance item removed.")
     return redirect("/compliance")
 
 

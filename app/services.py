@@ -26,7 +26,7 @@ def get_bundle(org_id: int) -> dict[str, Any]:
         "drivers": row_dicts(query_all("SELECT * FROM drivers WHERE organization_id=? ORDER BY source_row IS NULL,source_row,name", (org_id,))),
         "weekly_fuel": row_dicts(query_all("SELECT * FROM weekly_fuel WHERE organization_id=? ORDER BY week_start", (org_id,))),
         "loads": row_dicts(query_all("SELECT * FROM loads WHERE organization_id=? ORDER BY pickup_date,id", (org_id,))),
-        "payments": row_dicts(query_all("SELECT * FROM payments WHERE organization_id=? ORDER BY paid_at,id", (org_id,))),
+        "payments": row_dicts(query_all("SELECT * FROM payments WHERE organization_id=? AND voided_at IS NULL ORDER BY paid_at,id", (org_id,))),
         "idle_periods": row_dicts(query_all("SELECT * FROM idle_periods WHERE organization_id=? ORDER BY start_date,id", (org_id,))),
     }
 
