@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import stripe
 from docx import Document
@@ -66,7 +67,7 @@ from .stripe_billing import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
-VERSION = "0.8.0"
+VERSION = "0.9.0"
 ENVIRONMENT = os.getenv("CARRIEROS_ENV", "development").strip().lower()
 IS_PRODUCTION = ENVIRONMENT == "production"
 CANONICAL_BASE_URL = os.getenv(
@@ -120,6 +121,15 @@ PLAN_LIMITS = {
     "small_fleet": {"name": "Small Fleet", "units": 10, "price": 75},
     "growing_fleet": {"name": "Growing Fleet", "units": 20, "price": 100},
 }
+
+QUICK_LINK_CATEGORIES = (
+    "Load board",
+    "Broker portal",
+    "Fuel & routing",
+    "Finance",
+    "Other",
+)
+QUICK_LINK_LIMIT = 30
 
 SEO_PAGES = {
     "small-fleet-trucking-software": {
@@ -327,6 +337,26 @@ def integer(value: Any, default: int = 0) -> int:
 
 def yes(value: Any) -> bool:
     return str(value or "").strip().lower() in {"1", "yes", "true", "on"}
+
+
+def normalized_external_url(value: Any) -> str | None:
+    """Return a safe browser link without ever requesting the destination."""
+    raw = str(value or "").strip()
+    if not raw or len(raw) > 2048 or any(char.isspace() for char in raw):
+        return None
+    if "://" not in raw and ":" in raw.split("/", 1)[0]:
+        return None
+    candidate = raw if "://" in raw else f"https://{raw}"
+    try:
+        parsed = urlsplit(candidate)
+        parsed.port
+    except ValueError:
+        return None
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
+        return None
+    if parsed.username or parsed.password:
+        return None
+    return parsed.geturl()
 
 
 def percent(value: Any, digits: int = 1) -> str:
@@ -1279,12 +1309,27 @@ def dashboard(request: Request, month: str | None = None):
     invoices = [invoice_aging(row) for row in invoice_rows]
     unpaid_total = sum(number(row["amount"]) for row in invoice_rows if str(row["status"]).lower() != "paid")
     overdue_total = sum(number(row["amount"]) for row in invoices if str(row["status"]).lower() != "paid" and row["age_days"] > 0)
+    quick_link_rows = query_all(
+        """SELECT * FROM quick_links WHERE organization_id=?
+        ORDER BY sort_order, lower(label) LIMIT 8""",
+        (user["organization_id"],),
+    )
+    warnings = state["warnings"]
+    open_exceptions = (
+        warnings["loss_making"]
+        + warnings["below_target"]
+        + warnings["high_deadhead"]
+        + warnings["low_company_profit"]
+        + warnings["fixed_cost_reviews"]
+        + warnings["idle_input_errors"]
+        + due_count
+    )
 
     return render(request, "dashboard.html", {
         "bundle": bundle,
         "state": state,
         "stats": state["summary"],
-        "warnings": state["warnings"],
+        "warnings": warnings,
         "balances": state["driver_balances"],
         "loads": all_loads[:10],
         "month": report_month,
@@ -1295,7 +1340,123 @@ def dashboard(request: Request, month: str | None = None):
         "overdue_total": overdue_total,
         "compliance": compliance[:5],
         "invoices": invoices[:5],
+        "quick_links": [as_dict(row) for row in quick_link_rows],
+        "open_exceptions": open_exceptions,
     })
+
+
+def quick_links_context(
+    organization_id: int,
+    *,
+    values: dict[str, str] | None = None,
+    error: str | None = None,
+) -> dict[str, Any]:
+    rows = query_all(
+        """SELECT * FROM quick_links WHERE organization_id=?
+        ORDER BY sort_order, lower(label)""",
+        (organization_id,),
+    )
+    return {
+        "links": [as_dict(row) for row in rows],
+        "quick_link_categories": QUICK_LINK_CATEGORIES,
+        "quick_link_limit": QUICK_LINK_LIMIT,
+        "values": values or {},
+        "error": error,
+    }
+
+
+@app.get("/links", response_class=HTMLResponse)
+def quick_links_page(request: Request):
+    user = require_user(request)
+    return render(
+        request,
+        "quick_links.html",
+        quick_links_context(int(user["organization_id"])),
+    )
+
+
+@app.post("/links")
+async def create_quick_link(request: Request):
+    user = require_user(request)
+    form = await verified_form(request)
+    organization_id = int(user["organization_id"])
+    label = str(form.get("label") or "").strip()
+    submitted_url = str(form.get("url") or "").strip()
+    url = normalized_external_url(submitted_url)
+    category = str(form.get("category") or "Other").strip()
+    values = {"label": label, "url": submitted_url, "category": category}
+
+    error = None
+    if not 2 <= len(label) <= 60:
+        error = "Enter a link name between 2 and 60 characters."
+    elif not url:
+        error = "Enter a valid http or https website address."
+    elif category not in QUICK_LINK_CATEGORIES:
+        error = "Choose a valid link category."
+    elif query_one(
+        "SELECT 1 FROM quick_links WHERE organization_id=? AND lower(label)=lower(?)",
+        (organization_id, label),
+    ):
+        error = "A business link with that name already exists."
+    elif int(
+        query_one(
+            "SELECT COUNT(*) AS total FROM quick_links WHERE organization_id=?",
+            (organization_id,),
+        )["total"]
+    ) >= QUICK_LINK_LIMIT:
+        error = f"Each workspace can save up to {QUICK_LINK_LIMIT} business links."
+
+    if error:
+        return render(
+            request,
+            "quick_links.html",
+            quick_links_context(organization_id, values=values, error=error),
+            status_code=400,
+        )
+
+    sort_row = query_one(
+        "SELECT COALESCE(MAX(sort_order), 0) AS current_sort FROM quick_links WHERE organization_id=?",
+        (organization_id,),
+    )
+    execute(
+        """INSERT INTO quick_links
+        (organization_id, label, url, category, sort_order)
+        VALUES (?, ?, ?, ?, ?)""",
+        (organization_id, label, url, category, int(sort_row["current_sort"]) + 10),
+    )
+    record_audit_event(
+        "quick_link.created",
+        organization_id=organization_id,
+        user_id=int(user["id"]),
+        details={"label": label, "category": category},
+    )
+    request.session["flash"] = "Business link added."
+    return redirect("/links")
+
+
+@app.post("/links/{link_id}/delete")
+async def delete_quick_link(request: Request, link_id: int):
+    user = require_user(request)
+    await verified_form(request)
+    organization_id = int(user["organization_id"])
+    link = query_one(
+        "SELECT * FROM quick_links WHERE id=? AND organization_id=?",
+        (link_id, organization_id),
+    )
+    if not link:
+        raise HTTPException(status_code=404, detail="Business link not found")
+    execute(
+        "DELETE FROM quick_links WHERE id=? AND organization_id=?",
+        (link_id, organization_id),
+    )
+    record_audit_event(
+        "quick_link.deleted",
+        organization_id=organization_id,
+        user_id=int(user["id"]),
+        details={"label": str(link["label"]), "category": str(link["category"])},
+    )
+    request.session["flash"] = "Business link removed."
+    return redirect("/links")
 
 
 @app.get("/loads", response_class=HTMLResponse)

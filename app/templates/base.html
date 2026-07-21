@@ -35,23 +35,43 @@
 {% if not public_page %}
 <div class="shell">
   <aside class="sidebar">
-    <div class="brand"><div class="brand-mark">CO</div><div><strong>CarrierOS</strong><small>Carrier financial command center</small></div></div>
+    <a class="brand" href="/dashboard" aria-label="CarrierOS dashboard">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span><strong>Carrier<span>OS</span></strong><small>Fleet command center</small></span>
+    </a>
     <nav class="nav">
-      <div class="nav-section">Operate</div>
-      <a href="/dashboard">Dashboard</a><a href="/loads">Loads &amp; profit</a><a href="/quotes">Lane quote</a><a href="/fuel">Weekly fuel</a><a href="/payments">Driver payments</a>
+      <div class="nav-section">Fleet workspace</div>
+      <a class="{% if request.url.path == '/dashboard' %}active{% endif %}" href="/dashboard"><span class="nav-icon">OV</span>Overview</a>
+      <a class="{% if request.url.path.startswith('/loads') %}active{% endif %}" href="/loads"><span class="nav-icon">LD</span>Loads &amp; profit</a>
+      <a class="{% if request.url.path.startswith('/quotes') %}active{% endif %}" href="/quotes"><span class="nav-icon">LQ</span>Lane quote</a>
+      <a class="{% if request.url.path.startswith('/fuel') %}active{% endif %}" href="/fuel"><span class="nav-icon">FL</span>Weekly fuel</a>
+      <a class="{% if request.url.path.startswith('/payments') %}active{% endif %}" href="/payments"><span class="nav-icon">PY</span>Driver pay</a>
       <div class="nav-section">Fleet &amp; finance</div>
-      <a href="/drivers">Driver &amp; equipment setup</a><a href="/vehicles">Units</a><a href="/financials">Company financials</a><a href="/idle">Idle fixed cost</a><a href="/settings">Assumptions &amp; overhead</a>
+      <a class="{% if request.url.path.startswith('/drivers') %}active{% endif %}" href="/drivers"><span class="nav-icon">DR</span>Drivers</a>
+      <a class="{% if request.url.path.startswith('/vehicles') %}active{% endif %}" href="/vehicles"><span class="nav-icon">UN</span>Power units</a>
+      <a class="{% if request.url.path.startswith('/financials') %}active{% endif %}" href="/financials"><span class="nav-icon">FN</span>Financials</a>
+      <a class="{% if request.url.path.startswith('/idle') %}active{% endif %}" href="/idle"><span class="nav-icon">ID</span>Idle fixed cost</a>
       <div class="nav-section">Administration</div>
-      <a href="/compliance">Compliance</a><a href="/onboarding">Onboarding</a><a href="/documents">Documents</a><a href="/receivables">Detention &amp; A/R</a><a href="/billing">Billing</a>
+      <a class="{% if request.url.path.startswith('/compliance') %}active{% endif %}" href="/compliance"><span class="nav-icon">CP</span>Compliance</a>
+      <a class="{% if request.url.path.startswith('/onboarding') %}active{% endif %}" href="/onboarding"><span class="nav-icon">ON</span>Onboarding</a>
+      <a class="{% if request.url.path.startswith('/documents') %}active{% endif %}" href="/documents"><span class="nav-icon">DC</span>Documents</a>
+      <a class="{% if request.url.path.startswith('/receivables') %}active{% endif %}" href="/receivables"><span class="nav-icon">AR</span>Detention &amp; A/R</a>
+      <a class="{% if request.url.path.startswith('/links') %}active{% endif %}" href="/links"><span class="nav-icon">↗</span>Business links</a>
+      <a class="{% if request.url.path.startswith('/settings') %}active{% endif %}" href="/settings"><span class="nav-icon">ST</span>Settings</a>
+      <a class="{% if request.url.path.startswith('/billing') %}active{% endif %}" href="/billing"><span class="nav-icon">BL</span>Billing</a>
     </nav>
-    <div class="sidebar-footer">Version {{ version }}<br>Your company data is private to your workspace. Review financial calculations, documents, and compliance decisions before relying on them.<br><a href="/terms">Terms</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="mailto:{{ support_email }}">Support</a></div>
+    {% if user %}<div class="sidebar-account"><span>{{ user.full_name[:1]|upper }}</span><div><strong>{{ user.organization_name }}</strong><small>Up to {{ user.active_unit_limit }} active power units</small></div></div>{% endif %}
+    <div class="sidebar-footer">Private customer workspace &middot; v{{ version }}<br><a href="/terms">Terms</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="mailto:{{ support_email }}">Support</a></div>
   </aside>
   <main class="main">
     <header class="topbar">
-      <div class="topbar-left"><h1>{{ user.organization_name if user else 'CarrierOS' }}</h1></div>
-      <div class="user-chip">{{ user.full_name if user else '' }}{% if user %} &middot; <a href="/logout">Log out</a>{% endif %}</div>
+      <div class="topbar-left"><span>CarrierOS</span><i>/</i><strong>{{ user.organization_name if user else 'Workspace' }}</strong></div>
+      <div class="topbar-right">
+        <span class="workspace-live"><i></i>Private workspace</span>
+        {% if user %}<div class="user-avatar">{{ user.full_name[:1]|upper }}</div><div class="user-chip"><strong>{{ user.full_name }}</strong><a href="/logout">Log out</a></div>{% endif %}
+      </div>
       <details class="mobile-nav"><summary>Menu</summary><div class="mobile-menu-panel">
-        <a href="/dashboard">Dashboard</a><a href="/loads">Loads</a><a href="/quotes">Quote</a><a href="/fuel">Fuel</a><a href="/payments">Payments</a><a href="/drivers">Drivers</a><a href="/vehicles">Units</a><a href="/financials">Financials</a><a href="/idle">Idle cost</a><a href="/compliance">Compliance</a><a href="/onboarding">Onboarding</a><a href="/documents">Documents</a><a href="/receivables">A/R</a><a href="/settings">Settings</a><a href="/billing">Billing</a><a href="/logout">Log out</a>
+        <a href="/dashboard">Overview</a><a href="/loads">Loads</a><a href="/quotes">Quote</a><a href="/fuel">Fuel</a><a href="/payments">Driver pay</a><a href="/drivers">Drivers</a><a href="/vehicles">Units</a><a href="/financials">Financials</a><a href="/idle">Idle cost</a><a href="/compliance">Compliance</a><a href="/onboarding">Onboarding</a><a href="/documents">Documents</a><a href="/receivables">A/R</a><a href="/links">Business links</a><a href="/settings">Settings</a><a href="/billing">Billing</a><a href="/logout">Log out</a>
       </div></details>
     </header>
     <div class="content">{% if flash %}<div class="notice good">{{ flash }}</div>{% endif %}

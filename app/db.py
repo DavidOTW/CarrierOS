@@ -103,6 +103,18 @@ CREATE TABLE IF NOT EXISTS overhead_items (
     FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS quick_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    organization_id INTEGER NOT NULL,
+    label TEXT NOT NULL COLLATE NOCASE,
+    url TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'Other',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (organization_id, label),
+    FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS vehicles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     organization_id INTEGER NOT NULL,
@@ -310,7 +322,8 @@ CREATE INDEX IF NOT EXISTS idx_compliance_expiry ON compliance_items(organizatio
 CREATE INDEX IF NOT EXISTS idx_invoices_due ON invoices(organization_id, due_date);
 CREATE INDEX IF NOT EXISTS idx_audit_events_org_created ON audit_events(organization_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_password_reset_user ON password_reset_tokens(user_id, expires_at);
-PRAGMA user_version = 7;
+CREATE INDEX IF NOT EXISTS idx_quick_links_org_sort ON quick_links(organization_id, sort_order, label);
+PRAGMA user_version = 8;
 """
 
 ORGANIZATION_MIGRATIONS = (
@@ -535,7 +548,7 @@ def seed_snapshot_data(force: bool = False) -> None:
             for table in (
                 "detention_claims", "invoices", "generated_documents", "onboarding_applications",
                 "compliance_items", "idle_periods", "payments", "loads", "weekly_fuel",
-                "drivers", "vehicles", "overhead_items", "users", "organizations",
+                "drivers", "vehicles", "quick_links", "overhead_items", "users", "organizations",
             ):
                 conn.execute(f"DELETE FROM {table}")
 
@@ -709,6 +722,7 @@ def create_database_backup() -> Path | None:
 ORGANIZATION_EXPORT_TABLES = (
     "audit_events",
     "overhead_items",
+    "quick_links",
     "vehicles",
     "drivers",
     "weekly_fuel",

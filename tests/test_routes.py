@@ -217,7 +217,7 @@ def test_signup_empty_workspace_and_authenticated_pages(monkeypatch: pytest.Monk
         for page in (
             "/dashboard", "/loads", "/loads/new", "/vehicles", "/drivers", "/fuel",
             "/payments", "/quotes", "/financials", "/idle", "/settings",
-            "/compliance", "/onboarding", "/documents", "/receivables", "/billing",
+            "/compliance", "/onboarding", "/documents", "/receivables", "/links", "/billing",
             "/manifest.webmanifest", "/service-worker.js",
         ):
             response = client.get(page)
@@ -227,6 +227,67 @@ def test_signup_empty_workspace_and_authenticated_pages(monkeypatch: pytest.Monk
     with TestClient(app) as public_client:
         assert public_client.get("/privacy").status_code == 200
         assert public_client.get("/terms").status_code == 200
+
+
+def test_business_links_are_safe_and_tenant_isolated(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "links.db"))
+    with TestClient(app) as client_a, TestClient(app) as client_b:
+        signup(client_a, "links-alpha@example.com", "Alpha Fleet")
+        created = client_a.post(
+            "/links",
+            data={
+                "label": "Preferred Load Board",
+                "url": "loads.example.com/search",
+                "category": "Load board",
+            },
+            follow_redirects=False,
+        )
+        assert created.status_code == 303
+        assert created.headers["location"] == "/links"
+        link = query_one("SELECT * FROM quick_links")
+        assert link["url"] == "https://loads.example.com/search"
+
+        links_page = client_a.get("/links")
+        assert "Preferred Load Board" in links_page.text
+        assert 'target="_blank"' in links_page.text
+        assert 'rel="noopener noreferrer"' in links_page.text
+        dashboard = client_a.get("/dashboard")
+        assert "Preferred Load Board" in dashboard.text
+
+        invalid = client_a.post(
+            "/links",
+            data={"label": "Unsafe", "url": "javascript:alert(1)", "category": "Other"},
+        )
+        assert invalid.status_code == 400
+        assert "valid http or https" in invalid.text
+        duplicate = client_a.post(
+            "/links",
+            data={
+                "label": "preferred load board",
+                "url": "https://another.example.com",
+                "category": "Other",
+            },
+        )
+        assert duplicate.status_code == 400
+
+        signup(client_b, "links-beta@example.com", "Beta Fleet")
+        assert "loads.example.com" not in client_b.get("/links").text
+        forbidden_delete = client_b.post(
+            f"/links/{link['id']}/delete", follow_redirects=False
+        )
+        assert forbidden_delete.status_code == 404
+        assert query_one("SELECT COUNT(*) AS total FROM quick_links")["total"] == 1
+
+        deleted = client_a.post(
+            f"/links/{link['id']}/delete", follow_redirects=False
+        )
+        assert deleted.status_code == 303
+        assert query_one("SELECT COUNT(*) AS total FROM quick_links")["total"] == 0
+        assert query_one(
+            "SELECT COUNT(*) AS total FROM audit_events WHERE event_type='quick_link.created'"
+        )["total"] == 1
 
 
 def test_unit_limit_and_flat_rate_driver(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
