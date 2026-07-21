@@ -41,4 +41,10 @@ def test_existing_organization_gets_launch_columns(
         tables = {row["name"] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         user_version = conn.execute("PRAGMA user_version").fetchone()[0]
     assert "audit_events" in tables
-    assert user_version == 6
+    assert "password_reset_tokens" in tables
+    assert user_version == 7
+    with connect() as conn:
+        onboarding_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(onboarding_applications)")
+        }
+    assert "expires_at" in onboarding_columns

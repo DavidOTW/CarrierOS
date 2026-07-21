@@ -6,7 +6,7 @@ import os
 import secrets
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -14,6 +14,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 APP_DIR = Path(__file__).resolve().parent
 DEFAULT_DB_PATH = BASE_DIR / "carrieros_v02.db"
 SNAPSHOT_PATH = APP_DIR / "data" / "private_seed_snapshot.json"
+PASSWORD_HASH_ITERATIONS = 600_000
 
 SCHEMA = """
 PRAGMA foreign_keys = ON;
@@ -58,6 +59,16 @@ CREATE TABLE IF NOT EXISTS processed_stripe_events (
     event_id TEXT PRIMARY KEY,
     event_type TEXT NOT NULL,
     processed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL,
+    used_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS users (
@@ -241,6 +252,7 @@ CREATE TABLE IF NOT EXISTS onboarding_applications (
     employment_history TEXT,
     emergency_contact TEXT,
     status TEXT NOT NULL DEFAULT 'Invited',
+    expires_at TEXT,
     submitted_at TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
@@ -297,7 +309,8 @@ CREATE INDEX IF NOT EXISTS idx_idle_org_dates ON idle_periods(organization_id, s
 CREATE INDEX IF NOT EXISTS idx_compliance_expiry ON compliance_items(organization_id, expiration_date);
 CREATE INDEX IF NOT EXISTS idx_invoices_due ON invoices(organization_id, due_date);
 CREATE INDEX IF NOT EXISTS idx_audit_events_org_created ON audit_events(organization_id, created_at);
-PRAGMA user_version = 6;
+CREATE INDEX IF NOT EXISTS idx_password_reset_user ON password_reset_tokens(user_id, expires_at);
+PRAGMA user_version = 7;
 """
 
 ORGANIZATION_MIGRATIONS = (
@@ -321,15 +334,20 @@ DRIVER_MIGRATIONS = (
     ("day_rate", "ALTER TABLE drivers ADD COLUMN day_rate REAL NOT NULL DEFAULT 0"),
 )
 
+ONBOARDING_MIGRATIONS = (
+    ("expires_at", "ALTER TABLE onboarding_applications ADD COLUMN expires_at TEXT"),
+)
+
 
 def get_db_path() -> Path:
     return Path(os.getenv("CARRIEROS_DB", str(DEFAULT_DB_PATH)))
 
 
 def connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(get_db_path())
+    conn = sqlite3.connect(get_db_path(), timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 10000")
     return conn
 
 
@@ -380,25 +398,95 @@ def query_one(sql: str, params: Iterable[Any] = ()) -> sqlite3.Row | None:
         return conn.execute(sql, tuple(params)).fetchone()
 
 
-def hash_password(password: str, salt: str | None = None) -> str:
+def hash_password(
+    password: str,
+    salt: str | None = None,
+    iterations: int = PASSWORD_HASH_ITERATIONS,
+) -> str:
     salt = salt or secrets.token_hex(16)
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 180_000).hex()
-    return f"{salt}${digest}"
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), iterations).hex()
+    return f"pbkdf2_sha256${iterations}${salt}${digest}"
 
 
 def verify_password(password: str, stored: str) -> bool:
-    try:
-        salt, expected = stored.split("$", 1)
-    except ValueError:
+    parts = stored.split("$")
+    if len(parts) == 4 and parts[0] == "pbkdf2_sha256":
+        try:
+            iterations = int(parts[1])
+        except ValueError:
+            return False
+        salt, expected = parts[2], parts[3]
+    elif len(parts) == 2:
+        # Legacy CarrierOS hashes used 180,000 PBKDF2 iterations.
+        iterations, salt, expected = 180_000, parts[0], parts[1]
+    else:
         return False
-    actual = hash_password(password, salt).split("$", 1)[1]
+    actual = hashlib.pbkdf2_hmac(
+        "sha256", password.encode(), salt.encode(), iterations
+    ).hex()
     return secrets.compare_digest(actual, expected)
+
+
+def password_needs_rehash(stored: str) -> bool:
+    parts = stored.split("$")
+    return not (
+        len(parts) == 4
+        and parts[0] == "pbkdf2_sha256"
+        and parts[1].isdigit()
+        and int(parts[1]) >= PASSWORD_HASH_ITERATIONS
+    )
+
+
+def token_digest(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def create_password_reset_token(user_id: int, lifetime_minutes: int = 30) -> str:
+    raw_token = secrets.token_urlsafe(32)
+    expires_at = (
+        datetime.now(timezone.utc) + timedelta(minutes=lifetime_minutes)
+    ).replace(microsecond=0).isoformat()
+    with db_session() as conn:
+        conn.execute(
+            "DELETE FROM password_reset_tokens WHERE user_id=? OR expires_at<?",
+            (user_id, utc_now_iso()),
+        )
+        conn.execute(
+            "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)",
+            (user_id, token_digest(raw_token), expires_at),
+        )
+    return raw_token
+
+
+def reset_password_with_token(token: str, new_password_hash: str) -> sqlite3.Row | None:
+    now = utc_now_iso()
+    with db_session() as conn:
+        row = conn.execute(
+            """SELECT t.id AS token_id, u.id AS user_id, u.organization_id
+            FROM password_reset_tokens t
+            JOIN users u ON u.id=t.user_id
+            WHERE t.token_hash=? AND t.used_at IS NULL AND t.expires_at>=?""",
+            (token_digest(token), now),
+        ).fetchone()
+        if not row:
+            return None
+        conn.execute(
+            "UPDATE users SET password_hash=? WHERE id=?",
+            (new_password_hash, row["user_id"]),
+        )
+        conn.execute(
+            "UPDATE password_reset_tokens SET used_at=? WHERE user_id=? AND used_at IS NULL",
+            (now, row["user_id"]),
+        )
+        return row
 
 
 def init_db(seed: bool = False) -> None:
     path = get_db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     with connect() as conn:
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA synchronous = NORMAL")
         conn.executescript(SCHEMA)
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(organizations)")}
         for column, statement in ORGANIZATION_MIGRATIONS:
@@ -417,6 +505,12 @@ def init_db(seed: bool = False) -> None:
         driver_columns = {row["name"] for row in conn.execute("PRAGMA table_info(drivers)")}
         for column, statement in DRIVER_MIGRATIONS:
             if column not in driver_columns:
+                conn.execute(statement)
+        onboarding_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(onboarding_applications)")
+        }
+        for column, statement in ONBOARDING_MIGRATIONS:
+            if column not in onboarding_columns:
                 conn.execute(statement)
         conn.commit()
     if seed:
@@ -582,7 +676,77 @@ def as_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
 
 
 def new_onboarding_token() -> str:
-    return secrets.token_urlsafe(24)
+    return secrets.token_urlsafe(32)
+
+
+def create_database_backup() -> Path | None:
+    source_path = get_db_path()
+    if not source_path.exists():
+        return None
+    backup_dir = Path(
+        os.getenv("CARRIEROS_BACKUP_DIR", str(source_path.parent / "backups"))
+    )
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
+    destination = backup_dir / f"carrieros-{timestamp}.db"
+    with sqlite3.connect(source_path, timeout=30) as source:
+        with sqlite3.connect(destination, timeout=30) as target:
+            source.backup(target)
+    with sqlite3.connect(destination, timeout=30) as verification:
+        result = verification.execute("PRAGMA quick_check").fetchone()
+        if not result or result[0] != "ok":
+            destination.unlink(missing_ok=True)
+            raise RuntimeError("CarrierOS database backup failed integrity verification")
+    retention = max(2, int(os.getenv("CARRIEROS_BACKUP_RETENTION", "14")))
+    backups = sorted(
+        backup_dir.glob("carrieros-*.db"), key=lambda item: item.stat().st_mtime, reverse=True
+    )
+    for expired in backups[retention:]:
+        expired.unlink(missing_ok=True)
+    return destination
+
+
+ORGANIZATION_EXPORT_TABLES = (
+    "audit_events",
+    "overhead_items",
+    "vehicles",
+    "drivers",
+    "weekly_fuel",
+    "loads",
+    "payments",
+    "idle_periods",
+    "compliance_items",
+    "onboarding_applications",
+    "invoices",
+    "detention_claims",
+    "generated_documents",
+)
+
+
+def export_organization_data(organization_id: int) -> dict[str, Any]:
+    with connect() as conn:
+        organization = conn.execute(
+            "SELECT * FROM organizations WHERE id=?", (organization_id,)
+        ).fetchone()
+        if not organization:
+            raise ValueError("Organization not found")
+        users = conn.execute(
+            """SELECT id, organization_id, full_name, email, is_admin, created_at
+            FROM users WHERE organization_id=? ORDER BY id""",
+            (organization_id,),
+        ).fetchall()
+        payload: dict[str, Any] = {
+            "exported_at": utc_now_iso(),
+            "organization": dict(organization),
+            "users": [dict(row) for row in users],
+        }
+        for table in ORGANIZATION_EXPORT_TABLES:
+            rows = conn.execute(
+                f"SELECT * FROM {table} WHERE organization_id=? ORDER BY id",
+                (organization_id,),
+            ).fetchall()
+            payload[table] = [dict(row) for row in rows]
+        return payload
 
 
 def utc_now_iso() -> str:

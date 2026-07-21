@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% block title %}Launch access &middot; CarrierOS{% endblock %}
+{% block content %}
+<div class="login-page">
+  <section class="login-hero">
+    <div class="brand" style="border:0;padding:0;margin-bottom:32px"><div class="brand-mark">CO</div><div><strong>CarrierOS</strong><small style="color:#cae0eb">Fleet financial command center</small></div></div>
+    <h1>The live demo is open. Customer billing is almost ready.</h1>
+    <p>CarrierOS is completing final live-payment activation. We are not sending customers through a test checkout or collecting card information before live billing is approved.</p>
+  </section>
+  <section class="login-panel"><div class="login-card">
+    <h2>Get launch access</h2>
+    <p class="muted">Email us to join the first customer group. We will send the live signup link as soon as subscription billing is active.</p>
+    <div class="form-actions"><a class="btn btn-primary" style="width:100%" href="mailto:{{ support_email }}?subject=CarrierOS%20launch%20access">Request launch access</a></div>
+    <div class="demo-box"><a href="/demo">Explore the live demo</a><br><a href="/login">Existing customer login</a><br><a href="/terms">Terms</a> &middot; <a href="/privacy">Privacy</a></div>
+  </div></section>
+</div>
+{% endblock %}

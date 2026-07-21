@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import io
+import json
+import logging
 import os
 import secrets
 import time
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -29,17 +32,24 @@ from .calculations import (
 )
 from .db import (
     as_dict,
+    create_database_backup,
+    create_password_reset_token,
     db_session,
     execute,
+    export_organization_data,
     hash_password,
     init_db,
     new_onboarding_token,
+    password_needs_rehash,
     query_all,
     query_one,
     record_audit_event,
+    reset_password_with_token,
+    token_digest,
     utc_now_iso,
     verify_password,
 )
+from .emailing import send_password_reset_email, smtp_configured
 from .services import get_bundle, get_state, loads_with_results, selected_month
 from .stripe_billing import (
     BillingConfigurationError,
@@ -51,6 +61,7 @@ from .stripe_billing import (
     plan_code_for_price,
     price_id_for_plan,
     stripe_configured,
+    stripe_live_configured,
     unix_date,
 )
 
@@ -73,6 +84,34 @@ TERMS_VERSION = "2026-07-21-subscription-v1"
 SUPPORT_EMAIL = os.getenv(
     "CARRIEROS_SUPPORT_EMAIL", "david@outsidethewirelogistics.com"
 ).strip().lower()
+BACKUP_INTERVAL_SECONDS = max(
+    3600, int(os.getenv("CARRIEROS_BACKUP_INTERVAL_HOURS", "24")) * 3600
+)
+logger = logging.getLogger("carrieros")
+
+
+class SensitiveAccessLogFilter(logging.Filter):
+    """Keep reset and onboarding bearer tokens out of platform request logs."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple) and len(record.args) >= 3:
+            values = list(record.args)
+            path = str(values[2])
+            if path.startswith("/reset-password?"):
+                values[2] = "/reset-password?[redacted]"
+            elif path.startswith("/onboard/"):
+                values[2] = "/onboard/[redacted]"
+            record.args = tuple(values)
+        return True
+
+
+logging.getLogger("uvicorn.access").addFilter(SensitiveAccessLogFilter())
+
+
+def customer_signups_open() -> bool:
+    return not (
+        IS_PRODUCTION and BILLING_MODE == "stripe" and not stripe_live_configured()
+    )
 
 PLAN_LIMITS = {
     "owner_operator": {"name": "Owner-Operator", "units": 2, "price": 25},
@@ -171,13 +210,40 @@ LOGIN_WINDOW_SECONDS = 15 * 60
 LOGIN_MAX_ATTEMPTS = 10
 SIGNUP_WINDOW_SECONDS = 60 * 60
 SIGNUP_MAX_ATTEMPTS = 5
+RESET_WINDOW_SECONDS = 60 * 60
+RESET_MAX_ATTEMPTS = 5
 login_attempts: dict[str, list[float]] = {}
 signup_attempts: dict[str, list[float]] = {}
+reset_attempts: dict[str, list[float]] = {}
+
+
+async def database_backup_worker() -> None:
+    while True:
+        await asyncio.sleep(BACKUP_INTERVAL_SECONDS)
+        try:
+            await asyncio.to_thread(create_database_backup)
+        except Exception:
+            logger.exception("Scheduled CarrierOS database backup failed")
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
-    yield
+    backup_task: asyncio.Task[None] | None = None
+    if IS_PRODUCTION:
+        try:
+            await asyncio.to_thread(create_database_backup)
+        except Exception:
+            logger.exception("CarrierOS startup database backup failed")
+        backup_task = asyncio.create_task(database_backup_worker())
+    try:
+        yield
+    finally:
+        if backup_task:
+            backup_task.cancel()
+            try:
+                await backup_task
+            except asyncio.CancelledError:
+                pass
 
 
 app = FastAPI(title="CarrierOS", version=VERSION, lifespan=lifespan)
@@ -319,6 +385,16 @@ def render(request: Request, name: str, context: dict[str, Any] | None = None, s
         "version": VERSION,
         "support_email": SUPPORT_EMAIL,
         "billing_mode": BILLING_MODE,
+        "signups_open": customer_signups_open(),
+        "signup_href": (
+            "/signup"
+            if customer_signups_open()
+            else f"mailto:{SUPPORT_EMAIL}?subject=CarrierOS%20launch%20access"
+        ),
+        "signup_cta": (
+            "Start free trial" if customer_signups_open() else "Get launch access"
+        ),
+        "email_delivery_ready": smtp_configured(),
         "csrf_token": csrf_token,
         "flash": request.session.pop("flash", None) if hasattr(request, "session") else None,
     })
@@ -466,6 +542,14 @@ def signup_rate_limited(request: Request) -> bool:
     return len(recent) >= SIGNUP_MAX_ATTEMPTS
 
 
+def reset_rate_limited(request: Request) -> bool:
+    key = client_key(request)
+    cutoff = time.time() - RESET_WINDOW_SECONDS
+    recent = [stamp for stamp in reset_attempts.get(key, []) if stamp >= cutoff]
+    reset_attempts[key] = recent
+    return len(recent) >= RESET_MAX_ATTEMPTS
+
+
 def redirect(url: str) -> RedirectResponse:
     return RedirectResponse(url=url, status_code=303)
 
@@ -534,7 +618,14 @@ async def subscription_required_handler(request: Request, exc: HTTPException):
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "version": VERSION}
+    query_one("SELECT 1 AS healthy")
+    billing_state = "live" if stripe_live_configured() else "prelaunch"
+    return {
+        "status": "ok",
+        "version": VERSION,
+        "database": "ok",
+        "billing": billing_state,
+    }
 
 
 @app.get("/manifest.webmanifest")
@@ -683,6 +774,11 @@ async def login(request: Request):
             "error": "Invalid email or password.",
             "public_page": True,
         }, 400)
+    if password_needs_rehash(str(row["password_hash"])):
+        execute(
+            "UPDATE users SET password_hash=? WHERE id=?",
+            (hash_password(password), row["id"]),
+        )
     request.session.clear()
     request.session["user_id"] = row["id"]
     request.session["csrf_token"] = secrets.token_urlsafe(32)
@@ -699,12 +795,16 @@ async def login(request: Request):
 def signup_page(request: Request, plan: str = "owner_operator"):
     if current_user(request):
         return redirect("/dashboard")
+    if not customer_signups_open():
+        return render(request, "launch_pending.html", {"public_page": True})
     selected_plan = plan if plan in PLAN_LIMITS else "owner_operator"
     return render(request, "signup.html", {"plans": PLAN_LIMITS, "selected_plan": selected_plan, "public_page": True})
 
 
 @app.post("/signup", response_class=HTMLResponse)
 async def signup(request: Request):
+    if not customer_signups_open():
+        return render(request, "launch_pending.html", {"public_page": True}, 503)
     if signup_rate_limited(request):
         return render(request, "signup.html", {
             "error": "Too many accounts were created from this connection. Try again in one hour.",
@@ -778,6 +878,116 @@ async def signup(request: Request):
     return redirect("/dashboard" if BILLING_MODE == "beta" else "/billing?new=1")
 
 
+@app.get("/forgot-password", response_class=HTMLResponse)
+def forgot_password_page(request: Request):
+    if current_user(request):
+        return redirect("/dashboard")
+    return render(request, "forgot_password.html", {"public_page": True})
+
+
+@app.post("/forgot-password", response_class=HTMLResponse)
+async def forgot_password(request: Request):
+    if reset_rate_limited(request):
+        return render(
+            request,
+            "forgot_password.html",
+            {
+                "error": "Too many reset requests. Try again in one hour or contact support.",
+                "public_page": True,
+            },
+            429,
+        )
+    form = await verified_form(request)
+    email = str(form.get("email", "")).strip().lower()
+    row = query_one("SELECT * FROM users WHERE lower(email)=?", (email,))
+    reset_attempts.setdefault(client_key(request), []).append(time.time())
+    if row and smtp_configured():
+        raw_token = create_password_reset_token(int(row["id"]))
+        try:
+            await asyncio.to_thread(
+                send_password_reset_email,
+                recipient=str(row["email"]),
+                full_name=str(row["full_name"]),
+                reset_url=f"{public_url(request)}/reset-password?token={raw_token}",
+            )
+            record_audit_event(
+                "password.reset_requested",
+                organization_id=int(row["organization_id"]),
+                user_id=int(row["id"]),
+                details={"delivery": "accepted"},
+            )
+        except Exception:
+            logger.exception("CarrierOS password-reset delivery failed")
+            record_audit_event(
+                "password.reset_requested",
+                organization_id=int(row["organization_id"]),
+                user_id=int(row["id"]),
+                details={"delivery": "failed"},
+            )
+    return render(
+        request,
+        "forgot_password.html",
+        {"sent": True, "public_page": True},
+    )
+
+
+@app.get("/reset-password", response_class=HTMLResponse)
+def reset_password_page(request: Request, token: str = ""):
+    return render(
+        request,
+        "reset_password.html",
+        {"token": token, "public_page": True},
+    )
+
+
+@app.post("/reset-password", response_class=HTMLResponse)
+async def reset_password(request: Request):
+    if reset_rate_limited(request):
+        return render(
+            request,
+            "reset_password.html",
+            {
+                "token": "",
+                "error": "Too many reset attempts. Try again in one hour or contact support.",
+                "public_page": True,
+            },
+            429,
+        )
+    form = await verified_form(request)
+    reset_attempts.setdefault(client_key(request), []).append(time.time())
+    token = str(form.get("token", ""))
+    password = str(form.get("password", ""))
+    confirm_password = str(form.get("confirm_password", ""))
+    error = None
+    if not token:
+        error = "This reset link is invalid or has expired."
+    elif password != confirm_password:
+        error = "The passwords do not match."
+    elif not valid_password(password):
+        error = "Use at least 12 characters with uppercase, lowercase, a number, and a symbol."
+    row = None if error else reset_password_with_token(token, hash_password(password))
+    if not error and not row:
+        error = "This reset link is invalid or has expired."
+    if error:
+        return render(
+            request,
+            "reset_password.html",
+            {"token": token, "error": error, "public_page": True},
+            400,
+        )
+    record_audit_event(
+        "password.reset_completed",
+        organization_id=int(row["organization_id"]),
+        user_id=int(row["user_id"]),
+    )
+    request.session.clear()
+    return render(
+        request,
+        "login.html",
+        {"success": "Your password has been changed. Sign in with the new password.", "public_page": True},
+    )
+
+
 @app.get("/billing", response_class=HTMLResponse)
 def billing(request: Request, checkout: str | None = None, new: int = 0):
     user = current_user(request)
@@ -787,7 +997,7 @@ def billing(request: Request, checkout: str | None = None, new: int = 0):
     return render(request, "billing.html", {
         "plan": plan,
         "plans": PLAN_LIMITS,
-        "stripe_ready": stripe_configured(),
+        "stripe_ready": stripe_configured() and (not IS_PRODUCTION or stripe_live_configured()),
         "billing_mode": BILLING_MODE,
         "has_access": subscription_allows_access(user),
         "checkout_result": checkout,
@@ -802,6 +1012,12 @@ async def billing_checkout(request: Request):
         return redirect("/login")
     if BILLING_MODE == "beta":
         set_flash(request, "No payment is required during the founding beta.")
+        return redirect("/billing")
+    if IS_PRODUCTION and not stripe_live_configured():
+        set_flash(
+            request,
+            "Live subscription billing is awaiting final activation. Please contact support for launch access.",
+        )
         return redirect("/billing")
     form = await verified_form(request)
     plan_code = str(form.get("plan", user.get("plan_code") or "owner_operator"))
@@ -1517,6 +1733,21 @@ async def add_overhead(request: Request):
     return redirect("/settings")
 
 
+@app.post("/settings/export")
+async def export_company_data(request: Request):
+    user = require_user(request)
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Administrator access required")
+    await verified_form(request)
+    payload = export_organization_data(int(user["organization_id"]))
+    filename = f"carrieros-company-export-{date.today().isoformat()}.json"
+    return Response(
+        json.dumps(payload, indent=2, ensure_ascii=False),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @app.get("/compliance", response_class=HTMLResponse)
 def compliance_page(request: Request):
     user = require_user(request)
@@ -1559,11 +1790,20 @@ async def onboarding_invite(request: Request):
     user = require_user(request)
     form = await verified_form(request)
     token = new_onboarding_token()
+    expires_at = (
+        datetime.now(timezone.utc) + timedelta(days=14)
+    ).replace(microsecond=0).isoformat()
     execute(
-        "INSERT INTO onboarding_applications (organization_id,token,full_name,email,status) VALUES (?,?,?,?, 'Invited')",
-        (user["organization_id"], token, str(form.get("full_name", "")).strip(), str(form.get("email", "")).strip()),
+        """INSERT INTO onboarding_applications
+        (organization_id,token,full_name,email,status,expires_at)
+        VALUES (?,?,?,?, 'Invited', ?)""",
+        (
+            user["organization_id"], token_digest(token),
+            str(form.get("full_name", "")).strip(),
+            str(form.get("email", "")).strip(), expires_at,
+        ),
     )
-    set_flash(request, f"Onboarding link created: /onboard/{token}")
+    set_flash(request, f"Onboarding link created (expires in 14 days): /onboard/{token}")
     return redirect("/onboarding")
 
 
@@ -1571,34 +1811,54 @@ async def onboarding_invite(request: Request):
 def public_onboarding_page(request: Request, token: str):
     row = query_one(
         """SELECT a.*,o.name AS organization_name FROM onboarding_applications a
-        JOIN organizations o ON o.id=a.organization_id WHERE a.token=?""", (token,),
+        JOIN organizations o ON o.id=a.organization_id WHERE a.token IN (?, ?)""",
+        (token, token_digest(token)),
     )
     if not row:
         raise HTTPException(404, "Onboarding link not found")
+    if row["expires_at"] and str(row["expires_at"]) < utc_now_iso():
+        raise HTTPException(410, "Onboarding link has expired")
     return render(request, "public_onboarding.html", {"application": dict(row), "public_page": True})
 
 
 @app.post("/onboard/{token}", response_class=HTMLResponse)
 async def submit_onboarding(request: Request, token: str):
-    row = query_one("SELECT * FROM onboarding_applications WHERE token=?", (token,))
+    row = query_one(
+        "SELECT * FROM onboarding_applications WHERE token IN (?, ?)",
+        (token, token_digest(token)),
+    )
     if not row:
         raise HTTPException(404, "Onboarding link not found")
+    if row["expires_at"] and str(row["expires_at"]) < utc_now_iso():
+        raise HTTPException(410, "Onboarding link has expired")
+    if str(row["status"]).lower() == "submitted":
+        organization = query_one(
+            "SELECT name FROM organizations WHERE id=?", (row["organization_id"],)
+        )
+        application = dict(row)
+        application["organization_name"] = organization["name"] if organization else "the carrier"
+        return render(
+            request,
+            "public_onboarding.html",
+            {"application": application, "submitted": True, "public_page": True},
+        )
     form = await verified_form(request)
     with db_session() as conn:
         conn.execute(
             """UPDATE onboarding_applications SET full_name=?,email=?,phone=?,license_number=?,
             license_state=?,medical_card_expiration=?,employment_history=?,emergency_contact=?,
-            status='Submitted',submitted_at=? WHERE token=?""",
+            status='Submitted',submitted_at=? WHERE id=? AND organization_id=?""",
             (
                 str(form.get("full_name", "")).strip(), str(form.get("email", "")).strip(), str(form.get("phone", "")).strip(),
                 str(form.get("license_number", "")).strip(), str(form.get("license_state", "")).strip(),
                 str(form.get("medical_card_expiration", "")) or None, str(form.get("employment_history", "")).strip(),
-                str(form.get("emergency_contact", "")).strip(), utc_now_iso(), token,
+                str(form.get("emergency_contact", "")).strip(), utc_now_iso(),
+                row["id"], row["organization_id"],
             ),
         )
     updated = query_one(
         """SELECT a.*,o.name AS organization_name FROM onboarding_applications a
-        JOIN organizations o ON o.id=a.organization_id WHERE a.token=?""", (token,),
+        JOIN organizations o ON o.id=a.organization_id WHERE a.id=?""", (row["id"],),
     )
     return render(request, "public_onboarding.html", {"application": dict(updated), "submitted": True, "public_page": True})
 
