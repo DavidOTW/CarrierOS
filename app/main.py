@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import csv
 import io
 import json
 import logging
@@ -11,7 +12,7 @@ from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 
 import stripe
 from docx import Document
@@ -29,7 +30,6 @@ from .calculations import (
     fuel_price_for,
     monday_for,
     parse_date,
-    summarize_driver_period,
 )
 from .db import (
     as_dict,
@@ -51,7 +51,17 @@ from .db import (
     verify_password,
 )
 from .emailing import send_password_reset_email, smtp_configured
-from .services import get_bundle, get_state, loads_with_results, selected_month
+from .services import (
+    LOAD_SORT_OPTIONS,
+    filter_and_sort_loads,
+    get_bundle,
+    get_state,
+    loads_with_results,
+    selected_month,
+    summarize_load_rows,
+    summarize_load_rows_by_driver,
+    summarize_load_rows_by_month,
+)
 from .stripe_billing import (
     BillingConfigurationError,
     construct_webhook_event,
@@ -67,7 +77,7 @@ from .stripe_billing import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
-VERSION = "0.11.0"
+VERSION = "0.12.0"
 ENVIRONMENT = os.getenv("CARRIEROS_ENV", "development").strip().lower()
 IS_PRODUCTION = ENVIRONMENT == "production"
 CANONICAL_BASE_URL = os.getenv(
@@ -1537,14 +1547,143 @@ async def delete_quick_link(request: Request, link_id: int):
     return redirect("/links")
 
 
+def _selected_query_ids(request: Request, name: str, allowed: set[int]) -> set[int]:
+    return {
+        value
+        for raw in request.query_params.getlist(name)
+        if (value := integer(raw)) in allowed
+    }
+
+
+def load_report_context(
+    request: Request, bundle: dict[str, Any], state: dict[str, Any]
+) -> dict[str, Any]:
+    all_rows = loads_with_results(bundle, state)
+    allowed_driver_ids = {int(driver["id"]) for driver in bundle["drivers"]}
+    allowed_load_ids = {int(load["id"]) for load in bundle["loads"]}
+    selected_driver_ids = _selected_query_ids(request, "driver_id", allowed_driver_ids)
+    selected_load_ids = _selected_query_ids(request, "load_id", allowed_load_ids)
+    date_from = parse_date(request.query_params.get("date_from"))
+    date_to = parse_date(request.query_params.get("date_to"))
+    date_swapped = bool(date_from and date_to and date_from > date_to)
+    if date_swapped:
+        date_from, date_to = date_to, date_from
+    date_field = str(request.query_params.get("date_field") or "delivery_date")
+    if date_field not in {"pickup_date", "delivery_date"}:
+        date_field = "delivery_date"
+    allowed_sorts = {value for value, _ in LOAD_SORT_OPTIONS}
+    sort = str(request.query_params.get("sort") or "delivery_desc")
+    if sort not in allowed_sorts:
+        sort = "delivery_desc"
+    statuses = sorted({str(load.get("status") or "") for load in bundle["loads"] if load.get("status")})
+    status = str(request.query_params.get("status") or "")
+    if status not in statuses:
+        status = ""
+    filters = {
+        "date_from": date_from,
+        "date_to": date_to,
+        "date_field": date_field,
+        "driver_ids": selected_driver_ids,
+        "load_ids": selected_load_ids,
+        "status": status,
+        "sort": sort,
+        "date_swapped": date_swapped,
+    }
+    rows = filter_and_sort_loads(
+        all_rows,
+        date_from=date_from,
+        date_to=date_to,
+        date_field=date_field,
+        driver_ids=selected_driver_ids,
+        load_ids=selected_load_ids,
+        status=status,
+        sort=sort,
+    )
+    query_values: list[tuple[str, str]] = []
+    if date_from:
+        query_values.append(("date_from", date_from.isoformat()))
+    if date_to:
+        query_values.append(("date_to", date_to.isoformat()))
+    if date_field != "delivery_date":
+        query_values.append(("date_field", date_field))
+    query_values.extend(("driver_id", str(value)) for value in sorted(selected_driver_ids))
+    query_values.extend(("load_id", str(value)) for value in sorted(selected_load_ids))
+    if status:
+        query_values.append(("status", status))
+    if sort != "delivery_desc":
+        query_values.append(("sort", sort))
+    query_string = urlencode(query_values)
+    return {
+        "all_loads": all_rows,
+        "loads": rows,
+        "drivers": bundle["drivers"],
+        "statuses": statuses,
+        "filters": filters,
+        "sort_options": LOAD_SORT_OPTIONS,
+        "filter_query": query_string,
+        "selection": summarize_load_rows(rows),
+        "selected_by_driver": summarize_load_rows_by_driver(rows, bundle["drivers"]),
+        "selected_by_month": summarize_load_rows_by_month(rows),
+    }
+
+
 @app.get("/loads", response_class=HTMLResponse)
 def loads_page(request: Request):
     user = require_user(request)
     bundle, state = get_state(user["organization_id"])
-    return render(request, "loads.html", {
-        "loads": loads_with_results(bundle, state),
-        "state": state,
-    })
+    context = load_report_context(request, bundle, state)
+    context.update({"filter_action": "/loads", "filter_page": "loads"})
+    return render(request, "loads.html", context)
+
+
+def csv_safe(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    if value.lstrip().startswith(("=", "+", "-", "@")):
+        return f"'{value}"
+    return value
+
+
+@app.get("/loads/export.csv")
+def export_filtered_loads(request: Request):
+    user = require_user(request)
+    bundle, state = get_state(user["organization_id"])
+    context = load_report_context(request, bundle, state)
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow([
+        "Load number", "Pickup date", "Delivery date", "Status", "Driver", "Unit", "Broker",
+        "Origin", "Destination", "Revenue", "Loaded miles", "Deadhead miles", "Total miles",
+        "Revenue per mile", "Fuel cost", "Allocated fixed cost", "Maintenance reserve", "Company fees",
+        "Tolls / misc", "Other direct costs", "Operating expense", "Driver / contractor pay",
+        "Owner-operator load pay", "Company profit before owner distribution", "Owner profit distribution",
+        "Retained company profit", "Company margin", "Decision", "Included", "Exclusion reason", "Notes",
+    ])
+    for load in context["loads"]:
+        result = load["result"]
+        writer.writerow([
+            csv_safe(str(load.get("load_number") or "")), load.get("pickup_date") or "",
+            load.get("delivery_date") or "", csv_safe(str(load.get("status") or "")),
+            csv_safe(str((load.get("driver") or {}).get("name") or "Unassigned")),
+            csv_safe(str((load.get("vehicle") or {}).get("name") or "")),
+            csv_safe(str(load.get("broker") or "")), csv_safe(str(load.get("origin") or "")),
+            csv_safe(str(load.get("destination") or "")), float(load.get("revenue") or 0),
+            float(load.get("loaded_miles") or 0), float(load.get("deadhead_miles") or 0),
+            result.total_miles, result.all_in_revenue_per_mile, result.fuel_cost,
+            result.allocated_fixed_cost, result.maintenance_reserve, result.company_fees,
+            result.tolls_misc, result.other_direct_costs, result.total_operating_expense,
+            result.driver_contractor_earned, result.owner_operator_load_pay,
+            result.company_profit_before_owner_distribution, result.owner_profit_distribution,
+            result.retained_company_profit, result.company_margin_pct, result.decision,
+            "Yes" if result.included else "No", csv_safe(result.exclusion_reason),
+            csv_safe(str(load.get("notes") or "")),
+        ])
+    filename = f"carrieros-loads-{date.today().isoformat()}.csv"
+    return Response(
+        content="\ufeff" + output.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 def load_form_context(org_id: int, values: dict[str, Any] | None = None, editing: bool = False):
@@ -2097,23 +2236,16 @@ async def calculate_quote_page(request: Request):
 def financials_page(request: Request):
     user = require_user(request)
     bundle, state = get_state(user["organization_id"])
-    current_month = date.today().replace(day=1)
-    current_week_start = monday_for(date.today())
-    current_week_end = current_week_start + timedelta(days=6)
-    current_month_end = add_months(current_month, 1) - timedelta(days=1)
-    month_stats = summarize_driver_period(bundle["drivers"], bundle["loads"], state["load_results"], current_month, current_month_end)
-    week_stats = summarize_driver_period(bundle["drivers"], bundle["loads"], state["load_results"], current_week_start, current_week_end)
-    return render(request, "financials.html", {
+    context = load_report_context(request, bundle, state)
+    context.update({
         "rows": state["monthly_financials"],
         "owner": state["owner_pay"],
-        "month_stats": month_stats,
-        "week_stats": week_stats,
-        "current_month": current_month,
-        "current_week_start": current_week_start,
-        "current_week_end": current_week_end,
         "settings": bundle["settings"],
         "monthly_overhead": state["summary"]["monthly_company_overhead"],
+        "filter_action": "/financials",
+        "filter_page": "financials",
     })
+    return render(request, "financials.html", context)
 
 
 @app.get("/idle", response_class=HTMLResponse)
