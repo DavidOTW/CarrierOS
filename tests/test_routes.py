@@ -16,9 +16,11 @@ from app.main import app
 def clear_rate_limit_state():
     main_module.login_attempts.clear()
     main_module.signup_attempts.clear()
+    main_module.reset_attempts.clear()
     yield
     main_module.login_attempts.clear()
     main_module.signup_attempts.clear()
+    main_module.reset_attempts.clear()
 
 
 def signup(client: TestClient, email: str, company: str = "Acme Carrier", activate: bool = True):
@@ -299,6 +301,7 @@ def test_security_headers_and_no_default_credentials(monkeypatch: pytest.MonkeyP
 def test_production_forms_require_valid_csrf_token(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "csrf.db"))
     monkeypatch.setattr(main_module, "IS_PRODUCTION", True)
+    monkeypatch.setattr(main_module, "stripe_live_configured", lambda: True)
     with TestClient(app, base_url="https://testserver") as client:
         page = client.get("/signup")
         token_match = re.search(r'const carrierCsrfToken = "([^"]+)"', page.text)

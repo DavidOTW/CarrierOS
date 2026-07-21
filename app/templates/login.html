@@ -9,13 +9,14 @@
   </section>
   <section class="login-panel"><div class="login-card">
     <h2>Sign in</h2><p class="muted">Open your CarrierOS workspace.</p>
+    {% if success %}<div class="notice good">{{ success }}</div>{% endif %}
     {% if error %}<div class="notice bad">{{ error }}</div>{% endif %}
     <form method="post" action="/login">
       <div class="field"><label>Email</label><input type="email" name="email" autocomplete="username" required></div>
       <div class="field" style="margin-top:13px"><label>Password</label><input type="password" name="password" autocomplete="current-password" required></div>
       <div class="form-actions"><button class="btn btn-primary" style="width:100%">Sign in</button></div>
     </form>
-    <div class="demo-box"><strong>New to CarrierOS?</strong><br><a href="/signup">Start a free 14-day trial</a><br><span class="muted">Forgot your password? Contact <a href="mailto:{{ support_email }}?subject=CarrierOS%20account%20recovery">support</a> for account recovery.</span><br><a href="/terms">Terms</a> &middot; <a href="/privacy">Privacy</a></div>
+    <div class="demo-box"><strong>New to CarrierOS?</strong><br>{% if signups_open %}<a href="/signup">Start a free 14-day trial</a>{% else %}<a href="mailto:{{ support_email }}?subject=CarrierOS%20launch%20updates">Get launch updates</a>{% endif %}<br><span class="muted"><a href="/forgot-password">Forgot your password?</a></span><br><a href="/terms">Terms</a> &middot; <a href="/privacy">Privacy</a></div>
   </div></section>
 </div>
 {% endblock %}

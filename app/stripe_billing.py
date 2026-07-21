@@ -62,6 +62,12 @@ def stripe_configured() -> bool:
     )
 
 
+def stripe_live_configured() -> bool:
+    """Return true only when production billing points at a live Stripe account."""
+    secret_key = os.getenv("STRIPE_SECRET_KEY", "").strip()
+    return bool(stripe_configured() and secret_key.startswith("sk_live_"))
+
+
 def price_id_for_plan(plan_code: str) -> str:
     env_name = PLAN_PRICE_ENV.get(plan_code)
     if not env_name:
