@@ -55,7 +55,7 @@ from .stripe_billing import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
-VERSION = "0.5.1-beta"
+VERSION = "0.6.0-beta"
 ENVIRONMENT = os.getenv("CARRIEROS_ENV", "development").strip().lower()
 IS_PRODUCTION = ENVIRONMENT == "production"
 SESSION_SECRET = os.getenv("CARRIEROS_SECRET", "")
