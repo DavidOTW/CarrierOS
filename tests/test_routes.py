@@ -92,8 +92,12 @@ def test_public_marketing_home_uses_launch_pricing_and_real_app_links(
         assert "Purple Heart recipient" in response.text
         assert "20 years of experience" in response.text
         assert 'href="https://www.linkedin.com/in/davidbryant89"' in response.text
+        assert '<a class="public-signin" href="/login">Log in</a>' in response.text
         assert '"@type": "Person"' in response.text
         assert response.headers["cache-control"].startswith("public")
+        stylesheet = client.get("/static/app.css")
+        assert ".public-signin{display:inline-flex" in stylesheet.text
+        assert ".public-signin{display:none}" not in stylesheet.text
 
 
 def test_search_pages_sitemap_and_crawl_controls(
@@ -288,6 +292,68 @@ def test_business_links_are_safe_and_tenant_isolated(
         assert query_one(
             "SELECT COUNT(*) AS total FROM audit_events WHERE event_type='quick_link.created'"
         )["total"] == 1
+
+
+def test_dashboard_driver_availability_and_click_to_call(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    assert main_module.callable_phone("+1 (615) 555-0198") == "+16155550198"
+    assert main_module.callable_phone("not a phone") is None
+    monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "availability.db"))
+    delivery = date.today() + timedelta(days=3)
+    with TestClient(app) as client:
+        signup(client, "dispatch@example.com", "Dispatch Fleet")
+        assert client.post(
+            "/vehicles",
+            data={"name": "Truck 44", "equipment_type": "Truck", "active": "on"},
+            follow_redirects=False,
+        ).status_code == 303
+        vehicle = query_one("SELECT id FROM vehicles WHERE name='Truck 44'")
+        assert client.post(
+            "/drivers",
+            data={
+                "name": "Casey Driver",
+                "phone": "(615) 555-0198",
+                "role": "Driver",
+                "pay_model": "Flat Rate per Load",
+                "vehicle_id": str(vehicle["id"]),
+                "flat_rate_per_load": "350",
+                "mpg": "9.5",
+                "maintenance_per_mile": "0.22",
+                "active": "on",
+            },
+            follow_redirects=False,
+        ).status_code == 303
+        driver = query_one("SELECT id FROM drivers WHERE name='Casey Driver'")
+        assert client.post(
+            "/loads/new",
+            data={
+                "load_number": "NEXT-101",
+                "status": "Booked",
+                "include_in_model": "on",
+                "pickup_date": date.today().isoformat(),
+                "delivery_date": delivery.isoformat(),
+                "driver_id": str(driver["id"]),
+                "vehicle_id": str(vehicle["id"]),
+                "broker": "Example Broker",
+                "revenue": "2500",
+                "origin": "Nashville, TN",
+                "destination": "Charlotte, NC",
+                "loaded_miles": "410",
+                "deadhead_miles": "35",
+            },
+            follow_redirects=False,
+        ).status_code == 303
+
+        dashboard = client.get("/dashboard")
+        display_date = delivery.strftime("%b %d, %Y").replace(" 0", " ")
+        assert "Driver &amp; unit availability" in dashboard.text
+        assert "Casey Driver" in dashboard.text
+        assert "Truck 44" in dashboard.text
+        assert "Charlotte, NC" in dashboard.text
+        assert f"Available {display_date}" in dashboard.text
+        assert 'href="tel:6155550198"' in dashboard.text
+        assert "not live GPS or ELD data" in dashboard.text
 
 
 def test_unit_limit_and_flat_rate_driver(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

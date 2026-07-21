@@ -41,6 +41,16 @@
   </aside>
 </div>
 
+<section class="workspace-panel availability-panel">
+  <div class="workspace-panel-heading"><div><span>Dispatch planning</span><h3>Driver &amp; unit availability</h3></div><div class="availability-heading-actions"><a href="/links">Open load boards</a><a href="/drivers">Manage contacts</a></div></div>
+  <p class="availability-note">Plan the next load from each driver&rsquo;s latest scheduled delivery. Dates are based on CarrierOS load records, not live GPS or ELD data.</p>
+  <div class="availability-grid">{% for item in driver_availability %}<article class="availability-card">
+    <div class="availability-person"><span>{{ item.driver_name[:1]|upper }}</span><div><strong>{{ item.driver_name }}</strong><small>{{ item.vehicle_name }}</small></div><b class="badge {{ item.availability_tone }}">{{ item.availability_label }}</b></div>
+    <div class="availability-route"><span>Last scheduled destination</span><strong>{{ item.destination or 'No destination scheduled' }}</strong><small>{{ item.availability_detail }}</small></div>
+    <div class="availability-card-actions">{% if item.phone_href %}<a class="btn btn-primary btn-small" href="tel:{{ item.phone_href }}" aria-label="Call {{ item.driver_name }}">Call {{ item.driver_name.split()[0] }}</a>{% else %}<a class="btn btn-ghost btn-small" href="/drivers#driver-{{ item.driver_id }}">Add phone</a>{% endif %}{% if item.load_id %}<a class="btn btn-ghost btn-small" href="/loads/{{ item.load_id }}">View load</a>{% else %}<a class="btn btn-ghost btn-small" href="/loads/new">Assign load</a>{% endif %}</div>
+  </article>{% else %}<div class="availability-empty"><strong>No active drivers yet</strong><span>Add a driver and assigned unit to start planning fleet availability.</span><a class="btn btn-primary btn-small" href="/drivers">Add driver profile</a></div>{% endfor %}</div>
+</section>
+
 <div class="workspace-insight-grid">
   <section class="workspace-panel"><div class="workspace-panel-heading"><div><span>Financial view</span><h3>{{ month.strftime('%B %Y') }}</h3></div><a href="/financials">Full financials</a></div>{% if monthly %}<div class="kpi-list">
     <div class="kpi-row"><span>Revenue / loads</span><strong>{{ money(monthly.revenue) }} &middot; {{ monthly.loads }}</strong></div>
