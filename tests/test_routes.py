@@ -220,7 +220,7 @@ def test_signup_empty_workspace_and_authenticated_pages(monkeypatch: pytest.Monk
         assert signup(client, "owner@example.com").status_code == 303
         for page in (
             "/dashboard", "/loads", "/loads/new", "/vehicles", "/drivers", "/fuel",
-            "/payments", "/quotes", "/financials", "/idle", "/settings",
+            "/payments", "/quotes", "/rate-quotes", "/rate-quotes/new", "/financials", "/idle", "/settings",
             "/compliance", "/onboarding", "/documents", "/receivables", "/links", "/billing",
             "/manifest.webmanifest", "/service-worker.js",
         ):

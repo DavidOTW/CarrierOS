@@ -31,6 +31,13 @@ from .calculations import (
     monday_for,
     parse_date,
 )
+from .opportunities import (
+    calculate_opportunity,
+    compare_drivers,
+    offered_revenue,
+    opportunity_input_snapshot,
+)
+from .routing import configured_route_provider
 from .db import (
     as_dict,
     create_database_backup,
@@ -77,7 +84,7 @@ from .stripe_billing import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
-VERSION = "0.12.0"
+VERSION = "0.13.0"
 ENVIRONMENT = os.getenv("CARRIEROS_ENV", "development").strip().lower()
 IS_PRODUCTION = ENVIRONMENT == "production"
 CANONICAL_BASE_URL = os.getenv(
@@ -583,7 +590,8 @@ def seo_context(
                     "Seven driver compensation structures",
                     "Driver settlement tracking",
                     "Load profitability calculations",
-                    "Cost-based freight lane quotes",
+                    "Pre-book rate offers, profit checks, and negotiation tracking",
+                    "Immutable quote-to-load booking snapshots",
                     "Receivables and detention tracking",
                 ],
                 "audience": {
@@ -785,6 +793,7 @@ def robots() -> Response:
         "/onboarding",
         "/payments",
         "/quotes",
+        "/rate-quotes",
         "/receivables",
         "/settings",
         "/stripe/",
@@ -1923,11 +1932,13 @@ def drivers_page(request: Request):
     vehicles = {int(v["id"]): v for v in bundle["vehicles"]}
     drivers = []
     balances = {int(b["driver_id"]): b for b in state["driver_balances"]}
+    locations = latest_driver_locations(user["organization_id"])
     for row in bundle["drivers"]:
         item = dict(row)
         item["vehicle"] = vehicles.get(int(row.get("vehicle_id") or 0))
         item["monthly_fixed"] = driver_monthly_fixed(row)
         item["balance"] = balances.get(int(row["id"]))
+        item["location"] = locations.get(int(row["id"]))
         drivers.append(item)
     return render(request, "drivers.html", {"drivers": drivers, "vehicles": bundle["vehicles"]})
 
@@ -2193,6 +2204,572 @@ async def void_payment(request: Request, payment_id: int):
     return redirect("/payments")
 
 
+OPPORTUNITY_STATUSES = ("Draft", "Evaluated", "Negotiating", "Declined", "Booked")
+
+
+def opportunity_row(organization_id: int, opportunity_id: int) -> dict[str, Any]:
+    row = query_one(
+        "SELECT * FROM load_opportunities WHERE id=? AND organization_id=?",
+        (opportunity_id, organization_id),
+    )
+    if not row:
+        raise HTTPException(404, "Rate quote not found")
+    return dict(row)
+
+
+def latest_driver_locations(organization_id: int) -> dict[int, dict[str, Any]]:
+    rows = query_all(
+        """SELECT location.* FROM driver_locations location
+        WHERE location.organization_id=? AND location.id=(
+          SELECT candidate.id FROM driver_locations candidate
+          WHERE candidate.organization_id=location.organization_id
+            AND candidate.driver_id=location.driver_id
+          ORDER BY candidate.observed_at DESC,candidate.id DESC LIMIT 1
+        )""",
+        (organization_id,),
+    )
+    locations = {int(row["driver_id"]): dict(row) for row in rows}
+    fallback_rows = query_all(
+        """SELECT d.id AS driver_id,l.destination,l.delivery_date,l.status
+        FROM drivers d LEFT JOIN loads l ON l.id=(
+          SELECT candidate.id FROM loads candidate
+          WHERE candidate.organization_id=d.organization_id AND candidate.driver_id=d.id
+            AND lower(trim(candidate.status)) NOT IN ('cancelled','canceled','quote')
+          ORDER BY candidate.delivery_date DESC,candidate.id DESC LIMIT 1
+        ) WHERE d.organization_id=? AND d.active=1""",
+        (organization_id,),
+    )
+    for row in fallback_rows:
+        driver_id = int(row["driver_id"])
+        if driver_id in locations or not row["destination"]:
+            continue
+        destination = str(row["destination"]).strip()
+        city, separator, state = destination.partition(",")
+        observed_at = f"{row['delivery_date']}T23:59:59+00:00" if row["delivery_date"] else utc_now_iso()
+        locations[driver_id] = {
+            "driver_id": driver_id,
+            "city": city.strip(),
+            "state": state.strip() if separator else "",
+            "postal_code": "",
+            "latitude": None,
+            "longitude": None,
+            "source": "projected load destination",
+            "confidence": "projected",
+            "observed_at": observed_at,
+        }
+    return locations
+
+
+def opportunity_operational_warnings(
+    organization_id: int,
+    opportunity: dict[str, Any],
+    drivers: list[dict[str, Any]],
+) -> dict[int, list[str]]:
+    pickup = str(opportunity.get("pickup_at") or "")[:10]
+    delivery = str(opportunity.get("delivery_at") or "")[:10]
+    warnings: dict[int, list[str]] = {}
+    for driver in drivers:
+        driver_id = int(driver["id"])
+        items: list[str] = []
+        if pickup and delivery:
+            overlap = query_one(
+                """SELECT load_number FROM loads WHERE organization_id=? AND driver_id=?
+                AND lower(trim(status)) NOT IN ('cancelled','canceled','quote')
+                AND COALESCE(pickup_date,'')<=? AND COALESCE(delivery_date,'')>=?
+                ORDER BY pickup_date LIMIT 1""",
+                (organization_id, driver_id, delivery, pickup),
+            )
+            if overlap:
+                items.append(f"Schedule conflict with load {overlap['load_number']}.")
+        expired = query_one(
+            """SELECT document_type FROM compliance_items
+            WHERE organization_id=? AND expiration_date<? AND (
+              (lower(subject_type)='driver' AND subject_id=?) OR
+              (lower(subject_type)='vehicle' AND subject_id=?))
+            ORDER BY expiration_date LIMIT 1""",
+            (organization_id, date.today().isoformat(), driver_id, driver.get("vehicle_id")),
+        )
+        if expired:
+            items.append(f"Expired compliance item: {expired['document_type']}.")
+        if not driver.get("vehicle_id"):
+            items.append("No active power unit is assigned to this driver.")
+        warnings[driver_id] = items
+    return warnings
+
+
+def opportunity_form_values(form: Any, *, original_rate: float | None = None) -> dict[str, Any]:
+    offered = number(form.get("original_offered_rate")) if original_rate is None else original_rate
+    return {
+        "original_offered_rate": offered,
+        "broker_customer": str(form.get("broker_customer", "")).strip(),
+        "origin_city": str(form.get("origin_city", "")).strip(),
+        "origin_state": str(form.get("origin_state", "")).strip().upper(),
+        "origin_postal_code": str(form.get("origin_postal_code", "")).strip(),
+        "destination_city": str(form.get("destination_city", "")).strip(),
+        "destination_state": str(form.get("destination_state", "")).strip().upper(),
+        "destination_postal_code": str(form.get("destination_postal_code", "")).strip(),
+        "pickup_at": str(form.get("pickup_at", "")).strip(),
+        "delivery_at": str(form.get("delivery_at", "")).strip(),
+        "equipment_type": str(form.get("equipment_type", "")).strip(),
+        "weight_lbs": optional_number(form.get("weight_lbs")),
+        "stops": max(0, integer(form.get("stops"))),
+        "commodity": str(form.get("commodity", "")).strip(),
+        "pallets_pieces": str(form.get("pallets_pieces", "")).strip(),
+        "selected_driver_id": integer(form.get("selected_driver_id")) or None,
+        "selected_vehicle_id": integer(form.get("selected_vehicle_id")) or None,
+        "loaded_miles": max(0.0, number(form.get("loaded_miles"))),
+        "deadhead_miles": max(0.0, number(form.get("deadhead_miles"))),
+        "mileage_source": str(form.get("mileage_source", "manual")).strip() or "manual",
+        "linehaul_revenue": max(0.0, number(form.get("linehaul_revenue"))),
+        "fuel_surcharge": max(0.0, number(form.get("fuel_surcharge"))),
+        "additional_revenue": max(0.0, number(form.get("additional_revenue"))),
+        "stop_pay_revenue": max(0.0, number(form.get("stop_pay_revenue"))),
+        "tolls": max(0.0, number(form.get("tolls"))),
+        "lumper": max(0.0, number(form.get("lumper"))),
+        "factoring_pct": max(0.0, number(form.get("factoring_pct"))),
+        "quick_pay_pct": max(0.0, number(form.get("quick_pay_pct"))),
+        "misc_expenses": max(0.0, number(form.get("misc_expenses"))),
+        "hazmat": 1 if yes(form.get("hazmat")) else 0,
+        "team_required": 1 if yes(form.get("team_required")) else 0,
+        "driver_assist": 1 if yes(form.get("driver_assist")) else 0,
+        "liftgate": 1 if yes(form.get("liftgate")) else 0,
+        "inside_delivery": 1 if yes(form.get("inside_delivery")) else 0,
+        "special_equipment": str(form.get("special_equipment", "")).strip(),
+        "notes": str(form.get("notes", "")).strip(),
+    }
+
+
+def validate_opportunity_values(organization_id: int, values: dict[str, Any]) -> None:
+    if values["original_offered_rate"] <= 0:
+        raise HTTPException(400, "Enter the broker's offered rate")
+    if not all((values["origin_city"], values["destination_city"], values["pickup_at"], values["delivery_at"])):
+        raise HTTPException(400, "Enter origin, destination, pickup, and delivery")
+    pickup = parse_date(values["pickup_at"][:10])
+    delivery = parse_date(values["delivery_at"][:10])
+    if not pickup or not delivery or delivery < pickup:
+        raise HTTPException(400, "Enter a valid pickup and delivery window")
+    if values["selected_driver_id"]:
+        driver = query_one(
+            "SELECT vehicle_id FROM drivers WHERE id=? AND organization_id=? AND active=1",
+            (values["selected_driver_id"], organization_id),
+        )
+        if not driver:
+            raise HTTPException(400, "Select a valid active driver")
+        values["selected_vehicle_id"] = values["selected_vehicle_id"] or driver["vehicle_id"]
+    if values["selected_vehicle_id"] and not query_one(
+        "SELECT 1 FROM vehicles WHERE id=? AND organization_id=? AND active=1",
+        (values["selected_vehicle_id"], organization_id),
+    ):
+        raise HTTPException(400, "Select a valid active power unit")
+
+
+def insert_opportunity_snapshot(
+    conn: Any,
+    opportunity: dict[str, Any],
+    settings: dict[str, Any],
+    driver: dict[str, Any] | None,
+    result: Any,
+    stage: str,
+    user_id: int,
+    revenue: float,
+) -> int:
+    revision_row = conn.execute(
+        "SELECT COALESCE(MAX(revision),0)+1 AS revision FROM opportunity_snapshots WHERE opportunity_id=? AND stage=?",
+        (opportunity["id"], stage),
+    ).fetchone()
+    revision = int(revision_row["revision"])
+    return int(conn.execute(
+        """INSERT INTO opportunity_snapshots
+        (organization_id,opportunity_id,stage,revision,input_json,result_json,created_by)
+        VALUES (?,?,?,?,?,?,?)""",
+        (
+            opportunity["organization_id"], opportunity["id"], stage, revision,
+            opportunity_input_snapshot(opportunity, settings, driver, revenue=revenue),
+            json.dumps(result.to_dict(), sort_keys=True, separators=(",", ":")), user_id,
+        ),
+    ).lastrowid)
+
+
+def calculate_saved_opportunity(
+    organization_id: int,
+    opportunity: dict[str, Any],
+    *,
+    revenue_override: float | None = None,
+    extra_warnings: list[str] | None = None,
+) -> tuple[dict[str, Any], dict[str, Any] | None, Any, float]:
+    bundle = get_bundle(organization_id)
+    driver = next(
+        (item for item in bundle["drivers"] if int(item["id"]) == int(opportunity.get("selected_driver_id") or 0)),
+        None,
+    )
+    pickup = parse_date(str(opportunity.get("pickup_at") or "")[:10]) or date.today()
+    fuel_price = fuel_price_for(pickup, bundle["weekly_fuel"], number(bundle["settings"]["fallback_diesel_price"]))
+    result = calculate_opportunity(
+        bundle["settings"], driver, opportunity,
+        revenue_override=revenue_override, fuel_price=fuel_price,
+        warnings=extra_warnings or (),
+    )
+    return bundle, driver, result, fuel_price
+
+
+@app.get("/rate-quotes", response_class=HTMLResponse)
+def rate_quotes_page(request: Request, status: str = ""):
+    user = require_user(request)
+    params: list[Any] = [user["organization_id"]]
+    where = "WHERE organization_id=?"
+    if status in OPPORTUNITY_STATUSES:
+        where += " AND status=?"
+        params.append(status)
+    rows = [dict(row) for row in query_all(
+        f"SELECT * FROM load_opportunities {where} ORDER BY created_at DESC,id DESC",
+        params,
+    )]
+    return render(request, "rate_quotes.html", {
+        "opportunities": rows,
+        "selected_status": status if status in OPPORTUNITY_STATUSES else "",
+        "statuses": OPPORTUNITY_STATUSES,
+    })
+
+
+def opportunity_form_context(organization_id: int, values: dict[str, Any] | None = None, editing: bool = False):
+    bundle = get_bundle(organization_id)
+    defaults = values or {
+        "pickup_at": f"{date.today().isoformat()}T08:00",
+        "delivery_at": f"{date.today().isoformat()}T17:00",
+        "mileage_source": "manual",
+        "factoring_pct": 0,
+        "quick_pay_pct": 0,
+        "stops": 0,
+    }
+    return {"drivers": bundle["drivers"], "vehicles": bundle["vehicles"], "values": defaults, "editing": editing}
+
+
+@app.get("/rate-quotes/new", response_class=HTMLResponse)
+def new_rate_quote_page(request: Request):
+    user = require_user(request)
+    return render(request, "rate_quote_form.html", opportunity_form_context(user["organization_id"]))
+
+
+@app.post("/rate-quotes/new")
+async def create_rate_quote(request: Request):
+    user = require_user(request)
+    form = await verified_form(request)
+    values = opportunity_form_values(form)
+    validate_opportunity_values(user["organization_id"], values)
+    columns = ",".join(values)
+    placeholders = ",".join("?" for _ in values)
+    with db_session() as conn:
+        opportunity_id = int(conn.execute(
+            f"""INSERT INTO load_opportunities
+            (organization_id,status,{columns},created_by,updated_by)
+            VALUES (?, 'Evaluated', {placeholders}, ?, ?)""",
+            (user["organization_id"], *values.values(), user["id"], user["id"]),
+        ).lastrowid)
+        opportunity = dict(conn.execute("SELECT * FROM load_opportunities WHERE id=?", (opportunity_id,)).fetchone())
+        settings = dict(conn.execute("SELECT * FROM organizations WHERE id=?", (user["organization_id"],)).fetchone())
+        driver_row = conn.execute(
+            "SELECT * FROM drivers WHERE id=? AND organization_id=?",
+            (values["selected_driver_id"] or 0, user["organization_id"]),
+        ).fetchone()
+        driver = dict(driver_row) if driver_row else None
+        bundle = get_bundle(user["organization_id"])
+        pickup = parse_date(values["pickup_at"][:10]) or date.today()
+        fuel_price = fuel_price_for(pickup, bundle["weekly_fuel"], number(settings["fallback_diesel_price"]))
+        result = calculate_opportunity(settings, driver, opportunity, fuel_price=fuel_price)
+        insert_opportunity_snapshot(conn, opportunity, settings, driver, result, "evaluation", user["id"], offered_revenue(opportunity))
+        conn.execute(
+            """INSERT INTO opportunity_negotiations
+            (organization_id,opportunity_id,action,amount,notes,created_by)
+            VALUES (?,?,?,?,?,?)""",
+            (user["organization_id"], opportunity_id, "Offer received", values["original_offered_rate"], "Initial manual offer", user["id"]),
+        )
+    record_audit_event("opportunity.created", int(user["organization_id"]), int(user["id"]), {"opportunity_id": opportunity_id})
+    return redirect(f"/rate-quotes/{opportunity_id}")
+
+
+@app.get("/rate-quotes/{opportunity_id}/edit", response_class=HTMLResponse)
+def edit_rate_quote_page(request: Request, opportunity_id: int):
+    user = require_user(request)
+    opportunity = opportunity_row(user["organization_id"], opportunity_id)
+    if opportunity["status"] in {"Booked", "Declined"}:
+        raise HTTPException(409, "Booked or declined quotes are locked")
+    return render(request, "rate_quote_form.html", opportunity_form_context(user["organization_id"], opportunity, True))
+
+
+@app.post("/rate-quotes/{opportunity_id}/edit")
+async def update_rate_quote(request: Request, opportunity_id: int):
+    user = require_user(request)
+    existing = opportunity_row(user["organization_id"], opportunity_id)
+    if existing["status"] in {"Booked", "Declined"}:
+        raise HTTPException(409, "Booked or declined quotes are locked")
+    form = await verified_form(request)
+    values = opportunity_form_values(form, original_rate=number(existing["original_offered_rate"]))
+    validate_opportunity_values(user["organization_id"], values)
+    assignments = ",".join(f"{column}=?" for column in values if column != "original_offered_rate")
+    editable_values = [value for column, value in values.items() if column != "original_offered_rate"]
+    with db_session() as conn:
+        conn.execute(
+            f"UPDATE load_opportunities SET {assignments},status='Evaluated',updated_by=?,updated_at=? WHERE id=? AND organization_id=?",
+            (*editable_values, user["id"], utc_now_iso(), opportunity_id, user["organization_id"]),
+        )
+        opportunity = dict(conn.execute("SELECT * FROM load_opportunities WHERE id=?", (opportunity_id,)).fetchone())
+        settings = dict(conn.execute("SELECT * FROM organizations WHERE id=?", (user["organization_id"],)).fetchone())
+        driver_row = conn.execute("SELECT * FROM drivers WHERE id=? AND organization_id=?", (opportunity.get("selected_driver_id") or 0, user["organization_id"])).fetchone()
+        driver = dict(driver_row) if driver_row else None
+        bundle = get_bundle(user["organization_id"])
+        pickup = parse_date(str(opportunity["pickup_at"])[:10]) or date.today()
+        fuel_price = fuel_price_for(pickup, bundle["weekly_fuel"], number(settings["fallback_diesel_price"]))
+        result = calculate_opportunity(settings, driver, opportunity, fuel_price=fuel_price)
+        insert_opportunity_snapshot(conn, opportunity, settings, driver, result, "evaluation", user["id"], offered_revenue(opportunity))
+    record_audit_event("opportunity.updated", int(user["organization_id"]), int(user["id"]), {"opportunity_id": opportunity_id})
+    return redirect(f"/rate-quotes/{opportunity_id}")
+
+
+@app.post("/rate-quotes/{opportunity_id}/select-driver/{driver_id}")
+async def select_quote_driver(request: Request, opportunity_id: int, driver_id: int):
+    user = require_user(request)
+    await verified_form(request)
+    opportunity = opportunity_row(user["organization_id"], opportunity_id)
+    if opportunity["status"] in {"Booked", "Declined"}:
+        raise HTTPException(409, "This quote is locked")
+    driver = query_one("SELECT * FROM drivers WHERE id=? AND organization_id=? AND active=1", (driver_id, user["organization_id"]))
+    if not driver:
+        raise HTTPException(404, "Driver not found")
+    execute(
+        "UPDATE load_opportunities SET selected_driver_id=?,selected_vehicle_id=?,status='Evaluated',updated_by=?,updated_at=? WHERE id=? AND organization_id=?",
+        (driver_id, driver["vehicle_id"], user["id"], utc_now_iso(), opportunity_id, user["organization_id"]),
+    )
+    revised = opportunity_row(user["organization_id"], opportunity_id)
+    bundle, selected_driver, result, _ = calculate_saved_opportunity(user["organization_id"], revised)
+    with db_session() as conn:
+        insert_opportunity_snapshot(
+            conn, revised, bundle["settings"], selected_driver, result,
+            "evaluation", user["id"], offered_revenue(revised),
+        )
+    set_flash(request, f"{driver['name']} selected. The quote was recalculated with that pay profile.")
+    return redirect(f"/rate-quotes/{opportunity_id}")
+
+
+@app.post("/rate-quotes/{opportunity_id}/negotiate")
+async def negotiate_rate_quote(request: Request, opportunity_id: int):
+    user = require_user(request)
+    opportunity = opportunity_row(user["organization_id"], opportunity_id)
+    if opportunity["status"] in {"Booked", "Declined"}:
+        raise HTTPException(409, "This quote is locked")
+    form = await verified_form(request)
+    amount = optional_number(form.get("counteroffer_rate"))
+    if amount is None or amount <= 0:
+        raise HTTPException(400, "Enter a counteroffer")
+    response = str(form.get("broker_response", "")).strip()
+    notes = str(form.get("negotiation_notes", "")).strip()
+    with db_session() as conn:
+        conn.execute(
+            """UPDATE load_opportunities SET status='Negotiating',counteroffer_rate=?,broker_response=?,
+            negotiation_notes=?,updated_by=?,updated_at=? WHERE id=? AND organization_id=?""",
+            (amount, response, notes, user["id"], utc_now_iso(), opportunity_id, user["organization_id"]),
+        )
+        conn.execute(
+            """INSERT INTO opportunity_negotiations
+            (organization_id,opportunity_id,action,amount,broker_response,notes,created_by)
+            VALUES (?,?,?,?,?,?,?)""",
+            (user["organization_id"], opportunity_id, "Counteroffer sent", amount, response, notes, user["id"]),
+        )
+    record_audit_event("opportunity.negotiated", int(user["organization_id"]), int(user["id"]), {"opportunity_id": opportunity_id, "counteroffer": amount})
+    return redirect(f"/rate-quotes/{opportunity_id}")
+
+
+@app.post("/rate-quotes/{opportunity_id}/decline")
+async def decline_rate_quote(request: Request, opportunity_id: int):
+    user = require_user(request)
+    opportunity = opportunity_row(user["organization_id"], opportunity_id)
+    if opportunity["status"] == "Booked":
+        raise HTTPException(409, "A booked quote cannot be declined")
+    form = await verified_form(request)
+    notes = str(form.get("notes", "")).strip()
+    with db_session() as conn:
+        conn.execute(
+            "UPDATE load_opportunities SET status='Declined',declined_at=?,updated_by=?,updated_at=? WHERE id=? AND organization_id=?",
+            (utc_now_iso(), user["id"], utc_now_iso(), opportunity_id, user["organization_id"]),
+        )
+        conn.execute(
+            """INSERT INTO opportunity_negotiations
+            (organization_id,opportunity_id,action,notes,created_by) VALUES (?,?,?,?,?)""",
+            (user["organization_id"], opportunity_id, "Declined", notes, user["id"]),
+        )
+    record_audit_event("opportunity.declined", int(user["organization_id"]), int(user["id"]), {"opportunity_id": opportunity_id})
+    return redirect(f"/rate-quotes/{opportunity_id}")
+
+
+@app.post("/rate-quotes/{opportunity_id}/book")
+async def book_rate_quote(request: Request, opportunity_id: int):
+    user = require_user(request)
+    opportunity = opportunity_row(user["organization_id"], opportunity_id)
+    if opportunity.get("booked_load_id") or opportunity["status"] == "Booked":
+        raise HTTPException(409, "This opportunity has already been converted to a load")
+    form = await verified_form(request)
+    final_rate = optional_number(form.get("final_agreed_rate"))
+    if final_rate is None or final_rate <= 0:
+        final_rate = optional_number(opportunity.get("counteroffer_rate")) or number(opportunity["original_offered_rate"])
+    driver_id = int(opportunity.get("selected_driver_id") or 0)
+    if not driver_id:
+        raise HTTPException(400, "Select a driver before booking")
+    driver = query_one("SELECT * FROM drivers WHERE id=? AND organization_id=? AND active=1", (driver_id, user["organization_id"]))
+    if not driver:
+        raise HTTPException(400, "The selected driver is unavailable")
+    vehicle_id = int(opportunity.get("selected_vehicle_id") or driver["vehicle_id"] or 0)
+    if not vehicle_id or not query_one("SELECT 1 FROM vehicles WHERE id=? AND organization_id=? AND active=1", (vehicle_id, user["organization_id"])):
+        raise HTTPException(400, "Assign an active power unit before booking")
+    operational = opportunity_operational_warnings(user["organization_id"], opportunity, [dict(driver)])
+    bundle, driver_data, _, fuel_price = calculate_saved_opportunity(
+        user["organization_id"], opportunity, revenue_override=final_rate,
+    )
+    location_comparison = compare_drivers(
+        bundle["settings"], [dict(driver)], opportunity,
+        latest_driver_locations(user["organization_id"]), configured_route_provider(),
+        fuel_price=fuel_price, operational_warnings=operational,
+    )
+    review_warnings = list(location_comparison[0]["result"].warnings) if location_comparison else operational.get(driver_id, [])
+    bundle, driver_data, result, _ = calculate_saved_opportunity(
+        user["organization_id"], opportunity, revenue_override=final_rate,
+        extra_warnings=review_warnings,
+    )
+    if result.recommendation == "REVIEW REQUIRED" and not yes(form.get("confirm_review")):
+        raise HTTPException(400, "Resolve the review warnings or confirm the reviewed override before booking")
+    if result.loaded_miles <= 0:
+        raise HTTPException(400, "Verified loaded miles are required before booking")
+    due_at = (datetime.now(timezone.utc) + timedelta(hours=max(1, integer(bundle["settings"].get("ratecon_due_hours"), 4)))).replace(microsecond=0).isoformat()
+    origin = ", ".join(part for part in (opportunity.get("origin_city"), opportunity.get("origin_state")) if part)
+    destination = ", ".join(part for part in (opportunity.get("destination_city"), opportunity.get("destination_state")) if part)
+    factoring_fee = final_rate * (number(opportunity.get("factoring_pct")) + number(opportunity.get("quick_pay_pct"))) / 100
+    direct_costs = number(opportunity.get("lumper")) + number(opportunity.get("misc_expenses")) + factoring_fee
+    with db_session() as conn:
+        locked = conn.execute(
+            "SELECT * FROM load_opportunities WHERE id=? AND organization_id=?",
+            (opportunity_id, user["organization_id"]),
+        ).fetchone()
+        if not locked or locked["booked_load_id"] or locked["status"] == "Booked":
+            raise HTTPException(409, "This opportunity has already been converted to a load")
+        quote_snapshot = conn.execute(
+            """SELECT id FROM opportunity_snapshots WHERE opportunity_id=? AND stage='evaluation'
+            ORDER BY revision DESC,id DESC LIMIT 1""",
+            (opportunity_id,),
+        ).fetchone()
+        booking_snapshot_id = insert_opportunity_snapshot(
+            conn, opportunity, bundle["settings"], driver_data, result, "booking", user["id"], final_rate,
+        )
+        load_number = f"CO-{date.today():%Y}-{opportunity_id:05d}"
+        load_id = int(conn.execute(
+            """INSERT INTO loads
+            (organization_id,load_number,pickup_date,delivery_date,driver_id,vehicle_id,
+             broker,origin,destination,status,revenue,loaded_miles,deadhead_miles,fuel_override,
+             tolls_misc,other_direct_costs,notes,include_in_model,opportunity_id,
+             original_offered_rate,final_agreed_rate,quote_snapshot_id,booking_snapshot_id,ratecon_due_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                user["organization_id"], load_number, str(opportunity["pickup_at"])[:10],
+                str(opportunity["delivery_at"])[:10], driver_id, vehicle_id,
+                opportunity.get("broker_customer") or "", origin, destination,
+                "Booked — Awaiting RateCon", final_rate, result.loaded_miles, result.deadhead_miles,
+                None, number(opportunity.get("tolls")), direct_costs,
+                opportunity.get("notes") or "", 1, opportunity_id,
+                opportunity["original_offered_rate"], final_rate,
+                int(quote_snapshot["id"]) if quote_snapshot else None, booking_snapshot_id, due_at,
+            ),
+        ).lastrowid)
+        conn.execute(
+            "UPDATE loads SET booking_snapshot_id=? WHERE id=?",
+            (booking_snapshot_id, load_id),
+        )
+        conn.execute(
+            """UPDATE load_opportunities SET status='Booked',final_agreed_rate=?,booked_load_id=?,
+            ratecon_due_at=?,booked_at=?,updated_by=?,updated_at=?
+            WHERE id=? AND organization_id=? AND booked_load_id IS NULL""",
+            (final_rate, load_id, due_at, utc_now_iso(), user["id"], utc_now_iso(), opportunity_id, user["organization_id"]),
+        )
+        conn.execute(
+            """INSERT INTO opportunity_negotiations
+            (organization_id,opportunity_id,action,amount,notes,created_by) VALUES (?,?,?,?,?,?)""",
+            (user["organization_id"], opportunity_id, "Booked — Awaiting RateCon", final_rate, "Converted once to operational load", user["id"]),
+        )
+    record_audit_event("opportunity.booked", int(user["organization_id"]), int(user["id"]), {"opportunity_id": opportunity_id, "load_id": load_id, "final_rate": final_rate})
+    set_flash(request, "Load booked. The original quote and final booking calculations are locked as audit snapshots; RateCon is now due.")
+    return redirect(f"/loads/{load_id}")
+
+
+@app.get("/rate-quotes/{opportunity_id}", response_class=HTMLResponse)
+def rate_quote_detail(request: Request, opportunity_id: int):
+    user = require_user(request)
+    opportunity = opportunity_row(user["organization_id"], opportunity_id)
+    bundle, driver, result, fuel_price = calculate_saved_opportunity(user["organization_id"], opportunity)
+    locations = latest_driver_locations(user["organization_id"])
+    comparison = compare_drivers(
+        bundle["settings"], bundle["drivers"], opportunity, locations,
+        configured_route_provider(), fuel_price=fuel_price,
+        operational_warnings=opportunity_operational_warnings(user["organization_id"], opportunity, bundle["drivers"]),
+    )
+    selected_comparison = next(
+        (row for row in comparison if int(row["driver"]["id"]) == int(opportunity.get("selected_driver_id") or 0)),
+        None,
+    )
+    if selected_comparison:
+        driver = selected_comparison["driver"]
+        result = selected_comparison["result"]
+    negotiations = [dict(row) for row in query_all(
+        "SELECT * FROM opportunity_negotiations WHERE organization_id=? AND opportunity_id=? ORDER BY created_at DESC,id DESC",
+        (user["organization_id"], opportunity_id),
+    )]
+    snapshots = [dict(row) for row in query_all(
+        "SELECT id,stage,revision,created_at FROM opportunity_snapshots WHERE organization_id=? AND opportunity_id=? ORDER BY created_at DESC,id DESC",
+        (user["organization_id"], opportunity_id),
+    )]
+    counter = result.opening_counteroffer or result.minimum_acceptable_rate or opportunity["original_offered_rate"]
+    message = (
+        f"We can cover {opportunity.get('origin_city')}, {opportunity.get('origin_state')} to "
+        f"{opportunity.get('destination_city')}, {opportunity.get('destination_state')} for ${counter:,.0f}. "
+        "Please confirm the final all-in rate and send the RateCon after we agree."
+    )
+    return render(request, "rate_quote_detail.html", {
+        "opportunity": opportunity, "selected_driver": driver, "result": result,
+        "comparison": comparison, "negotiations": negotiations, "snapshots": snapshots,
+        "negotiation_message": message, "fuel_price": fuel_price,
+    })
+
+
+@app.post("/drivers/{driver_id}/location")
+async def save_driver_location(request: Request, driver_id: int):
+    user = require_user(request)
+    driver = query_one("SELECT id FROM drivers WHERE id=? AND organization_id=?", (driver_id, user["organization_id"]))
+    if not driver:
+        raise HTTPException(404, "Driver not found")
+    form = await verified_form(request)
+    city = str(form.get("city", "")).strip()
+    state = str(form.get("state", "")).strip().upper()
+    if not city or not state:
+        raise HTTPException(400, "Enter a city and state")
+    observed_at = str(form.get("observed_at", "")).strip() or utc_now_iso()
+    try:
+        datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise HTTPException(400, "Enter a valid location timestamp") from exc
+    execute(
+        """INSERT INTO driver_locations
+        (organization_id,driver_id,city,state,postal_code,latitude,longitude,source,confidence,
+         observed_at,override_reason,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            user["organization_id"], driver_id, city, state,
+            str(form.get("postal_code", "")).strip(), optional_number(form.get("latitude")),
+            optional_number(form.get("longitude")), "manual", "manual", observed_at,
+            str(form.get("override_reason", "")).strip(), user["id"],
+        ),
+    )
+    record_audit_event("driver.location_recorded", int(user["organization_id"]), int(user["id"]), {"driver_id": driver_id})
+    set_flash(request, "Driver location recorded with its source and timestamp.")
+    return_to = str(form.get("return_to") or "/drivers")
+    if not return_to.startswith("/") or return_to.startswith("//"):
+        return_to = "/drivers"
+    return redirect(return_to)
+
+
 @app.get("/quotes", response_class=HTMLResponse)
 def quote_page(request: Request):
     user = require_user(request)
@@ -2369,6 +2946,8 @@ async def update_settings(request: Request):
             """UPDATE organizations SET name=?,owner_name=?,owner_email=?,fallback_diesel_price=?,
             processing_fee_pct=?,admin_fee_per_load=?,payroll_burden_pct=?,target_margin_pct=?,
             target_max_deadhead_pct=?,min_company_profit_per_mile=?,owner_distribution_pct=?,
+            min_total_profit=?,min_profit_per_day=?,min_revenue_per_total_mile=?,
+            quote_counteroffer_pct=?,ratecon_due_hours=?,location_stale_hours=?,default_payment_days=?,
             supported_start_date=?,supported_end_date=?,max_active_days=?,tax_reserve_pct=?,
             growth_reserve_pct=?,reporting_start_month=?,default_report_month=? WHERE id=?""",
             (
@@ -2376,6 +2955,10 @@ async def update_settings(request: Request):
                 number(form.get("fallback_diesel_price")), number(form.get("processing_fee_pct")), number(form.get("admin_fee_per_load")),
                 number(form.get("payroll_burden_pct")), number(form.get("target_margin_pct")), number(form.get("target_max_deadhead_pct")),
                 number(form.get("min_company_profit_per_mile")), number(form.get("owner_distribution_pct")),
+                number(form.get("min_total_profit"), 200), number(form.get("min_profit_per_day"), 100),
+                number(form.get("min_revenue_per_total_mile"), 1.75), number(form.get("quote_counteroffer_pct"), 5),
+                integer(form.get("ratecon_due_hours"), 4), integer(form.get("location_stale_hours"), 24),
+                integer(form.get("default_payment_days"), 30),
                 str(form.get("supported_start_date", "")), str(form.get("supported_end_date", "")), integer(form.get("max_active_days"), 31),
                 number(form.get("tax_reserve_pct")), number(form.get("growth_reserve_pct")), str(form.get("reporting_start_month", "")),
                 str(form.get("default_report_month", "")), user["organization_id"],

@@ -24,6 +24,8 @@ services:
         value: https://otwcarrieros.com
       - key: CARRIEROS_SUPPORT_EMAIL
         value: david@outsidethewirelogistics.com
+      - key: CARRIEROS_ROUTE_PROVIDER
+        value: manual
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_WEBHOOK_SECRET

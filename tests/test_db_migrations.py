@@ -43,10 +43,17 @@ def test_existing_organization_gets_launch_columns(
     assert "audit_events" in tables
     assert "password_reset_tokens" in tables
     assert "quick_links" in tables
-    assert user_version == 9
+    assert {"load_opportunities", "opportunity_snapshots", "opportunity_negotiations", "driver_locations"} <= tables
+    assert user_version == 10
     with connect() as conn:
         payment_columns = {row["name"] for row in conn.execute("PRAGMA table_info(payments)")}
     assert {"voided_at", "voided_by", "void_reason"} <= payment_columns
+    with connect() as conn:
+        load_columns = {row["name"] for row in conn.execute("PRAGMA table_info(loads)")}
+    assert {
+        "opportunity_id", "original_offered_rate", "final_agreed_rate",
+        "quote_snapshot_id", "booking_snapshot_id", "ratecon_due_at",
+    } <= load_columns
     with connect() as conn:
         onboarding_columns = {
             row["name"] for row in conn.execute("PRAGMA table_info(onboarding_applications)")

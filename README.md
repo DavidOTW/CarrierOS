@@ -4,6 +4,10 @@ CarrierOS is a multi-company fleet financial workspace for small carriers. Each 
 
 ## Included in this release candidate
 
+- Phase 1 carrier workflow: broker/customer offer, pre-book profit check, driver comparison, negotiation history, and exactly-once conversion to `Booked — Awaiting RateCon`
+- Deterministic `BOOK`, `NEGOTIATE`, `DECLINE`, and `REVIEW REQUIRED` recommendations based on company margin, profit, profit-per-mile/day, revenue-per-mile, and deadhead thresholds
+- Immutable evaluation/booking snapshots that preserve the original offer, final rate, company settings, and selected driver pay profile
+- Sourced and timestamped driver locations with stale/unknown warnings and a routing-provider boundary; production uses manually verified mileage until a commercial provider is configured
 - Customer signup with versioned terms consent, sign-in, secure sessions, production CSRF checks, account throttling, security headers, self-service password reset when SMTP is configured, and an append-only account audit trail
 - Organization-scoped loads, units, drivers, payments, fuel, quoting, financials, compliance, onboarding, documents, detention, and receivables
 - Seven driver-pay structures: profit split, contractor gross split, owner-operator split, flat rate per load, loaded-mile rate, total-mile rate, and day rate
@@ -12,6 +16,8 @@ CarrierOS is a multi-company fleet financial workspace for small carriers. Each 
 - Docker packaging with a non-root process, dynamic platform port, health check, and persistent data volume
 - Daily consistent SQLite backups with retention, Render disk snapshots, and authenticated company-data export
 - Public Privacy Policy and Terms of Service pages
+
+The full V1 roadmap and Phase 1 boundary are documented in `docs/V1_PRODUCT_REQUIREMENTS.md`, `docs/V1_ARCHITECTURE.md`, `docs/V1_IMPLEMENTATION_PLAN.md`, and `docs/V1_RISK_REGISTER.md`. Commercial routing, RateCon upload/extraction, live GPS/ELD/HOS, execution automation, settlement approval, invoicing automation, collections, and accounting sync are not part of v0.13.0.
 
 ## Local development
 
@@ -51,6 +57,8 @@ Squarespace remains the marketing site and sends plan links directly to CarrierO
 Configure a Stripe webhook endpoint at `https://YOUR-APP/stripe/webhook` for `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `customer.subscription.trial_will_end`, `invoice.paid`, and `invoice.payment_failed`. The four standard monthly Price IDs must be supplied through the corresponding `STRIPE_PRICE_*` environment variables. Configure the Stripe Customer Portal to allow the plan changes and cancellation behavior you intend to support.
 
 Stripe Connect is intentionally not part of the initial SaaS billing release. Calculating contractor compensation does not by itself justify Connect, and Connect must not be treated as a general payroll or arbitrary payout service. Reassess Connect when CarrierOS has a defined underlying customer-to-fleet or customer-to-contractor payment flow.
+
+Set `CARRIEROS_ROUTE_PROVIDER=manual` in production. The included `estimated` adapter is a clearly labeled non-commercial development estimate and is not appropriate for booking decisions. Automated tests use the deterministic mock adapter.
 
 ## Go-live checklist
 

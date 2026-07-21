@@ -195,6 +195,12 @@ CREATE TABLE IF NOT EXISTS loads (
     notes TEXT,
     include_in_model INTEGER NOT NULL DEFAULT 1,
     source_row INTEGER,
+    opportunity_id INTEGER,
+    original_offered_rate REAL,
+    final_agreed_rate REAL,
+    quote_snapshot_id INTEGER,
+    booking_snapshot_id INTEGER,
+    ratecon_due_at TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
     FOREIGN KEY (driver_id) REFERENCES drivers(id) ON DELETE SET NULL,
@@ -318,6 +324,117 @@ CREATE TABLE IF NOT EXISTS generated_documents (
     FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS load_opportunities (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    organization_id INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'Draft',
+    original_offered_rate REAL NOT NULL DEFAULT 0,
+    counteroffer_rate REAL,
+    final_agreed_rate REAL,
+    broker_customer TEXT,
+    origin_city TEXT,
+    origin_state TEXT,
+    origin_postal_code TEXT,
+    destination_city TEXT,
+    destination_state TEXT,
+    destination_postal_code TEXT,
+    pickup_at TEXT,
+    delivery_at TEXT,
+    equipment_type TEXT,
+    weight_lbs REAL,
+    stops INTEGER NOT NULL DEFAULT 0,
+    commodity TEXT,
+    pallets_pieces TEXT,
+    selected_driver_id INTEGER,
+    selected_vehicle_id INTEGER,
+    loaded_miles REAL NOT NULL DEFAULT 0,
+    deadhead_miles REAL NOT NULL DEFAULT 0,
+    mileage_source TEXT NOT NULL DEFAULT 'manual',
+    linehaul_revenue REAL NOT NULL DEFAULT 0,
+    fuel_surcharge REAL NOT NULL DEFAULT 0,
+    additional_revenue REAL NOT NULL DEFAULT 0,
+    stop_pay_revenue REAL NOT NULL DEFAULT 0,
+    tolls REAL NOT NULL DEFAULT 0,
+    lumper REAL NOT NULL DEFAULT 0,
+    factoring_pct REAL NOT NULL DEFAULT 0,
+    quick_pay_pct REAL NOT NULL DEFAULT 0,
+    misc_expenses REAL NOT NULL DEFAULT 0,
+    hazmat INTEGER NOT NULL DEFAULT 0,
+    team_required INTEGER NOT NULL DEFAULT 0,
+    driver_assist INTEGER NOT NULL DEFAULT 0,
+    liftgate INTEGER NOT NULL DEFAULT 0,
+    inside_delivery INTEGER NOT NULL DEFAULT 0,
+    special_equipment TEXT,
+    notes TEXT,
+    negotiation_notes TEXT,
+    broker_response TEXT,
+    booked_load_id INTEGER UNIQUE,
+    ratecon_due_at TEXT,
+    created_by INTEGER,
+    updated_by INTEGER,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    declined_at TEXT,
+    booked_at TEXT,
+    FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+    FOREIGN KEY (selected_driver_id) REFERENCES drivers(id) ON DELETE SET NULL,
+    FOREIGN KEY (selected_vehicle_id) REFERENCES vehicles(id) ON DELETE SET NULL,
+    FOREIGN KEY (booked_load_id) REFERENCES loads(id) ON DELETE SET NULL,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS opportunity_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    organization_id INTEGER NOT NULL,
+    opportunity_id INTEGER NOT NULL,
+    stage TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    input_json TEXT NOT NULL,
+    result_json TEXT NOT NULL,
+    created_by INTEGER,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (opportunity_id, stage, revision),
+    FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+    FOREIGN KEY (opportunity_id) REFERENCES load_opportunities(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS opportunity_negotiations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    organization_id INTEGER NOT NULL,
+    opportunity_id INTEGER NOT NULL,
+    action TEXT NOT NULL,
+    amount REAL,
+    broker_response TEXT,
+    notes TEXT,
+    created_by INTEGER,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+    FOREIGN KEY (opportunity_id) REFERENCES load_opportunities(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS driver_locations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    organization_id INTEGER NOT NULL,
+    driver_id INTEGER NOT NULL,
+    city TEXT,
+    state TEXT,
+    postal_code TEXT,
+    latitude REAL,
+    longitude REAL,
+    source TEXT NOT NULL DEFAULT 'manual',
+    confidence TEXT NOT NULL DEFAULT 'manual',
+    observed_at TEXT NOT NULL,
+    override_reason TEXT,
+    created_by INTEGER,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+    FOREIGN KEY (driver_id) REFERENCES drivers(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_loads_org_dates ON loads(organization_id, pickup_date, delivery_date);
 CREATE INDEX IF NOT EXISTS idx_payments_org_driver ON payments(organization_id, driver_id, paid_at);
 CREATE INDEX IF NOT EXISTS idx_fuel_org_week ON weekly_fuel(organization_id, week_start);
@@ -327,7 +444,36 @@ CREATE INDEX IF NOT EXISTS idx_invoices_due ON invoices(organization_id, due_dat
 CREATE INDEX IF NOT EXISTS idx_audit_events_org_created ON audit_events(organization_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_password_reset_user ON password_reset_tokens(user_id, expires_at);
 CREATE INDEX IF NOT EXISTS idx_quick_links_org_sort ON quick_links(organization_id, sort_order, label);
-PRAGMA user_version = 9;
+CREATE INDEX IF NOT EXISTS idx_opportunities_org_status ON load_opportunities(organization_id, status, pickup_at);
+CREATE INDEX IF NOT EXISTS idx_snapshots_org_opportunity ON opportunity_snapshots(organization_id, opportunity_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_negotiations_org_opportunity ON opportunity_negotiations(organization_id, opportunity_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_driver_locations_org_driver ON driver_locations(organization_id, driver_id, observed_at DESC);
+
+CREATE TRIGGER IF NOT EXISTS opportunity_snapshots_no_update
+BEFORE UPDATE ON opportunity_snapshots
+BEGIN
+    SELECT RAISE(ABORT, 'opportunity snapshots are immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS opportunity_snapshots_no_delete
+BEFORE DELETE ON opportunity_snapshots
+BEGIN
+    SELECT RAISE(ABORT, 'opportunity snapshots are immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS opportunity_negotiations_no_update
+BEFORE UPDATE ON opportunity_negotiations
+BEGIN
+    SELECT RAISE(ABORT, 'opportunity negotiation history is append-only');
+END;
+
+CREATE TRIGGER IF NOT EXISTS opportunity_negotiations_no_delete
+BEFORE DELETE ON opportunity_negotiations
+BEGIN
+    SELECT RAISE(ABORT, 'opportunity negotiation history is append-only');
+END;
+
+PRAGMA user_version = 10;
 """
 
 ORGANIZATION_MIGRATIONS = (
@@ -342,6 +488,13 @@ ORGANIZATION_MIGRATIONS = (
     ("subscription_cancel_at_period_end", "ALTER TABLE organizations ADD COLUMN subscription_cancel_at_period_end INTEGER NOT NULL DEFAULT 0"),
     ("terms_accepted_at", "ALTER TABLE organizations ADD COLUMN terms_accepted_at TEXT"),
     ("terms_version", "ALTER TABLE organizations ADD COLUMN terms_version TEXT"),
+    ("min_total_profit", "ALTER TABLE organizations ADD COLUMN min_total_profit REAL NOT NULL DEFAULT 200"),
+    ("min_profit_per_day", "ALTER TABLE organizations ADD COLUMN min_profit_per_day REAL NOT NULL DEFAULT 100"),
+    ("min_revenue_per_total_mile", "ALTER TABLE organizations ADD COLUMN min_revenue_per_total_mile REAL NOT NULL DEFAULT 1.75"),
+    ("quote_counteroffer_pct", "ALTER TABLE organizations ADD COLUMN quote_counteroffer_pct REAL NOT NULL DEFAULT 5"),
+    ("ratecon_due_hours", "ALTER TABLE organizations ADD COLUMN ratecon_due_hours INTEGER NOT NULL DEFAULT 4"),
+    ("location_stale_hours", "ALTER TABLE organizations ADD COLUMN location_stale_hours INTEGER NOT NULL DEFAULT 24"),
+    ("default_payment_days", "ALTER TABLE organizations ADD COLUMN default_payment_days INTEGER NOT NULL DEFAULT 30"),
 )
 
 DRIVER_MIGRATIONS = (
@@ -359,6 +512,15 @@ PAYMENT_MIGRATIONS = (
     ("voided_at", "ALTER TABLE payments ADD COLUMN voided_at TEXT"),
     ("voided_by", "ALTER TABLE payments ADD COLUMN voided_by INTEGER"),
     ("void_reason", "ALTER TABLE payments ADD COLUMN void_reason TEXT"),
+)
+
+LOAD_MIGRATIONS = (
+    ("opportunity_id", "ALTER TABLE loads ADD COLUMN opportunity_id INTEGER"),
+    ("original_offered_rate", "ALTER TABLE loads ADD COLUMN original_offered_rate REAL"),
+    ("final_agreed_rate", "ALTER TABLE loads ADD COLUMN final_agreed_rate REAL"),
+    ("quote_snapshot_id", "ALTER TABLE loads ADD COLUMN quote_snapshot_id INTEGER"),
+    ("booking_snapshot_id", "ALTER TABLE loads ADD COLUMN booking_snapshot_id INTEGER"),
+    ("ratecon_due_at", "ALTER TABLE loads ADD COLUMN ratecon_due_at TEXT"),
 )
 
 
@@ -539,6 +701,14 @@ def init_db(seed: bool = False) -> None:
         for column, statement in PAYMENT_MIGRATIONS:
             if column not in payment_columns:
                 conn.execute(statement)
+        load_columns = {row["name"] for row in conn.execute("PRAGMA table_info(loads)")}
+        for column, statement in LOAD_MIGRATIONS:
+            if column not in load_columns:
+                conn.execute(statement)
+        conn.execute(
+            """CREATE UNIQUE INDEX IF NOT EXISTS idx_loads_opportunity_unique
+            ON loads(opportunity_id) WHERE opportunity_id IS NOT NULL"""
+        )
         conn.commit()
     if seed:
         if not SNAPSHOT_PATH.exists():
@@ -748,6 +918,10 @@ ORGANIZATION_EXPORT_TABLES = (
     "invoices",
     "detention_claims",
     "generated_documents",
+    "load_opportunities",
+    "opportunity_snapshots",
+    "opportunity_negotiations",
+    "driver_locations",
 )
 
 
