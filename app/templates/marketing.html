@@ -10,10 +10,10 @@
 
   <section class="public-hero">
     <div class="public-hero-copy">
-      <span class="public-release"><i></i> Private 14-day beta &middot; no payment method</span>
+      <span class="public-release"><i></i> 14-day free trial &middot; cancel before billing</span>
       <h1>Run the fleet.<br>Know the <em>profit.</em></h1>
       <p>CarrierOS brings dispatch, driver pay, and load-level profit into one clear workspace built for owner-operators and small fleets.</p>
-      <div class="public-hero-actions"><a class="public-btn public-btn-orange" href="/demo">Explore the live demo <span aria-hidden="true">&rarr;</span></a><a class="public-btn public-btn-light" href="/signup">Start a free 14-day beta</a></div>
+      <div class="public-hero-actions"><a class="public-btn public-btn-orange" href="/demo">Explore the live demo <span aria-hidden="true">&rarr;</span></a><a class="public-btn public-btn-light" href="/signup">Start a free 14-day trial</a></div>
       <div class="public-trust"><span>No per-user fees</span><span>Seven pay structures</span><span>Built by a carrier</span></div>
     </div>
     <div class="public-product" aria-label="CarrierOS dashboard preview">
@@ -54,7 +54,7 @@
   <section class="public-section public-pricing" id="pricing">
     <div class="public-section-intro public-centered"><span class="public-eyebrow">Simple subscription plans</span><h2>Price the fleet, not the office.</h2><p>Unlimited driver records and office users. Choose a plan by active power units and keep overhead predictable.</p></div>
     <div class="public-plans">
-      {% for code, plan in plans.items() %}<article class="{% if code == 'starter_fleet' %}featured{% endif %}">{% if code == 'starter_fleet' %}<span class="public-plan-badge">Popular</span>{% endif %}<h3>{{ plan.name }}</h3><p>Up to {{ plan.units }} active power units</p><div><strong>${{ plan.price }}</strong><span>/ month</span></div><small>Unlimited drivers and office users.</small><ul><li>Dispatch and load tracking</li><li>All seven pay structures</li><li>Profit and margin visibility</li><li>Private company workspace</li></ul><a href="/signup?plan={{ code }}">Start free beta <span aria-hidden="true">&rarr;</span></a></article>{% endfor %}
+      {% for code, plan in plans.items() %}<article class="{% if code == 'starter_fleet' %}featured{% endif %}">{% if code == 'starter_fleet' %}<span class="public-plan-badge">Popular</span>{% endif %}<h3>{{ plan.name }}</h3><p>Up to {{ plan.units }} active power units</p><div><strong>${{ plan.price }}</strong><span>/ month</span></div><small>Unlimited drivers and office users.</small><ul><li>Dispatch and load tracking</li><li>All seven pay structures</li><li>Profit and margin visibility</li><li>Private company workspace</li></ul><a href="/signup?plan={{ code }}">Start 14-day trial <span aria-hidden="true">&rarr;</span></a></article>{% endfor %}
       <article><h3>Custom Fleet</h3><p>More than 20 active power units</p><div><strong>Custom</strong></div><small>A plan shaped around your operation.</small><ul><li>Everything in Growing Fleet</li><li>Custom fleet capacity</li><li>Guided setup conversation</li><li>Unlimited drivers and office users</li></ul><a href="mailto:{{ support_email }}?subject=CarrierOS%20Custom%20Fleet">Request a quote <span aria-hidden="true">&rarr;</span></a></article>
     </div>
   </section>
@@ -68,7 +68,7 @@
     </div>
   </section>
 
-  <section class="public-launch"><span class="public-eyebrow">Built for the people moving freight</span><h2>Trade spreadsheet archaeology for a clear operating picture.</h2><p>Explore the sample fleet, then open your own private workspace when you are ready.</p><div><a class="public-btn public-btn-orange" href="/signup">Start free beta <span aria-hidden="true">&rarr;</span></a><a class="public-btn public-btn-outline" href="/demo">Explore the demo</a></div></section>
-  <footer class="public-footer"><a class="public-brand" href="#top"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a><p>A product of <a href="https://www.outsidethewirelogistics.com/">Outside The Wire Logistics LLC</a>.</p><nav><a href="/small-fleet-trucking-software">Small fleet software</a><a href="/driver-settlement-software">Driver settlements</a><a href="/load-profitability-calculator">Load profitability</a><a href="/login">Customer login</a><a href="/demo">Live demo</a><a href="mailto:{{ support_email }}">Contact</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav><small>Beta software. CarrierOS does not provide tax, legal, payroll, accounting, insurance, or regulatory advice.</small></footer>
+  <section class="public-launch"><span class="public-eyebrow">Built for the people moving freight</span><h2>Trade spreadsheet archaeology for a clear operating picture.</h2><p>Explore the sample fleet, then open your own private workspace when you are ready.</p><div><a class="public-btn public-btn-orange" href="/signup">Start 14-day trial <span aria-hidden="true">&rarr;</span></a><a class="public-btn public-btn-outline" href="/demo">Explore the demo</a></div></section>
+  <footer class="public-footer"><a class="public-brand" href="#top"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a><p>A product of <a href="https://www.outsidethewirelogistics.com/">Outside The Wire Logistics LLC</a>.</p><nav><a href="/small-fleet-trucking-software">Small fleet software</a><a href="/driver-settlement-software">Driver settlements</a><a href="/load-profitability-calculator">Load profitability</a><a href="/login">Customer login</a><a href="/demo">Live demo</a><a href="mailto:{{ support_email }}">Contact</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav><small>CarrierOS does not provide tax, legal, payroll, accounting, insurance, or regulatory advice.</small></footer>
 </main>
 {% endblock %}

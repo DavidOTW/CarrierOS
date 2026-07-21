@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import secrets
 from datetime import datetime, timezone
+from functools import lru_cache
 from typing import Any, Mapping
 
 import stripe
@@ -28,6 +30,28 @@ def _required_env(name: str) -> str:
 
 def _stripe_client() -> stripe.StripeClient:
     return stripe.StripeClient(_required_env("STRIPE_SECRET_KEY"))
+
+
+@lru_cache(maxsize=16)
+def _validated_price_id(plan_code: str, price_id: str, expected_unit_amount: int) -> str:
+    """Fail closed if a configured Stripe Price does not match CarrierOS pricing."""
+    price = _stripe_client().v1.prices.retrieve(price_id)
+    recurring = _value(price, "recurring") or {}
+    checks = {
+        "active": bool(_value(price, "active")),
+        "currency": str(_value(price, "currency") or "").lower() == "usd",
+        "amount": int(_value(price, "unit_amount") or -1) == expected_unit_amount,
+        "type": str(_value(price, "type") or "") == "recurring",
+        "interval": str(_value(recurring, "interval") or "") == "month",
+        "interval_count": int(_value(recurring, "interval_count") or 0) == 1,
+        "usage_type": str(_value(recurring, "usage_type") or "") == "licensed",
+    }
+    if not all(checks.values()):
+        failed = ", ".join(name for name, passed in checks.items() if not passed)
+        raise BillingConfigurationError(
+            f"Stripe Price for {plan_code} does not match CarrierOS billing ({failed})."
+        )
+    return price_id
 
 
 def stripe_configured() -> bool:
@@ -79,11 +103,13 @@ def create_checkout_session(
     organization_id: int,
     owner_email: str,
     plan_code: str,
+    expected_monthly_price: int,
     success_url: str,
     cancel_url: str,
     existing_customer_id: str | None = None,
 ) -> Any:
     price_id = price_id_for_plan(plan_code)
+    price_id = _validated_price_id(plan_code, price_id, expected_monthly_price * 100)
     metadata = {
         "carrieros_org_id": str(organization_id),
         "carrieros_plan_code": plan_code,
@@ -101,6 +127,10 @@ def create_checkout_session(
         "cancel_url": cancel_url,
         "allow_promotion_codes": True,
         "billing_address_collection": "auto",
+        "payment_method_collection": "always",
+    }
+    params["subscription_data"]["trial_settings"] = {
+        "end_behavior": {"missing_payment_method": "cancel"}
     }
     if existing_customer_id:
         params["customer"] = existing_customer_id
@@ -115,7 +145,7 @@ def create_checkout_session(
         options={
             "idempotency_key": (
                 f"carrieros-checkout-{organization_id}-{plan_code}-"
-                f"{datetime.now(tz=timezone.utc).date().isoformat()}"
+                f"{secrets.token_urlsafe(12)}"
             )
         },
     )

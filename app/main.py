@@ -55,7 +55,7 @@ from .stripe_billing import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
-VERSION = "0.7.0-beta"
+VERSION = "0.8.0"
 ENVIRONMENT = os.getenv("CARRIEROS_ENV", "development").strip().lower()
 IS_PRODUCTION = ENVIRONMENT == "production"
 CANONICAL_BASE_URL = os.getenv(
@@ -69,7 +69,7 @@ BILLING_MODE = os.getenv("CARRIEROS_BILLING_MODE", "stripe").strip().lower()
 if BILLING_MODE not in {"stripe", "beta"}:
     raise RuntimeError("CARRIEROS_BILLING_MODE must be 'stripe' or 'beta'.")
 TRIAL_DAYS = 14
-TERMS_VERSION = "2026-07-21"
+TERMS_VERSION = "2026-07-21-subscription-v1"
 SUPPORT_EMAIL = os.getenv(
     "CARRIEROS_SUPPORT_EMAIL", "david@outsidethewirelogistics.com"
 ).strip().lower()
@@ -818,6 +818,7 @@ async def billing_checkout(request: Request):
             organization_id=int(user["organization_id"]),
             owner_email=str(user["owner_email"] or user["email"]),
             plan_code=plan_code,
+            expected_monthly_price=int(PLAN_LIMITS[plan_code]["price"]),
             existing_customer_id=str(user["billing_customer_reference"] or "") or None,
             success_url=f"{base_url}/billing?checkout=success&session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{base_url}/billing?checkout=cancelled",

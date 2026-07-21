@@ -78,6 +78,9 @@ def test_public_marketing_home_uses_launch_pricing_and_real_app_links(
         assert "$25" in response.text
         assert "Up to 20 active power units" in response.text
         assert "$100" in response.text
+        assert "14-day free trial" in response.text
+        assert "no payment method" not in response.text.lower()
+        assert "Start free beta" not in response.text
         assert '/signup?plan=starter_fleet' in response.text
         assert '<link rel="canonical" href="https://otwcarrieros.com/">' in response.text
         assert 'type="application/ld+json"' in response.text
@@ -335,6 +338,7 @@ def test_checkout_uses_server_side_plan_whitelist(monkeypatch: pytest.MonkeyPatc
         assert response.status_code == 303
         assert response.headers["location"] == "https://checkout.stripe.test/session"
         assert captured["plan_code"] == "starter_fleet"
+        assert captured["expected_monthly_price"] == 50
         assert captured["owner_email"] == "checkout@example.com"
         assert captured["success_url"].startswith("https://app.carrieros.example/billing")
         invalid = client.post(

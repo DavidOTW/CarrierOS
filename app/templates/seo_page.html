@@ -5,7 +5,7 @@
   <header class="public-nav">
     <a class="public-brand" href="/"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a>
     <nav aria-label="Primary navigation"><a href="/#platform">Platform</a><a href="/#pay">Driver pay</a><a href="/#pricing">Pricing</a><a href="/demo">Live demo</a></nav>
-    <div class="public-nav-actions"><a class="public-signin" href="/login">Customer login</a><a class="public-btn public-btn-dark" href="/signup">Start free beta <span aria-hidden="true">&rarr;</span></a></div>
+    <div class="public-nav-actions"><a class="public-signin" href="/login">Customer login</a><a class="public-btn public-btn-dark" href="/signup">Start free trial <span aria-hidden="true">&rarr;</span></a></div>
   </header>
 
   <section class="seo-hero">
@@ -14,12 +14,12 @@
       <h1>{{ page.heading }}</h1>
       <p class="seo-lead">{{ page.lead }}</p>
       <p class="seo-audience">{{ page.audience }}</p>
-      <div class="public-hero-actions"><a class="public-btn public-btn-orange" href="/demo">Try the live demo <span aria-hidden="true">&rarr;</span></a><a class="public-btn public-btn-light" href="/signup">Start a free 14-day beta</a></div>
+      <div class="public-hero-actions"><a class="public-btn public-btn-orange" href="/demo">Try the live demo <span aria-hidden="true">&rarr;</span></a><a class="public-btn public-btn-light" href="/signup">Start a free 14-day trial</a></div>
     </div>
     <aside class="seo-hero-card" aria-label="CarrierOS product summary">
       <span>Carrier-built software</span>
       <strong>Know the load.<br>Know the pay.<br>Know the profit.</strong>
-      <ul><li>Browser-based workspace</li><li>Plans for 1–20 power units</li><li>Unlimited driver records</li><li>No payment method during beta</li></ul>
+      <ul><li>Browser-based workspace</li><li>Plans for 1–20 power units</li><li>Unlimited driver records</li><li>14-day trial before monthly billing</li></ul>
       <a href="/">See CarrierOS pricing &rarr;</a>
     </aside>
   </section>
@@ -56,7 +56,7 @@
     <div>{% for question, answer in page.faqs %}<details><summary>{{ question }}</summary><p>{{ answer }}</p></details>{% endfor %}</div>
   </section>
 
-  <section class="public-launch"><span class="public-eyebrow">See the workflow before signing up</span><h2>Explore CarrierOS with a fictional sample fleet.</h2><p>Try dispatch, driver pay, load profitability, and pricing without creating an account.</p><div><a class="public-btn public-btn-orange" href="/demo">Open the live demo <span aria-hidden="true">&rarr;</span></a><a class="public-btn public-btn-outline" href="/signup">Start free beta</a></div></section>
+  <section class="public-launch"><span class="public-eyebrow">See the workflow before signing up</span><h2>Explore CarrierOS with a fictional sample fleet.</h2><p>Try dispatch, driver pay, load profitability, and pricing without creating an account.</p><div><a class="public-btn public-btn-orange" href="/demo">Open the live demo <span aria-hidden="true">&rarr;</span></a><a class="public-btn public-btn-outline" href="/signup">Start free trial</a></div></section>
   <footer class="public-footer"><a class="public-brand" href="/"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a><p>A product of <a href="https://www.outsidethewirelogistics.com/">Outside The Wire Logistics LLC</a>.</p><nav><a href="/">CarrierOS home</a><a href="/demo">Live demo</a><a href="/login">Customer login</a><a href="mailto:{{ support_email }}">Contact</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav><small>Operational estimates depend on user-entered assumptions. Review results before relying on them.</small></footer>
 </main>
 {% endblock %}
