@@ -214,11 +214,15 @@ CREATE TABLE IF NOT EXISTS payments (
     notes TEXT,
     counts_against_load_pay INTEGER NOT NULL DEFAULT 1,
     include_in_reports INTEGER NOT NULL DEFAULT 1,
+    voided_at TEXT,
+    voided_by INTEGER,
+    void_reason TEXT,
     source_row INTEGER,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
     FOREIGN KEY (driver_id) REFERENCES drivers(id) ON DELETE SET NULL,
-    FOREIGN KEY (load_id) REFERENCES loads(id) ON DELETE SET NULL
+    FOREIGN KEY (load_id) REFERENCES loads(id) ON DELETE SET NULL,
+    FOREIGN KEY (voided_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS idle_periods (
@@ -323,7 +327,7 @@ CREATE INDEX IF NOT EXISTS idx_invoices_due ON invoices(organization_id, due_dat
 CREATE INDEX IF NOT EXISTS idx_audit_events_org_created ON audit_events(organization_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_password_reset_user ON password_reset_tokens(user_id, expires_at);
 CREATE INDEX IF NOT EXISTS idx_quick_links_org_sort ON quick_links(organization_id, sort_order, label);
-PRAGMA user_version = 8;
+PRAGMA user_version = 9;
 """
 
 ORGANIZATION_MIGRATIONS = (
@@ -349,6 +353,12 @@ DRIVER_MIGRATIONS = (
 
 ONBOARDING_MIGRATIONS = (
     ("expires_at", "ALTER TABLE onboarding_applications ADD COLUMN expires_at TEXT"),
+)
+
+PAYMENT_MIGRATIONS = (
+    ("voided_at", "ALTER TABLE payments ADD COLUMN voided_at TEXT"),
+    ("voided_by", "ALTER TABLE payments ADD COLUMN voided_by INTEGER"),
+    ("void_reason", "ALTER TABLE payments ADD COLUMN void_reason TEXT"),
 )
 
 
@@ -524,6 +534,10 @@ def init_db(seed: bool = False) -> None:
         }
         for column, statement in ONBOARDING_MIGRATIONS:
             if column not in onboarding_columns:
+                conn.execute(statement)
+        payment_columns = {row["name"] for row in conn.execute("PRAGMA table_info(payments)")}
+        for column, statement in PAYMENT_MIGRATIONS:
+            if column not in payment_columns:
                 conn.execute(statement)
         conn.commit()
     if seed:

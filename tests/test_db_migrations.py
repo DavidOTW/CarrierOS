@@ -43,7 +43,10 @@ def test_existing_organization_gets_launch_columns(
     assert "audit_events" in tables
     assert "password_reset_tokens" in tables
     assert "quick_links" in tables
-    assert user_version == 8
+    assert user_version == 9
+    with connect() as conn:
+        payment_columns = {row["name"] for row in conn.execute("PRAGMA table_info(payments)")}
+    assert {"voided_at", "voided_by", "void_reason"} <= payment_columns
     with connect() as conn:
         onboarding_columns = {
             row["name"] for row in conn.execute("PRAGMA table_info(onboarding_applications)")
