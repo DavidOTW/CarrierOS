@@ -5,7 +5,7 @@ from datetime import date
 from typing import Any
 
 from .calculations import calculate_state, parse_date
-from .db import as_dict, query_all, query_one
+from .db import query_all, query_one
 
 
 def row_dicts(rows) -> list[dict[str, Any]]:

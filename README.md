@@ -2,6 +2,12 @@
 
 CarrierOS is a multi-company fleet financial workspace for small carriers. Each signup receives an empty, isolated organization with a 14-day Stripe subscription trial and an active-power-unit limit based on the selected plan.
 
+## v0.16 review status
+
+The current development branch is **v0.16.0a1, PR 1 — Architecture and Data Integrity**. It adds an audited Decimal/cents strategy beside the protected legacy calculations, golden coverage for all seven supported pay models, additive normalized driver/pay/equipment/load tables, public UUIDs, a controlled load-state transition service, centralized permissions, backup-first migration/rollback tooling, tenant and immutability tests, and corrected public claims.
+
+This branch is not merged, deployed, or a claim that the complete v0.16 workflow is available. Customer-facing calculations still use the protected v0.15 path. RateCon automation, driver dispatch/portal, invoice payments, versioned settlements, managed PostgreSQL, private object storage, and production beta hardening remain separate review phases. See `docs/V016_CURRENT_STATE_AUDIT.md`, `docs/V016_PRODUCT_REQUIREMENTS.md`, `docs/V016_ARCHITECTURE.md`, `docs/V016_MIGRATION_PLAN.md`, `docs/V016_THREAT_MODEL.md`, `docs/V016_ROLLBACK_PLAN.md`, and `docs/V016_TEST_PLAN.md`.
+
 ## Included in this release candidate
 
 - Phase 1 carrier workflow: broker/customer offer, pre-book profit check, driver comparison, negotiation history, and exactly-once conversion to `Booked — Awaiting RateCon`
@@ -20,7 +26,7 @@ CarrierOS is a multi-company fleet financial workspace for small carriers. Each 
 - Daily consistent SQLite backups with retention, Render disk snapshots, and authenticated company-data export
 - Public Privacy Policy and Terms of Service pages
 
-The full V1 roadmap and Phase 1 boundary are documented in `docs/V1_PRODUCT_REQUIREMENTS.md`, `docs/V1_ARCHITECTURE.md`, `docs/V1_IMPLEMENTATION_PLAN.md`, and `docs/V1_RISK_REGISTER.md`. Commercial routing, OCR for scanned PDFs, raw document retention, general-ledger reconciliation, live GPS/ELD/HOS, automated SMS delivery, settlement approval, invoicing automation, collections, and accounting sync are not part of v0.15.0. Document results are discrepancy screens and estimates, not accounting entries or professional advice.
+The earlier V1 roadmap and Phase 1 boundary remain in `docs/V1_PRODUCT_REQUIREMENTS.md`, `docs/V1_ARCHITECTURE.md`, `docs/V1_IMPLEMENTATION_PLAN.md`, and `docs/V1_RISK_REGISTER.md`; the v0.16 documents above are authoritative for the current four-PR program. Commercial routing, OCR for scanned PDFs, raw document retention, general-ledger reconciliation, live GPS/ELD/HOS, automated SMS delivery, settlement approval, invoicing automation, collections, and accounting sync are not available in the deployed v0.15 application. Document results are discrepancy screens and estimates, not accounting entries or professional advice.
 
 ## Local development
 
@@ -37,6 +43,12 @@ Open `http://127.0.0.1:8000/signup`. The application creates a new local SQLite 
 
 ```powershell
 python -m pytest
+python -m compileall -q app scripts tests
+python -m ruff check app scripts tests
+python -m coverage run --source=app -m pytest -q
+python -m coverage report --show-missing
+python -m pip_audit
+python scripts/v016_inventory.py
 ```
 
 ## Production configuration

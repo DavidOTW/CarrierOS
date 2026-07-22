@@ -45,7 +45,20 @@ def test_existing_organization_gets_launch_columns(
     assert "quick_links" in tables
     assert {"load_opportunities", "opportunity_snapshots", "opportunity_negotiations", "driver_locations"} <= tables
     assert {"document_audits", "startup_checklist_progress"} <= tables
-    assert user_version == 12
+    assert {
+        "driver_pay_rules",
+        "power_units",
+        "trailers",
+        "equipment_assignments",
+        "load_stops",
+        "load_assignments",
+        "load_revenue_items",
+        "load_expense_items",
+        "load_status_history",
+        "load_financial_snapshots",
+        "v016_migration_runs",
+    } <= tables
+    assert user_version == 13
     with connect() as conn:
         payment_columns = {row["name"] for row in conn.execute("PRAGMA table_info(payments)")}
     assert {"voided_at", "voided_by", "void_reason"} <= payment_columns

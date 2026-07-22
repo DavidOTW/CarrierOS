@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -243,4 +243,3 @@ def test_new_customer_workspace_starts_without_otw_opportunities(
         page = client.get("/rate-quotes")
         assert page.status_code == 200
         assert "No rate quotes yet" in page.text
-

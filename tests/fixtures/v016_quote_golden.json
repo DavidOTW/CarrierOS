@@ -1,0 +1,86 @@
+{
+  "Contractor Gross Split": {
+    "company_fees": "65.00",
+    "company_profit": "185.00",
+    "decision": "REPRICE",
+    "driver_contractor_pay": "1700.00",
+    "fixed_cost": "0.00",
+    "fuel_cost": "0.00",
+    "maintenance_reserve": "0.00",
+    "owner_operator_pay": "0.00",
+    "recommended_minimum_revenue": "2750.00",
+    "total_operating_expense": "115.00"
+  },
+  "Day Rate": {
+    "company_fees": "65.00",
+    "company_profit": "1119.44",
+    "decision": "MEETS TARGET",
+    "driver_contractor_pay": "350.00",
+    "fixed_cost": "58.06",
+    "fuel_cost": "247.50",
+    "maintenance_reserve": "110.00",
+    "owner_operator_pay": "0.00",
+    "recommended_minimum_revenue": "943.18",
+    "total_operating_expense": "530.56"
+  },
+  "Flat Rate per Load": {
+    "company_fees": "65.00",
+    "company_profit": "1169.44",
+    "decision": "MEETS TARGET",
+    "driver_contractor_pay": "300.00",
+    "fixed_cost": "58.06",
+    "fuel_cost": "247.50",
+    "maintenance_reserve": "110.00",
+    "owner_operator_pay": "0.00",
+    "recommended_minimum_revenue": "885.71",
+    "total_operating_expense": "530.56"
+  },
+  "Owner-Operator": {
+    "company_fees": "65.00",
+    "company_profit": "367.36",
+    "decision": "MEETS TARGET",
+    "driver_contractor_pay": "0.00",
+    "fixed_cost": "58.06",
+    "fuel_cost": "247.50",
+    "maintenance_reserve": "110.00",
+    "owner_operator_pay": "1102.08",
+    "recommended_minimum_revenue": "825.55",
+    "total_operating_expense": "530.56"
+  },
+  "Per Loaded Mile": {
+    "company_fees": "65.00",
+    "company_profit": "1169.44",
+    "decision": "MEETS TARGET",
+    "driver_contractor_pay": "300.00",
+    "fixed_cost": "58.06",
+    "fuel_cost": "247.50",
+    "maintenance_reserve": "110.00",
+    "owner_operator_pay": "0.00",
+    "recommended_minimum_revenue": "885.71",
+    "total_operating_expense": "530.56"
+  },
+  "Per Total Mile": {
+    "company_fees": "65.00",
+    "company_profit": "1139.44",
+    "decision": "MEETS TARGET",
+    "driver_contractor_pay": "330.00",
+    "fixed_cost": "58.06",
+    "fuel_cost": "247.50",
+    "maintenance_reserve": "110.00",
+    "owner_operator_pay": "0.00",
+    "recommended_minimum_revenue": "920.19",
+    "total_operating_expense": "530.56"
+  },
+  "Profit Split": {
+    "company_fees": "65.00",
+    "company_profit": "881.66",
+    "decision": "MEETS TARGET",
+    "driver_contractor_pay": "587.77",
+    "fixed_cost": "58.06",
+    "fuel_cost": "247.50",
+    "maintenance_reserve": "110.00",
+    "owner_operator_pay": "0.00",
+    "recommended_minimum_revenue": "585.76",
+    "total_operating_expense": "530.56"
+  }
+}

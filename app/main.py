@@ -24,7 +24,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from .calculations import (
-    add_months,
     calculate_quote,
     driver_monthly_fixed,
     fuel_price_for,
@@ -86,7 +85,7 @@ from .stripe_billing import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
-VERSION = "0.15.0"
+VERSION = "0.16.0a1"
 ENVIRONMENT = os.getenv("CARRIEROS_ENV", "development").strip().lower()
 IS_PRODUCTION = ENVIRONMENT == "production"
 CANONICAL_BASE_URL = os.getenv(
@@ -154,7 +153,7 @@ QUICK_LINK_LIMIT = 30
 SEO_PAGES = {
     "small-fleet-trucking-software": {
         "title": "Small Fleet Trucking Software | CarrierOS",
-        "description": "Small fleet trucking software for owner-operators and carriers with 1–20 trucks. Connect dispatch, driver pay, settlements, expenses, and profit per load.",
+        "description": "Small fleet trucking software for owner-operators and carriers with 1–20 trucks. Connect dispatch, driver pay, expenses, and estimated profit per load.",
         "eyebrow": "Small fleet trucking software",
         "heading": "Run a small trucking fleet without running it from five spreadsheets.",
         "lead": "CarrierOS gives owner-operators and small carrier teams one browser-based workspace for loads, driver pay, operating costs, receivables, and the profit each load actually keeps.",
@@ -163,7 +162,7 @@ SEO_PAGES = {
         "problem_copy": "Small fleets need more than a load list, but they should not need enterprise software, dedicated IT staff, or a long implementation. CarrierOS keeps the daily operating picture focused on the decisions that affect cash and margin.",
         "benefits": [
             ("Dispatch and load control", "Keep lanes, dates, drivers, units, revenue, miles, and load status connected."),
-            ("Driver pay flexibility", "Use profit split, percent of revenue, per mile, flat rate, hourly, day rate, or salary by driver."),
+            ("Driver pay flexibility", "Use profit split, contractor gross split, owner-operator split, flat per load, loaded mile, total mile, or day rate by driver."),
             ("Profit per load", "Compare revenue with fuel, driver pay, maintenance, direct costs, fixed costs, and overhead."),
             ("Carrier administration", "Track receivables, detention, compliance dates, onboarding records, and operating documents."),
         ],
@@ -180,19 +179,19 @@ SEO_PAGES = {
         ],
     },
     "driver-settlement-software": {
-        "title": "Driver Settlement Software for Small Fleets | CarrierOS",
-        "description": "Driver settlement software for small trucking fleets. Calculate seven driver pay structures, record payments, and keep load pay and carrier profit connected.",
-        "eyebrow": "Driver settlement software",
+        "title": "Driver Pay Tracking for Small Fleets | CarrierOS",
+        "description": "Driver pay tracking for small trucking fleets. Estimate seven driver pay structures, record payments, and keep load pay and carrier profit connected.",
+        "eyebrow": "Driver pay tracking",
         "heading": "Driver pay that follows the agreement—not a one-size-fits-all formula.",
         "lead": "CarrierOS helps small carriers calculate, review, and track driver pay across seven compensation structures while keeping the load economics visible.",
         "audience": "For carrier owners, dispatchers, and back-office teams paying company drivers, contractors, and owner-operators under different agreements.",
-        "problem_title": "Make every settlement easier to explain and repeat.",
+        "problem_title": "Make every driver-pay calculation easier to explain and repeat.",
         "problem_copy": "Mixed pay arrangements become fragile when the math lives in memory or separate spreadsheets. CarrierOS keeps each driver's method attached to the operating record so pay and carrier margin can be reviewed together.",
         "benefits": [
             ("Profit split", "Calculate the agreed driver share after the allowed load costs in your operating model."),
-            ("Mileage and flat pay", "Support per-mile rates or a fixed amount for a load or trip."),
-            ("Revenue percentage", "Calculate driver pay as an agreed percentage of gross load revenue."),
-            ("Time-based compensation", "Support hourly, day-rate, and salary-based settlement reporting."),
+            ("Loaded and total miles", "Apply a driver-specific rate to loaded miles or total paid miles."),
+            ("Contractor and owner-operator splits", "Apply an agreed share to gross revenue or the configured profit base."),
+            ("Flat and day rate", "Use a fixed amount per load or per qualifying trip day."),
         ],
         "workflow_title": "A consistent driver-pay workflow",
         "workflow": [
@@ -201,7 +200,7 @@ SEO_PAGES = {
             ("Track what was paid", "Record payments against cumulative driver or contractor balances for a clearer audit trail."),
         ],
         "faqs": [
-            ("Which driver pay methods are supported?", "Profit split, per mile, flat rate, percent of revenue, hourly, day rate, and salary."),
+            ("Which driver pay methods are supported?", "Profit split, contractor gross split, owner-operator split, flat per load, loaded mile, total mile, and day rate."),
             ("Can different drivers use different pay models?", "Yes. CarrierOS keeps compensation settings driver-specific, so a fleet can use mixed models."),
             ("Is CarrierOS a payroll processor?", "No. CarrierOS calculates and tracks operating pay obligations; it does not file payroll taxes or replace professional payroll, tax, legal, or accounting advice."),
         ],
@@ -221,7 +220,7 @@ SEO_PAGES = {
             ("Driver pay", "Compare the effect of the driver's actual compensation model on the load result."),
             ("Carrier margin", "See estimated profit dollars and margin instead of relying on gross revenue alone."),
         ],
-        "workflow_title": "Turn a rate confirmation into a decision",
+        "workflow_title": "Turn a broker offer into a profit decision",
         "workflow": [
             ("Enter the freight economics", "Add rate, loaded and empty miles, dates, and direct load expenses."),
             ("Apply company assumptions", "Use the unit, driver, fuel, maintenance, fees, fixed costs, and overhead that fit your operation."),
@@ -948,7 +947,7 @@ def sitemap() -> Response:
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
-    description = "Small fleet trucking software for owner-operators and carriers with 1–20 trucks. Manage dispatch, seven driver pay models, settlements, and profit per load."
+    description = "Small fleet trucking software for owner-operators and carriers with 1–20 trucks. Manage dispatch, seven driver pay models, payments, and estimated profit per load."
     return render(
         request,
         "marketing.html",
@@ -976,7 +975,7 @@ def demo(request: Request):
             **seo_context(
                 "/demo",
                 "CarrierOS Live Demo | Small Fleet Trucking Software",
-                "Try the CarrierOS live demo with fictional fleet data. Explore dispatch, seven driver pay structures, settlements, pricing, and profit per load.",
+                "Try the CarrierOS live demo with fictional fleet data. Explore dispatch, seven supported driver pay structures, pricing, and estimated profit per load.",
             ),
         },
     )
@@ -1126,7 +1125,9 @@ async def signup(request: Request):
             ),
         ).lastrowid
         user_id = conn.execute(
-            "INSERT INTO users (organization_id, full_name, email, password_hash, is_admin) VALUES (?, ?, ?, ?, 1)",
+            """INSERT INTO users
+            (organization_id, full_name, email, password_hash, is_admin, role)
+            VALUES (?, ?, ?, ?, 1, 'owner')""",
             (org_id, full_name, email, hash_password(password)),
         ).lastrowid
         conn.execute(
@@ -3814,7 +3815,7 @@ def receivables_page(request: Request):
         WHERE c.organization_id=? ORDER BY c.created_at DESC""", (user["organization_id"],),
     )
     loads = query_all("SELECT id,load_number,broker FROM loads WHERE organization_id=? ORDER BY pickup_date DESC,id DESC", (user["organization_id"],))
-    return render(request, "receivables.html", {"invoices": invoices, "claims": [dict(c) for c in claims], "loads": [dict(l) for l in loads]})
+    return render(request, "receivables.html", {"invoices": invoices, "claims": [dict(c) for c in claims], "loads": [dict(load_row) for load_row in loads]})
 
 
 @app.post("/invoices")

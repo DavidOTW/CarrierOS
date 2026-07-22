@@ -112,7 +112,7 @@ def test_search_pages_sitemap_and_crawl_controls(
     with TestClient(app) as client:
         expected = {
             "/small-fleet-trucking-software": "Small Fleet Trucking Software",
-            "/driver-settlement-software": "Driver Settlement Software",
+            "/driver-settlement-software": "Driver Pay Tracking",
             "/load-profitability-calculator": "Truck Load Profitability Calculator",
         }
         for path, phrase in expected.items():
@@ -151,14 +151,17 @@ def test_public_demo_is_sample_only_and_includes_all_pay_models(
         assert "changes are not saved" in response.text.lower()
         for model in (
             "Profit split",
-            "Per mile",
-            "Flat rate",
-            "Percent of revenue",
-            "Hourly",
+            "Contractor gross split",
+            "Owner-operator split",
+            "Flat per load",
+            "Loaded-mile rate",
+            "Total-mile rate",
             "Day rate",
-            "Salary",
         ):
             assert model in response.text
+        assert "Hourly" not in response.text
+        assert "Salary" not in response.text
+        assert "SAMPLE DRIVER-PAY ESTIMATE" in response.text
         assert not re.search(r"<form[^>]+method=[\"']post", response.text, re.IGNORECASE)
 
 
@@ -188,6 +191,8 @@ def test_founding_beta_signup_grants_trial_and_records_consent(
         assert organization["trial_ends_at"] == (date.today() + timedelta(days=14)).isoformat()
         assert organization["terms_version"] == main_module.TERMS_VERSION
         assert organization["terms_accepted_at"]
+        user = query_one("SELECT * FROM users WHERE organization_id=?", (organization["id"],))
+        assert user["role"] == "owner"
         assert client.get("/dashboard").status_code == 200
         event = query_one("SELECT * FROM audit_events WHERE event_type='organization.created'")
         assert event["organization_id"] == organization["id"]
