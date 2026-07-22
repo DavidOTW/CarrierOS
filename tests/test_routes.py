@@ -227,6 +227,10 @@ def test_signup_empty_workspace_and_authenticated_pages(monkeypatch: pytest.Monk
     monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "routes.db"))
     with TestClient(app) as client:
         assert client.get("/health").status_code == 200
+        readiness = client.get("/health/ready")
+        assert readiness.status_code == 503
+        assert readiness.json()["ready"] is False
+        assert "sk_test" not in readiness.text
         assert signup(client, "owner@example.com").status_code == 303
         for page in (
             "/dashboard", "/loads", "/loads/new", "/vehicles", "/drivers", "/fuel",

@@ -63,6 +63,7 @@ from .ratecons import (
     suggest_ratecon_matches,
     validate_ratecon_upload,
 )
+from .release_readiness import evaluate_release_readiness
 from .growth import STARTUP_STEPS, equipment_finance_audit, growth_mentor_findings
 from .db import (
     as_dict,
@@ -110,7 +111,7 @@ from .stripe_billing import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
-VERSION = "0.16.0a3"
+VERSION = "0.16.0a4"
 ENVIRONMENT = os.getenv("CARRIEROS_ENV", "development").strip().lower()
 IS_PRODUCTION = ENVIRONMENT == "production"
 CANONICAL_BASE_URL = os.getenv(
@@ -1111,6 +1112,22 @@ def health() -> dict[str, str]:
     }
 
 
+@app.get("/health/ready")
+def health_ready() -> JSONResponse:
+    """Expose the release gate for monitoring without revealing configuration values."""
+
+    report = evaluate_release_readiness()
+    payload = {
+        "status": "ok" if report["ready"] else "blocked",
+        "ready": bool(report["ready"]),
+        "environment": report["environment"],
+        "checks": report["checks"],
+        "blockers": report["blockers"],
+        "warnings": report["warnings"],
+    }
+    return JSONResponse(payload, status_code=200 if report["ready"] else 503, headers={"Cache-Control": "no-store"})
+
+
 @app.get("/manifest.webmanifest")
 def manifest() -> Response:
     return Response((BASE_DIR / "static" / "manifest.webmanifest").read_text(encoding="utf-8"), media_type="application/manifest+json")
@@ -1135,6 +1152,7 @@ def robots() -> Response:
         "/fuel",
         "/growth",
         "/health",
+        "/health/ready",
         "/idle",
         "/loads",
         "/onboard/",
