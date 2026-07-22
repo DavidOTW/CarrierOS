@@ -1,6 +1,14 @@
 # Changelog
 
-## 0.16.0a2 — Unreleased
+## 0.16.0a3 — Draft
+
+- Added the first Phase 3 delivery-to-cash slice: controlled pickup, transit, delivery, and documents-pending status updates from the signed driver dispatch link.
+- Added retry-safe, tenant-scoped delivery transitions with append-only history and audit events; driver links cannot skip states or advance invoice/payment states.
+- Added private BOL, POD, receipt, and detention-evidence uploads with signature/size/page validation, malware screening, organization/load-prefixed storage, and office-review records.
+- Added office delivery execution history and private delivery-document review/download surfaces to load details.
+- Added Phase 3 migration version 15, integration coverage, and explicit documentation of deferred invoice, payment, settlement, and variance work.
+
+## 0.16.0a2 — 2026-07-21
 
 - Added the Phase 2 RateCon inbox with PDF/JPEG/PNG signature validation, size/page limits, organization-prefixed private object keys, duplicate checks, retention metadata, and audited signed download links.
 - Added storage, malware scan, OCR, and extraction provider boundaries with deterministic mocks and a manual production fallback; uploads remain disabled when encrypted storage is not configured, and dispatch remains blocked until malware screening passes.

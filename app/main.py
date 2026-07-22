@@ -44,10 +44,12 @@ from .opportunities import (
 )
 from .routing import configured_route_provider
 from .dispatch_workflow import HOS_DISCLAIMER, rank_assignments
+from .delivery_workflow import parse_delivery_document_kind, validate_driver_transition
 from .load_states import LoadState, LoadStateError, normalize_state, transition_load_state
 from .money import money_to_cents
 from .permissions import has_permission
 from .ratecons import (
+    MAX_RATECON_BYTES,
     MATERIAL_CLASSIFICATIONS,
     ExtractedField,
     RateConError,
@@ -108,7 +110,7 @@ from .stripe_billing import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
-VERSION = "0.16.0a2"
+VERSION = "0.16.0a3"
 ENVIRONMENT = os.getenv("CARRIEROS_ENV", "development").strip().lower()
 IS_PRODUCTION = ENVIRONMENT == "production"
 CANONICAL_BASE_URL = os.getenv(
@@ -2303,9 +2305,24 @@ def load_detail(request: Request, load_id: int):
         WHERE p.organization_id=? AND p.load_id=? ORDER BY p.paid_at DESC,p.id DESC""",
         (user["organization_id"], load_id),
     )
+    delivery_documents = _delivery_documents_for_load(int(user["organization_id"]), load_id)
+    status_history = [dict(row) for row in query_all(
+        """SELECT h.*,u.full_name AS changed_by_name FROM load_status_history h
+        LEFT JOIN users u ON u.id=h.changed_by AND u.organization_id=h.organization_id
+        WHERE h.organization_id=? AND h.load_id=? ORDER BY h.id DESC""",
+        (user["organization_id"], load_id),
+    )]
     return render(request, "load_detail.html", {
         "load": item,
         "payments": [dict(p) for p in payments],
+        "delivery_documents": delivery_documents,
+        "status_history": status_history,
+        "delivery_status_options": [
+            LoadState.AT_PICKUP.value,
+            LoadState.IN_TRANSIT.value,
+            LoadState.AT_DELIVERY.value,
+            LoadState.DELIVERED_DOCUMENTS_PENDING.value,
+        ],
         "dispatch": driver_dispatch_package(item),
     })
 
@@ -2712,6 +2729,7 @@ async def approve_ratecon_differences(request: Request, document_uuid: str):
 
 
 @app.get("/ratecons/{document_uuid}/download")
+@app.get("/documents/{document_uuid}/download")
 def issue_ratecon_download(request: Request, document_uuid: str):
     user = require_permission(request, "documents.view_operational")
     _ratecon_document(user["organization_id"], document_uuid)
@@ -2987,11 +3005,13 @@ async def approve_dispatch(request: Request, load_uuid: str):
 def _driver_dispatch_record(token: str) -> dict[str, Any]:
     approval_uuid = _read_dispatch_token(token)
     row = query_one(
-        """SELECT a.*,l.public_uuid AS load_public_uuid,l.load_number,l.broker,
+        """SELECT a.*,l.public_uuid AS load_public_uuid,l.load_number,l.broker,l.status_code,
+        l.ratecon_reference,l.ratecon_received_at,
         l.pickup_address,l.pickup_window_start,l.pickup_window_end,l.pickup_contact_name,
         l.pickup_contact_phone,l.pickup_instructions,l.pickup_timezone,l.delivery_address,
         l.delivery_window_start,l.delivery_window_end,l.delivery_contact_name,
-        l.delivery_contact_phone,l.delivery_instructions,l.delivery_timezone,d.name AS driver_name
+        l.delivery_contact_phone,l.delivery_instructions,l.delivery_timezone,
+        d.name AS driver_name,d.phone AS driver_phone
         FROM dispatch_approvals a
         JOIN loads l ON l.id=a.load_id AND l.organization_id=a.organization_id
         JOIN load_assignments la ON la.id=a.load_assignment_id AND la.organization_id=a.organization_id
@@ -3006,19 +3026,7 @@ def _driver_dispatch_record(token: str) -> dict[str, Any]:
 
 @app.get("/driver/dispatch/{token}", response_class=HTMLResponse)
 def driver_dispatch_ack_page(request: Request, token: str):
-    record = _driver_dispatch_record(token)
-    package = driver_dispatch_package({
-        **record,
-        "driver": {"name": record.get("driver_name"), "phone": "0000000000"},
-        "ratecon_received_at": True,
-    })
-    return render(request, "driver_dispatch_ack.html", {
-        "dispatch_record": record,
-        "dispatch_package": package,
-        "dispatch_token": token,
-        "public_driver_page": True,
-        "public_page": True,
-    })
+    return _render_driver_dispatch_page(request, token, _driver_dispatch_record(token))
 
 
 @app.post("/driver/dispatch/{token}/ack", response_class=HTMLResponse)
@@ -3044,19 +3052,183 @@ async def acknowledge_driver_dispatch(request: Request, token: str):
             "dispatch.driver_acknowledged", int(record["organization_id"]), None,
             {"load_id": record["load_id"], "approval_uuid": record["public_uuid"]},
         )
-    refreshed = _driver_dispatch_record(token)
-    package = driver_dispatch_package({
-        **refreshed,
-        "driver": {"name": refreshed.get("driver_name"), "phone": "0000000000"},
-        "ratecon_received_at": True,
-    })
+    return _render_driver_dispatch_page(request, token, _driver_dispatch_record(token))
+
+
+def _delivery_documents_for_load(organization_id: int, load_id: int) -> list[dict[str, Any]]:
+    rows = query_all(
+        """SELECT l.*,d.public_uuid AS document_public_uuid,d.original_filename,
+        d.content_type,d.size_bytes,d.page_count,d.malware_status,d.processing_status,
+        d.storage_key,d.created_at AS document_created_at
+        FROM delivery_document_links l
+        JOIN operational_documents d ON d.id=l.document_id
+        WHERE l.organization_id=? AND l.load_id=? AND d.deleted_at IS NULL
+        ORDER BY l.created_at DESC,l.id DESC""",
+        (organization_id, load_id),
+    )
+    return [dict(row) for row in rows]
+
+
+def _driver_dispatch_payload(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **record,
+        "driver": {"name": record.get("driver_name"), "phone": record.get("driver_phone")},
+    }
+
+
+def _render_driver_dispatch_page(request: Request, token: str, record: dict[str, Any]) -> HTMLResponse:
+    package = driver_dispatch_package(_driver_dispatch_payload(record))
     return render(request, "driver_dispatch_ack.html", {
-        "dispatch_record": refreshed,
+        "dispatch_record": record,
         "dispatch_package": package,
         "dispatch_token": token,
+        "delivery_documents": _delivery_documents_for_load(int(record["organization_id"]), int(record["load_id"])),
         "public_driver_page": True,
         "public_page": True,
     })
+
+
+@app.post("/driver/dispatch/{token}/status", response_class=HTMLResponse)
+async def update_driver_load_status(request: Request, token: str):
+    record = _driver_dispatch_record(token)
+    if record["status"] not in {"AWAITING_DRIVER_ACK", "ACKNOWLEDGED"}:
+        raise HTTPException(409, "A driver status update requires an approved dispatch")
+    if not driver_dispatch_package(_driver_dispatch_payload(record))["ready"]:
+        raise HTTPException(409, "Complete the RateCon dispatch details before sending delivery status updates")
+    form = await request.form()
+    target_value = str(form.get("status") or "").strip()
+    reason = str(form.get("reason") or "Driver status update").strip()[:500]
+    idempotency_key = str(form.get("idempotency_key") or "").strip()[:200]
+    if not idempotency_key:
+        raise HTTPException(400, "A status update idempotency key is required")
+    try:
+        target = validate_driver_transition(str(record.get("status_code") or ""), target_value)
+    except LoadStateError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    try:
+        with db_session() as conn:
+            _transition_workflow(
+                conn,
+                organization_id=int(record["organization_id"]),
+                load_id=int(record["load_id"]),
+                target=target,
+                actor_user_id=None,
+                idempotency_key=f"driver:{record['public_uuid']}:{idempotency_key}",
+                reason=reason,
+            )
+    except LoadStateError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    record_audit_event(
+        "driver.load_status_updated", int(record["organization_id"]), None,
+        {"load_id": record["load_id"], "approval_uuid": record["public_uuid"], "status": target.value},
+    )
+    return _render_driver_dispatch_page(request, token, _driver_dispatch_record(token))
+
+
+@app.post("/driver/dispatch/{token}/documents", response_class=HTMLResponse)
+async def upload_driver_delivery_document(request: Request, token: str):
+    record = _driver_dispatch_record(token)
+    if record["status"] not in {"AWAITING_DRIVER_ACK", "ACKNOWLEDGED"}:
+        raise HTTPException(409, "A delivery document requires an approved dispatch")
+    if not driver_dispatch_package(_driver_dispatch_payload(record))["ready"]:
+        raise HTTPException(409, "Complete the RateCon dispatch details before uploading delivery documents")
+    form = await request.form()
+    try:
+        kind = parse_delivery_document_kind(str(form.get("document_kind") or ""))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    upload = form.get("document")
+    if upload is None or not hasattr(upload, "read"):
+        raise HTTPException(400, "Choose a BOL, POD, receipt, or detention-evidence file")
+    payload = await upload.read(MAX_RATECON_BYTES + 1)
+    filename = Path(str(getattr(upload, "filename", "delivery-document"))).name.replace("\x00", "")[:255]
+    try:
+        validated = validate_ratecon_upload(
+            payload,
+            filename=filename,
+            claimed_content_type=str(getattr(upload, "content_type", "")),
+        )
+    except RateConError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    storage = configured_storage_provider()
+    if not storage.secure_at_rest:
+        raise HTTPException(503, "Private encrypted document storage is not configured")
+    scan = configured_malware_scan_provider().scan(payload, filename=filename)
+    if scan.status != "CLEAN":
+        raise HTTPException(400, f"The delivery document cannot be accepted until malware screening is CLEAN ({scan.status})")
+    document_uuid = str(uuid.uuid4())
+    storage_key = f"organizations/{record['organization_id']}/loads/{record['load_id']}/delivery/{document_uuid}.{validated.extension}"
+    storage.put(storage_key, payload, content_type=validated.media_type)
+    assignment = query_one(
+        """SELECT driver_id FROM load_assignments
+        WHERE organization_id=? AND load_id=? AND ended_at IS NULL
+        ORDER BY id DESC LIMIT 1""",
+        (record["organization_id"], record["load_id"]),
+    )
+    try:
+        with db_session() as conn:
+            document_id = int(conn.execute(
+                """INSERT INTO operational_documents
+                (public_uuid,organization_id,load_id,document_type,storage_key,storage_provider,
+                 original_filename,content_type,size_bytes,page_count,sha256,malware_status,
+                 processing_status,retention_date,created_by)
+                VALUES (?,?,?, ?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    document_uuid, record["organization_id"], record["load_id"], kind.value,
+                    storage_key, storage.name, filename, validated.media_type, validated.size_bytes,
+                    validated.page_count, validated.sha256, scan.status, "RECEIVED",
+                    default_retention_date(), None,
+                ),
+            ).lastrowid)
+            conn.execute(
+                """INSERT INTO delivery_document_links
+                (public_uuid,organization_id,document_id,load_id,document_kind,source,captured_by_driver,notes)
+                VALUES (?,?,?,?,?,'driver_portal',?,?)""",
+                (
+                    str(uuid.uuid4()), record["organization_id"], document_id, record["load_id"],
+                    kind.value, assignment["driver_id"] if assignment else None,
+                    str(form.get("notes") or "").strip()[:500],
+                ),
+            )
+    except sqlite3.IntegrityError as exc:
+        storage.delete(storage_key)
+        raise HTTPException(409, "This delivery document was already uploaded for the load") from exc
+    record_audit_event(
+        "delivery_document.uploaded", int(record["organization_id"]), None,
+        {"load_id": record["load_id"], "document_uuid": document_uuid, "document_kind": kind.value, "sha256": validated.sha256},
+    )
+    return _render_driver_dispatch_page(request, token, _driver_dispatch_record(token))
+
+
+@app.post("/loads/{load_uuid}/status")
+async def update_load_status(request: Request, load_uuid: str):
+    user = require_permission(request, "loads.manage")
+    form = await verified_form(request)
+    load = _load_by_public_uuid(user["organization_id"], load_uuid)
+    target_value = str(form.get("status") or "").strip()
+    reason = str(form.get("reason") or "Office status update").strip()[:500]
+    idempotency_key = str(form.get("idempotency_key") or "").strip()[:200]
+    if not idempotency_key:
+        raise HTTPException(400, "A status update idempotency key is required")
+    try:
+        target = LoadState(target_value.upper())
+    except ValueError as exc:
+        raise HTTPException(400, "Choose a valid load status") from exc
+    try:
+        with db_session() as conn:
+            _transition_workflow(
+                conn,
+                organization_id=int(user["organization_id"]), load_id=int(load["id"]),
+                target=target, actor_user_id=int(user["id"]),
+                idempotency_key=f"office:{load_uuid}:{idempotency_key}", reason=reason,
+            )
+    except LoadStateError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    record_audit_event(
+        "load.status_updated", int(user["organization_id"]), int(user["id"]),
+        {"load_id": load["id"], "status": target.value, "reason": reason},
+    )
+    return redirect(f"/loads/{load['id']}")
 
 
 @app.get("/vehicles", response_class=HTMLResponse)

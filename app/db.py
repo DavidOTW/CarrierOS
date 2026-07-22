@@ -12,6 +12,7 @@ from typing import Any, Iterable
 
 from .v016_migration import migrate_v016_foundation
 from .phase2_migration import migrate_phase2_ratecon_dispatch
+from .phase3_migration import migrate_phase3_delivery_to_cash
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 APP_DIR = Path(__file__).resolve().parent
@@ -781,6 +782,7 @@ def init_db(seed: bool = False) -> None:
         )
         migrate_v016_foundation(conn)
         migrate_phase2_ratecon_dispatch(conn)
+        migrate_phase3_delivery_to_cash(conn)
         conn.commit()
     if seed:
         if not SNAPSHOT_PATH.exists():
@@ -1014,6 +1016,7 @@ ORGANIZATION_EXPORT_TABLES = (
     "ratecon_match_candidates",
     "ratecon_differences",
     "dispatch_approvals",
+    "delivery_document_links",
 )
 
 
