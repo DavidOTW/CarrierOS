@@ -51,6 +51,13 @@ The repository may use an isolated writable pytest cache directory when the host
 
 Secure upload validation, duplicate document, malware/OCR/storage/provider failure, extraction evidence/confidence, multi-page scanned fixture, candidate matching, material differences, stop time zones/DST, assignment/reassignment, equipment-specific cost, dispatch approval, driver acknowledgement, and cross-tenant document access.
 
+Implemented PR 2 coverage includes signature/content-type validation, deterministic scanned
+OCR/extraction mocks, evidence/confidence, candidate matching, financial/operational
+differences, explicit approval, equipment ranking, tenant denial, dispatch approval,
+single-load driver disclosure, and idempotent acknowledgment. Provider outage matrices,
+DST boundary fixtures, reassignment/revocation, and asynchronous retry behavior remain
+required before production beta and are documented as deferred rather than claimed complete.
+
 ### PR 3
 
 BOL/POD authorization, offline retry, detention/accessorial detection, invoice packet, partial/final/short payment, settlement reconciliation/revision, snapshot immutability, actual/booked/quote variance, and complete delivery-to-close state path.

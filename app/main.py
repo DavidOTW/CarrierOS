@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import hashlib
 import io
 import json
 import logging
 import os
+import re
 import secrets
+import sqlite3
 import time
+import uuid
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -20,6 +24,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -38,6 +43,24 @@ from .opportunities import (
     opportunity_input_snapshot,
 )
 from .routing import configured_route_provider
+from .dispatch_workflow import HOS_DISCLAIMER, rank_assignments
+from .load_states import LoadState, LoadStateError, normalize_state, transition_load_state
+from .money import money_to_cents
+from .permissions import has_permission
+from .ratecons import (
+    MATERIAL_CLASSIFICATIONS,
+    ExtractedField,
+    RateConError,
+    compare_ratecon_to_booking,
+    configured_extraction_provider,
+    configured_malware_scan_provider,
+    configured_ocr_provider,
+    configured_storage_provider,
+    default_retention_date,
+    document_text_pages,
+    suggest_ratecon_matches,
+    validate_ratecon_upload,
+)
 from .growth import STARTUP_STEPS, equipment_finance_audit, growth_mentor_findings
 from .db import (
     as_dict,
@@ -85,7 +108,7 @@ from .stripe_billing import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
-VERSION = "0.16.0a1"
+VERSION = "0.16.0a2"
 ENVIRONMENT = os.getenv("CARRIEROS_ENV", "development").strip().lower()
 IS_PRODUCTION = ENVIRONMENT == "production"
 CANONICAL_BASE_URL = os.getenv(
@@ -415,8 +438,9 @@ def _stop_dispatch_lines(load: dict[str, Any], prefix: str, label: str) -> tuple
     contact_name = str(load.get(f"{prefix}_contact_name") or "").strip()
     contact_phone = str(load.get(f"{prefix}_contact_phone") or "").strip()
     instructions = str(load.get(f"{prefix}_instructions") or "").strip()
+    timezone_name = str(load.get(f"{prefix}_timezone") or "").strip()
     navigation = _stop_navigation_links(address)
-    lines = [f"{label}: {start} - {end} (local facility time)", address]
+    lines = [f"{label}: {start} - {end} ({timezone_name})", address]
     if contact_name or contact_phone:
         lines.append("Contact: " + " | ".join(value for value in (contact_name, contact_phone) if value))
     if instructions:
@@ -440,6 +464,8 @@ def driver_dispatch_package(load: dict[str, Any]) -> dict[str, Any]:
             blockers.append(f"Add the full {label} address.")
         if not load.get(f"{prefix}_window_start") or not load.get(f"{prefix}_window_end"):
             blockers.append(f"Add the complete {label} appointment window.")
+        if not str(load.get(f"{prefix}_timezone") or "").strip():
+            blockers.append(f"Add the IANA time zone for the {label} facility.")
     if blockers:
         return {"ready": False, "blockers": blockers}
 
@@ -478,12 +504,14 @@ def _ratecon_form_fields(form: Any, existing: Any = None) -> dict[str, Any]:
         "pickup_contact_name": str(form.get("pickup_contact_name", "")).strip(),
         "pickup_contact_phone": str(form.get("pickup_contact_phone", "")).strip(),
         "pickup_instructions": str(form.get("pickup_instructions", "")).strip(),
+        "pickup_timezone": str(form.get("pickup_timezone", "")).strip(),
         "delivery_address": str(form.get("delivery_address", "")).strip(),
         "delivery_window_start": str(form.get("delivery_window_start", "")).strip() or None,
         "delivery_window_end": str(form.get("delivery_window_end", "")).strip() or None,
         "delivery_contact_name": str(form.get("delivery_contact_name", "")).strip(),
         "delivery_contact_phone": str(form.get("delivery_contact_phone", "")).strip(),
         "delivery_instructions": str(form.get("delivery_instructions", "")).strip(),
+        "delivery_timezone": str(form.get("delivery_timezone", "")).strip(),
         "ratecon_reference": str(form.get("ratecon_reference", "")).strip(),
         "ratecon_received_at": (existing_received_at or utc_now_iso()) if received else None,
     }
@@ -493,6 +521,7 @@ def _ratecon_form_fields(form: Any, existing: Any = None) -> dict[str, Any]:
         "pickup_contact_phone": 100, "delivery_contact_phone": 100,
         "pickup_instructions": 2000, "delivery_instructions": 2000,
         "ratecon_reference": 255,
+        "pickup_timezone": 100, "delivery_timezone": 100,
     }
     for name, limit in limits.items():
         if len(str(fields[name] or "")) > limit:
@@ -507,6 +536,9 @@ def _ratecon_form_fields(form: Any, existing: Any = None) -> dict[str, Any]:
             raise HTTPException(400, f"Enter a valid {label.lower()} appointment time") from exc
         if parsed_start and parsed_end and parsed_end < parsed_start:
             raise HTTPException(400, f"{label} window end must be after its start")
+        timezone_name = str(fields[f"{prefix}_timezone"] or "")
+        if timezone_name and not re.fullmatch(r"[A-Za-z_+-]+(?:/[A-Za-z_+-]+)+", timezone_name):
+            raise HTTPException(400, f"Enter a valid IANA time zone for {label.lower()} (example: America/Chicago)")
     return fields
 
 
@@ -619,6 +651,192 @@ def require_user(request: Request) -> dict[str, Any]:
     if not subscription_allows_access(user):
         raise HTTPException(status_code=402, detail="Subscription required")
     return user
+
+
+def require_permission(request: Request, permission: str) -> dict[str, Any]:
+    user = require_user(request)
+    if not has_permission(str(user.get("role") or "read_only"), permission):
+        raise HTTPException(status_code=403, detail="You do not have permission for this action")
+    return user
+
+
+WORKFLOW_LABELS = {
+    LoadState.BOOKED_AWAITING_RATECON: "Booked — Awaiting RateCon",
+    LoadState.RATECON_REVIEW: "RateCon Review",
+    LoadState.NEEDS_ASSIGNMENT: "Needs Assignment",
+    LoadState.DISPATCH_AWAITING_APPROVAL: "Dispatch Awaiting Approval",
+    LoadState.DISPATCHED_AWAITING_ACK: "Dispatched — Awaiting Driver Acknowledgment",
+    LoadState.DISPATCH_ACKNOWLEDGED: "Dispatch Acknowledged",
+}
+
+
+def _transition_workflow(
+    conn: Any,
+    *,
+    organization_id: int,
+    load_id: int,
+    target: LoadState,
+    actor_user_id: int | None,
+    idempotency_key: str,
+    reason: str,
+) -> Any:
+    try:
+        history = transition_load_state(
+            conn,
+            organization_id=organization_id,
+            load_id=load_id,
+            target=target,
+            actor_user_id=actor_user_id,
+            idempotency_key=idempotency_key,
+            reason=reason,
+        )
+    except LoadStateError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    conn.execute(
+        "UPDATE loads SET status=? WHERE id=? AND organization_id=?",
+        (WORKFLOW_LABELS.get(target, target.value.replace("_", " ").title()), load_id, organization_id),
+    )
+    return history
+
+
+def _load_by_public_uuid(organization_id: int, public_uuid: str) -> dict[str, Any]:
+    row = query_one(
+        "SELECT * FROM loads WHERE public_uuid=? AND organization_id=?",
+        (public_uuid, organization_id),
+    )
+    if not row:
+        raise HTTPException(404, "Load not found")
+    return dict(row)
+
+
+def _ratecon_document(organization_id: int, public_uuid: str) -> dict[str, Any]:
+    row = query_one(
+        """SELECT d.*,l.public_uuid AS load_public_uuid,l.load_number
+        FROM operational_documents d
+        LEFT JOIN loads l ON l.id=d.load_id AND l.organization_id=d.organization_id
+        WHERE d.public_uuid=? AND d.organization_id=? AND d.deleted_at IS NULL""",
+        (public_uuid, organization_id),
+    )
+    if not row:
+        raise HTTPException(404, "RateCon not found")
+    return dict(row)
+
+
+def _effective_extracted_fields(
+    organization_id: int, extraction_id: int, *, conn: Any | None = None
+) -> list[ExtractedField]:
+    sql = """SELECT * FROM ratecon_extracted_fields
+    WHERE organization_id=? AND extraction_id=? ORDER BY id"""
+    params = (organization_id, extraction_id)
+    rows = conn.execute(sql, params).fetchall() if conn is not None else query_all(sql, params)
+    return [
+        ExtractedField(
+            str(row["field_name"]),
+            str(row["reviewed_value"] if row["reviewed_value"] is not None else row["extracted_value"]),
+            int(row["confidence_millis"]) / 1000,
+            int(row["document_page"]) if row["document_page"] is not None else None,
+            str(row["evidence_text"]),
+            str(row["bounding_reference"]) if row["bounding_reference"] else None,
+        )
+        for row in rows
+        if str(row["human_review_status"]) != "REJECTED"
+    ]
+
+
+def _replace_ratecon_differences(
+    conn: Any,
+    *,
+    organization_id: int,
+    document_id: int,
+    load: dict[str, Any],
+    fields: list[ExtractedField],
+) -> list[dict[str, Any]]:
+    approved = conn.execute(
+        """SELECT 1 FROM ratecon_differences
+        WHERE organization_id=? AND document_id=? AND approval_status='APPROVED' LIMIT 1""",
+        (organization_id, document_id),
+    ).fetchone()
+    if approved:
+        raise HTTPException(409, "Approved RateCon differences are locked")
+    conn.execute(
+        "DELETE FROM ratecon_differences WHERE organization_id=? AND document_id=?",
+        (organization_id, document_id),
+    )
+    differences = compare_ratecon_to_booking(load, fields)
+    for difference in differences:
+        conn.execute(
+            """INSERT INTO ratecon_differences
+            (organization_id,document_id,load_id,field_name,booked_value,ratecon_value,
+             classification,financial_impact_cents,operational_impact,confidence_millis,
+             evidence_text,approval_status)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                organization_id,
+                document_id,
+                load["id"],
+                difference.field_name,
+                difference.booked_value,
+                difference.ratecon_value,
+                difference.classification,
+                difference.financial_impact_cents,
+                difference.operational_impact,
+                round(difference.confidence * 1000),
+                difference.evidence,
+                "PENDING" if difference.material else "NOT_REQUIRED",
+            ),
+        )
+    return [difference.to_dict() for difference in differences]
+
+
+def _insert_load_snapshot(
+    conn: Any,
+    *,
+    organization_id: int,
+    load_id: int,
+    stage: str,
+    inputs: dict[str, Any],
+    result: dict[str, Any],
+    user_id: int,
+) -> int:
+    revision = int(
+        conn.execute(
+            "SELECT COALESCE(MAX(revision),0)+1 AS revision FROM load_financial_snapshots WHERE load_id=? AND stage=?",
+            (load_id, stage),
+        ).fetchone()["revision"]
+    )
+    input_json = json.dumps(inputs, sort_keys=True, separators=(",", ":"), default=str)
+    result_json = json.dumps(result, sort_keys=True, separators=(",", ":"), default=str)
+    checksum = hashlib.sha256(f"{input_json}|{result_json}".encode()).hexdigest()
+    return int(
+        conn.execute(
+            """INSERT INTO load_financial_snapshots
+            (public_uuid,organization_id,load_id,stage,revision,calculation_version,
+             input_json,result_json,checksum_sha256,created_by)
+            VALUES (?,?,?,?,?,'0.16-phase2',?,?,?,?)""",
+            (
+                str(uuid.uuid4()), organization_id, load_id, stage, revision,
+                input_json, result_json, checksum, user_id,
+            ),
+        ).lastrowid
+    )
+
+
+def _dispatch_token(approval_public_uuid: str) -> str:
+    serializer = URLSafeTimedSerializer(SESSION_SECRET, salt="carrieros-driver-dispatch-v1")
+    return serializer.dumps({"scope": "driver_dispatch_ack", "approval": approval_public_uuid})
+
+
+def _read_dispatch_token(token: str) -> str:
+    serializer = URLSafeTimedSerializer(SESSION_SECRET, salt="carrieros-driver-dispatch-v1")
+    try:
+        payload = serializer.loads(token, max_age=48 * 3600)
+    except SignatureExpired as exc:
+        raise HTTPException(410, "This dispatch link expired. Ask dispatch for a new link.") from exc
+    except BadSignature as exc:
+        raise HTTPException(404, "Dispatch link not found") from exc
+    if payload.get("scope") != "driver_dispatch_ack" or not payload.get("approval"):
+        raise HTTPException(404, "Dispatch link not found")
+    return str(payload["approval"])
 
 
 def render(request: Request, name: str, context: dict[str, Any] | None = None, status_code: int = 200):
@@ -1869,31 +2087,86 @@ async def create_load(request: Request):
         status = "RateCon Received"
     elif not ratecon["ratecon_received_at"] and status == "RateCon Received":
         status = "Booked — Awaiting RateCon"
+    status_state = (
+        LoadState.RATECON_REVIEW if ratecon["ratecon_received_at"] else normalize_state(status)
+    )
+    load_public_uuid = str(uuid.uuid4())
+    created_at = utc_now_iso()
+    revenue = optional_number(form.get("revenue"))
     load_id = execute(
         """INSERT INTO loads
-        (organization_id, load_number, pickup_date, delivery_date, driver_id, vehicle_id,
+        (organization_id,public_uuid,status_code,updated_at,load_number,pickup_date,delivery_date,driver_id,vehicle_id,
          broker, origin, destination, status, revenue, loaded_miles, deadhead_miles,
          fuel_override, tolls_misc, other_direct_costs, notes, include_in_model,
          pickup_address,pickup_window_start,pickup_window_end,pickup_contact_name,
-         pickup_contact_phone,pickup_instructions,delivery_address,delivery_window_start,
+         pickup_contact_phone,pickup_instructions,pickup_timezone,delivery_address,delivery_window_start,
          delivery_window_end,delivery_contact_name,delivery_contact_phone,
-         delivery_instructions,ratecon_reference,ratecon_received_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+         delivery_instructions,delivery_timezone,ratecon_reference,ratecon_received_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (
-            user["organization_id"], str(form.get("load_number", "")).strip() or f"LOAD-{datetime.now():%Y%m%d%H%M}",
+            user["organization_id"], load_public_uuid, status_state.value, created_at,
+            str(form.get("load_number", "")).strip() or f"LOAD-{datetime.now():%Y%m%d%H%M}",
             str(form.get("pickup_date", "")) or None, str(form.get("delivery_date", "")) or None,
             driver_id, vehicle_id or None, str(form.get("broker", "")).strip(), str(form.get("origin", "")).strip(),
-            str(form.get("destination", "")).strip(), status, optional_number(form.get("revenue")),
+            str(form.get("destination", "")).strip(), status, revenue,
             number(form.get("loaded_miles")), number(form.get("deadhead_miles")), optional_number(form.get("fuel_override")),
             number(form.get("tolls_misc")), number(form.get("other_direct_costs")), str(form.get("notes", "")).strip(),
             1 if yes(form.get("include_in_model")) else 0,
             ratecon["pickup_address"], ratecon["pickup_window_start"], ratecon["pickup_window_end"],
-            ratecon["pickup_contact_name"], ratecon["pickup_contact_phone"], ratecon["pickup_instructions"],
+            ratecon["pickup_contact_name"], ratecon["pickup_contact_phone"], ratecon["pickup_instructions"], ratecon["pickup_timezone"],
             ratecon["delivery_address"], ratecon["delivery_window_start"], ratecon["delivery_window_end"],
             ratecon["delivery_contact_name"], ratecon["delivery_contact_phone"], ratecon["delivery_instructions"],
-            ratecon["ratecon_reference"], ratecon["ratecon_received_at"],
+            ratecon["delivery_timezone"], ratecon["ratecon_reference"], ratecon["ratecon_received_at"],
         ),
     )
+    with db_session() as conn:
+        conn.execute(
+            """INSERT INTO load_status_history
+            (organization_id,load_id,prior_status,new_status,changed_by,idempotency_key,reason)
+            VALUES (?,?,NULL,?,?,?,?)""",
+            (
+                user["organization_id"], load_id, status_state.value, user["id"],
+                f"manual-load:{load_public_uuid}:initial", "Manual load created",
+            ),
+        )
+        for sequence, stop_type, address, appointment_start, appointment_end, timezone_name, contact_name, contact_phone, instructions in (
+            (1, "PICKUP", ratecon["pickup_address"], ratecon["pickup_window_start"], ratecon["pickup_window_end"], ratecon["pickup_timezone"], ratecon["pickup_contact_name"], ratecon["pickup_contact_phone"], ratecon["pickup_instructions"]),
+            (2, "DELIVERY", ratecon["delivery_address"], ratecon["delivery_window_start"], ratecon["delivery_window_end"], ratecon["delivery_timezone"], ratecon["delivery_contact_name"], ratecon["delivery_contact_phone"], ratecon["delivery_instructions"]),
+        ):
+            conn.execute(
+                """INSERT INTO load_stops
+                (public_uuid,organization_id,load_id,sequence_number,stop_type,address_line1,
+                 iana_timezone,appointment_local_start,appointment_local_end,contact_name,
+                 contact_phone,instructions,detention_eligible)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1)""",
+                (
+                    str(uuid.uuid4()), user["organization_id"], load_id, sequence, stop_type,
+                    address, timezone_name or None, appointment_start, appointment_end,
+                    contact_name, contact_phone, instructions,
+                ),
+            )
+        if revenue is not None:
+            conn.execute(
+                """INSERT INTO load_revenue_items
+                (public_uuid,organization_id,load_id,category,description,amount_cents,stage,source)
+                VALUES (?,?,?,'LINEHAUL','Manual load revenue',?,'BOOKED','manual_load')""",
+                (str(uuid.uuid4()), user["organization_id"], load_id, money_to_cents(revenue, field="Load revenue")),
+            )
+        power_unit = conn.execute(
+            "SELECT id FROM power_units WHERE organization_id=? AND legacy_vehicle_id=?",
+            (user["organization_id"], vehicle_id),
+        ).fetchone()
+        if power_unit:
+            conn.execute(
+                """INSERT INTO load_assignments
+                (public_uuid,organization_id,load_id,driver_id,power_unit_id,assignment_stage,
+                 provisional,deadhead_miles_micros,route_source)
+                VALUES (?,?,?, ?,?,'MANUAL_ENTRY',1,?,'manual')""",
+                (
+                    str(uuid.uuid4()), user["organization_id"], load_id, driver_id, power_unit["id"],
+                    round(number(form.get("deadhead_miles")) * 1_000_000),
+                ),
+            )
     record_audit_event(
         "load.created",
         organization_id=int(user["organization_id"]),
@@ -1945,9 +2218,9 @@ async def update_load(request: Request, load_id: int):
             broker=?,origin=?,destination=?,status=?,revenue=?,loaded_miles=?,deadhead_miles=?,
             fuel_override=?,tolls_misc=?,other_direct_costs=?,notes=?,include_in_model=?,
             pickup_address=?,pickup_window_start=?,pickup_window_end=?,pickup_contact_name=?,
-            pickup_contact_phone=?,pickup_instructions=?,delivery_address=?,delivery_window_start=?,
+            pickup_contact_phone=?,pickup_instructions=?,pickup_timezone=?,delivery_address=?,delivery_window_start=?,
             delivery_window_end=?,delivery_contact_name=?,delivery_contact_phone=?,
-            delivery_instructions=?,ratecon_reference=?,ratecon_received_at=?
+            delivery_instructions=?,delivery_timezone=?,ratecon_reference=?,ratecon_received_at=?
             WHERE id=? AND organization_id=?""",
             (
                 str(form.get("load_number", "")).strip() or f"LOAD-{load_id}", str(form.get("pickup_date", "")) or None,
@@ -1957,13 +2230,33 @@ async def update_load(request: Request, load_id: int):
                 optional_number(form.get("fuel_override")), number(form.get("tolls_misc")), number(form.get("other_direct_costs")),
                 str(form.get("notes", "")).strip(), 1 if yes(form.get("include_in_model")) else 0,
                 ratecon["pickup_address"], ratecon["pickup_window_start"], ratecon["pickup_window_end"],
-                ratecon["pickup_contact_name"], ratecon["pickup_contact_phone"], ratecon["pickup_instructions"],
+                ratecon["pickup_contact_name"], ratecon["pickup_contact_phone"], ratecon["pickup_instructions"], ratecon["pickup_timezone"],
                 ratecon["delivery_address"], ratecon["delivery_window_start"], ratecon["delivery_window_end"],
                 ratecon["delivery_contact_name"], ratecon["delivery_contact_phone"], ratecon["delivery_instructions"],
-                ratecon["ratecon_reference"], ratecon["ratecon_received_at"],
+                ratecon["delivery_timezone"], ratecon["ratecon_reference"], ratecon["ratecon_received_at"],
                 load_id, user["organization_id"],
             ),
         )
+        for stop_type, prefix in (("PICKUP", "pickup"), ("DELIVERY", "delivery")):
+            conn.execute(
+                """UPDATE load_stops SET address_line1=?,iana_timezone=?,appointment_local_start=?,
+                appointment_local_end=?,contact_name=?,contact_phone=?,instructions=?,updated_at=?
+                WHERE organization_id=? AND load_id=? AND stop_type=?""",
+                (
+                    ratecon[f"{prefix}_address"], ratecon[f"{prefix}_timezone"],
+                    ratecon[f"{prefix}_window_start"], ratecon[f"{prefix}_window_end"],
+                    ratecon[f"{prefix}_contact_name"], ratecon[f"{prefix}_contact_phone"],
+                    ratecon[f"{prefix}_instructions"], utc_now_iso(),
+                    user["organization_id"], load_id, stop_type,
+                ),
+            )
+        revised_revenue = optional_number(form.get("revenue"))
+        if revised_revenue is not None:
+            conn.execute(
+                """UPDATE load_revenue_items SET amount_cents=?
+                WHERE organization_id=? AND load_id=? AND source='manual_load' AND stage='BOOKED'""",
+                (money_to_cents(revised_revenue, field="Load revenue"), user["organization_id"], load_id),
+            )
     record_audit_event(
         "load.updated",
         organization_id=int(user["organization_id"]),
@@ -2017,12 +2310,766 @@ def load_detail(request: Request, load_id: int):
     })
 
 
+def _ratecon_page_context(organization_id: int, document: dict[str, Any]) -> dict[str, Any]:
+    extraction = query_one(
+        """SELECT * FROM ratecon_extractions
+        WHERE organization_id=? AND document_id=? ORDER BY id DESC LIMIT 1""",
+        (organization_id, document["id"]),
+    )
+    fields = []
+    if extraction:
+        fields = [dict(row) for row in query_all(
+            """SELECT * FROM ratecon_extracted_fields
+            WHERE organization_id=? AND extraction_id=? ORDER BY field_name""",
+            (organization_id, extraction["id"]),
+        )]
+    candidates = [dict(row) for row in query_all(
+        """SELECT c.*,l.public_uuid AS load_public_uuid,l.load_number,l.broker,l.origin,l.destination
+        FROM ratecon_match_candidates c JOIN loads l ON l.id=c.load_id
+        WHERE c.organization_id=? AND c.document_id=? ORDER BY c.score DESC,l.load_number""",
+        (organization_id, document["id"]),
+    )]
+    differences = [dict(row) for row in query_all(
+        """SELECT * FROM ratecon_differences
+        WHERE organization_id=? AND document_id=? ORDER BY id""",
+        (organization_id, document["id"]),
+    )]
+    material_pending = any(
+        row["classification"] in MATERIAL_CLASSIFICATIONS and row["approval_status"] == "PENDING"
+        for row in differences
+    )
+    return {
+        "document": document,
+        "extraction": dict(extraction) if extraction else None,
+        "fields": fields,
+        "field_values": {
+            row["field_name"]: (
+                row["reviewed_value"] if row["reviewed_value"] is not None else row["extracted_value"]
+            )
+            for row in fields
+            if row["human_review_status"] != "REJECTED"
+        },
+        "candidates": candidates,
+        "differences": differences,
+        "material_pending": material_pending,
+    }
+
+
+@app.get("/ratecons", response_class=HTMLResponse)
+def ratecon_inbox(request: Request):
+    user = require_permission(request, "documents.view_operational")
+    documents = [dict(row) for row in query_all(
+        """SELECT d.*,l.public_uuid AS load_public_uuid,l.load_number
+        FROM operational_documents d
+        LEFT JOIN loads l ON l.id=d.load_id AND l.organization_id=d.organization_id
+        WHERE d.organization_id=? AND d.document_type='RATECON' AND d.deleted_at IS NULL
+        ORDER BY d.created_at DESC,d.id DESC""",
+        (user["organization_id"],),
+    )]
+    loads = [dict(row) for row in query_all(
+        """SELECT id,public_uuid,load_number,broker,origin,destination,status,status_code
+        FROM loads WHERE organization_id=? AND include_in_model=1
+        AND status_code IN ('BOOKED_AWAITING_RATECON','RATECON_REVIEW')
+        ORDER BY pickup_date,id""",
+        (user["organization_id"],),
+    )]
+    storage = configured_storage_provider()
+    scanner = configured_malware_scan_provider()
+    return render(request, "ratecons.html", {
+        "documents": documents,
+        "loads": loads,
+        "storage_ready": (not IS_PRODUCTION) or storage.secure_at_rest,
+        "scanner_ready": scanner.name != "manual",
+        "max_ratecon_mb": 12,
+    })
+
+
+@app.post("/ratecons/upload")
+async def upload_ratecon(request: Request):
+    user = require_permission(request, "documents.manage_operational")
+    form = await verified_form(request)
+    upload = form.get("ratecon")
+    if upload is None or not hasattr(upload, "read"):
+        raise HTTPException(400, "Choose a RateCon PDF or phone image")
+    payload = await upload.read(12 * 1024 * 1024 + 1)
+    filename = Path(str(getattr(upload, "filename", "ratecon"))).name.replace("\x00", "")[:255]
+    try:
+        validated = validate_ratecon_upload(
+            payload,
+            filename=filename,
+            claimed_content_type=str(getattr(upload, "content_type", "")),
+        )
+    except RateConError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    storage = configured_storage_provider()
+    if IS_PRODUCTION and not storage.secure_at_rest:
+        raise HTTPException(503, "Private encrypted document storage is not configured")
+    scan = configured_malware_scan_provider().scan(payload, filename=filename)
+    if scan.status == "REJECTED":
+        raise HTTPException(400, "The file failed malware screening and was not stored")
+    document_uuid = str(uuid.uuid4())
+    storage_key = f"organizations/{user['organization_id']}/ratecons/{document_uuid}.{validated.extension}"
+    storage.put(storage_key, payload, content_type=validated.media_type)
+    extraction_result = None
+    if scan.status == "CLEAN":
+        pages = document_text_pages(payload, validated.media_type, configured_ocr_provider())
+        extraction_result = configured_extraction_provider().extract(pages)
+    selected_load_uuid = str(form.get("load_public_uuid") or "").strip()
+    load = _load_by_public_uuid(user["organization_id"], selected_load_uuid) if selected_load_uuid else None
+    try:
+        with db_session() as conn:
+            document_id = int(conn.execute(
+                """INSERT INTO operational_documents
+                (public_uuid,organization_id,load_id,document_type,storage_key,storage_provider,
+                 original_filename,content_type,size_bytes,page_count,sha256,malware_status,
+                 processing_status,retention_date,created_by)
+                VALUES (?,?,?,'RATECON',?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    document_uuid, user["organization_id"], load["id"] if load else None,
+                    storage_key, storage.name, filename, validated.media_type,
+                    validated.size_bytes, validated.page_count, validated.sha256, scan.status,
+                    extraction_result.status if extraction_result else "MALWARE_REVIEW",
+                    default_retention_date(), user["id"],
+                ),
+            ).lastrowid)
+            extraction_id = int(conn.execute(
+                """INSERT INTO ratecon_extractions
+                (public_uuid,organization_id,document_id,extraction_provider,provider_version,
+                 status,detail,extracted_at)
+                VALUES (?,?,?,?,?,?,?,?)""",
+                (
+                    str(uuid.uuid4()), user["organization_id"], document_id,
+                    extraction_result.provider if extraction_result else "manual_fallback",
+                    extraction_result.provider_version if extraction_result else "1",
+                    extraction_result.status if extraction_result else "MALWARE_REVIEW",
+                    extraction_result.detail if extraction_result else scan.detail,
+                    utc_now_iso(),
+                ),
+            ).lastrowid)
+            for field in extraction_result.fields if extraction_result else ():
+                conn.execute(
+                    """INSERT INTO ratecon_extracted_fields
+                    (organization_id,extraction_id,field_name,extracted_value,confidence_millis,
+                     document_page,evidence_text,bounding_reference)
+                    VALUES (?,?,?,?,?,?,?,?)""",
+                    (
+                        user["organization_id"], extraction_id, field.name, field.value,
+                        round(field.confidence * 1000), field.page, field.evidence,
+                        field.bounding_reference,
+                    ),
+                )
+            fields = list(extraction_result.fields) if extraction_result else []
+            candidate_loads = [dict(row) for row in conn.execute(
+                """SELECT * FROM loads WHERE organization_id=? AND include_in_model=1
+                AND status_code IN ('BOOKED_AWAITING_RATECON','RATECON_REVIEW')""",
+                (user["organization_id"],),
+            ).fetchall()]
+            for candidate in suggest_ratecon_matches(candidate_loads, {item.name: item.value for item in fields}):
+                conn.execute(
+                    """INSERT INTO ratecon_match_candidates
+                    (organization_id,document_id,load_id,score,reasons_json)
+                    VALUES (?,?,?,?,?)""",
+                    (user["organization_id"], document_id, candidate.load_id, candidate.score, json.dumps(candidate.reasons)),
+                )
+            if load and scan.status == "CLEAN":
+                _transition_workflow(
+                    conn,
+                    organization_id=user["organization_id"], load_id=load["id"],
+                    target=LoadState.RATECON_REVIEW, actor_user_id=user["id"],
+                    idempotency_key=f"ratecon:{document_uuid}:review",
+                    reason="RateCon uploaded and malware screening passed",
+                )
+                conn.execute(
+                    """UPDATE loads SET ratecon_reference=?,ratecon_received_at=?
+                    WHERE id=? AND organization_id=?""",
+                    (filename, utc_now_iso(), load["id"], user["organization_id"]),
+                )
+                _replace_ratecon_differences(
+                    conn, organization_id=user["organization_id"], document_id=document_id,
+                    load=load, fields=fields,
+                )
+    except sqlite3.IntegrityError as exc:
+        storage.delete(storage_key)
+        if "sha256" in str(exc).lower() or "unique" in str(exc).lower():
+            raise HTTPException(409, "This RateCon was already uploaded for the selected load") from exc
+        raise
+    record_audit_event(
+        "ratecon.uploaded", int(user["organization_id"]), int(user["id"]),
+        {"document_uuid": document_uuid, "load_id": load["id"] if load else None, "sha256": validated.sha256},
+    )
+    set_flash(request, "RateCon stored privately. Review the extracted facts and every difference before dispatch.")
+    return redirect(f"/ratecons/{document_uuid}")
+
+
+@app.get("/ratecons/{document_uuid}", response_class=HTMLResponse)
+def ratecon_detail_page(request: Request, document_uuid: str):
+    user = require_permission(request, "documents.view_operational")
+    document = _ratecon_document(user["organization_id"], document_uuid)
+    return render(request, "ratecon_detail.html", _ratecon_page_context(user["organization_id"], document))
+
+
+@app.post("/ratecons/{document_uuid}/attach/{load_uuid}")
+async def attach_ratecon(request: Request, document_uuid: str, load_uuid: str):
+    user = require_permission(request, "documents.manage_operational")
+    await verified_form(request)
+    document = _ratecon_document(user["organization_id"], document_uuid)
+    if document["load_id"]:
+        raise HTTPException(409, "This RateCon is already attached to a load")
+    if document["malware_status"] != "CLEAN":
+        raise HTTPException(409, "Malware screening must pass before attaching the RateCon")
+    load = _load_by_public_uuid(user["organization_id"], load_uuid)
+    extraction = query_one(
+        "SELECT id FROM ratecon_extractions WHERE organization_id=? AND document_id=? ORDER BY id DESC LIMIT 1",
+        (user["organization_id"], document["id"]),
+    )
+    fields = _effective_extracted_fields(user["organization_id"], int(extraction["id"])) if extraction else []
+    with db_session() as conn:
+        conn.execute(
+            "UPDATE operational_documents SET load_id=? WHERE id=? AND organization_id=?",
+            (load["id"], document["id"], user["organization_id"]),
+        )
+        conn.execute(
+            """UPDATE ratecon_match_candidates SET selected_at=?,selected_by=?
+            WHERE organization_id=? AND document_id=? AND load_id=?""",
+            (utc_now_iso(), user["id"], user["organization_id"], document["id"], load["id"]),
+        )
+        _transition_workflow(
+            conn, organization_id=user["organization_id"], load_id=load["id"],
+            target=LoadState.RATECON_REVIEW, actor_user_id=user["id"],
+            idempotency_key=f"ratecon:{document_uuid}:attach",
+            reason="User selected the RateCon match",
+        )
+        conn.execute(
+            "UPDATE loads SET ratecon_reference=?,ratecon_received_at=? WHERE id=? AND organization_id=?",
+            (document["original_filename"], utc_now_iso(), load["id"], user["organization_id"]),
+        )
+        _replace_ratecon_differences(
+            conn, organization_id=user["organization_id"], document_id=document["id"], load=load, fields=fields,
+        )
+    return redirect(f"/ratecons/{document_uuid}")
+
+
+RATECON_REVIEW_FIELDS = (
+    "broker_customer", "load_number", "ratecon_number", "total_rate",
+    "pickup_date", "delivery_date", "added_stop", "tracking_penalty",
+    "driver_assist", "factoring_restriction", "pickup_address",
+    "pickup_window_start", "pickup_window_end", "pickup_timezone",
+    "pickup_contact_name", "pickup_contact_phone", "pickup_instructions",
+    "delivery_address", "delivery_window_start", "delivery_window_end",
+    "delivery_timezone", "delivery_contact_name", "delivery_contact_phone",
+    "delivery_instructions",
+)
+
+
+@app.post("/ratecons/{document_uuid}/review")
+async def review_ratecon_fields(request: Request, document_uuid: str):
+    user = require_permission(request, "documents.manage_operational")
+    form = await verified_form(request)
+    document = _ratecon_document(user["organization_id"], document_uuid)
+    if not document["load_id"]:
+        raise HTTPException(409, "Attach the RateCon to a load before reviewing its differences")
+    extraction = query_one(
+        "SELECT id FROM ratecon_extractions WHERE organization_id=? AND document_id=? ORDER BY id DESC LIMIT 1",
+        (user["organization_id"], document["id"]),
+    )
+    if not extraction:
+        raise HTTPException(409, "RateCon extraction record not found")
+    with db_session() as conn:
+        for name in RATECON_REVIEW_FIELDS:
+            value = str(form.get(name) or "").strip()
+            if not value:
+                continue
+            existing = conn.execute(
+                "SELECT id FROM ratecon_extracted_fields WHERE extraction_id=? AND field_name=?",
+                (extraction["id"], name),
+            ).fetchone()
+            if existing:
+                conn.execute(
+                    """UPDATE ratecon_extracted_fields SET reviewed_value=?,human_review_status='CORRECTED',
+                    reviewed_by=?,reviewed_at=? WHERE id=? AND organization_id=?""",
+                    (value, user["id"], utc_now_iso(), existing["id"], user["organization_id"]),
+                )
+            else:
+                conn.execute(
+                    """INSERT INTO ratecon_extracted_fields
+                    (organization_id,extraction_id,field_name,extracted_value,confidence_millis,
+                     evidence_text,human_review_status,reviewed_value,reviewed_by,reviewed_at)
+                    VALUES (?,?,?,?,1000,'Human-entered review value','APPROVED',?,?,?)""",
+                    (user["organization_id"], extraction["id"], name, value, value, user["id"], utc_now_iso()),
+                )
+        fields = _effective_extracted_fields(
+            user["organization_id"], int(extraction["id"]), conn=conn
+        )
+        load = dict(conn.execute(
+            "SELECT * FROM loads WHERE id=? AND organization_id=?",
+            (document["load_id"], user["organization_id"]),
+        ).fetchone())
+        _replace_ratecon_differences(
+            conn, organization_id=user["organization_id"], document_id=document["id"], load=load, fields=fields,
+        )
+    record_audit_event(
+        "ratecon.fields_reviewed", int(user["organization_id"]), int(user["id"]),
+        {"document_uuid": document_uuid},
+    )
+    set_flash(request, "Reviewed values saved. CarrierOS recalculated the comparison without overwriting the booking snapshot.")
+    return redirect(f"/ratecons/{document_uuid}")
+
+
+@app.post("/ratecons/{document_uuid}/approve")
+async def approve_ratecon_differences(request: Request, document_uuid: str):
+    user = require_permission(request, "loads.manage")
+    form = await verified_form(request)
+    document = _ratecon_document(user["organization_id"], document_uuid)
+    if not document["load_id"] or document["malware_status"] != "CLEAN":
+        raise HTTPException(409, "A clean, attached RateCon is required")
+    extraction = query_one(
+        "SELECT id FROM ratecon_extractions WHERE organization_id=? AND document_id=? ORDER BY id DESC LIMIT 1",
+        (user["organization_id"], document["id"]),
+    )
+    fields = _effective_extracted_fields(user["organization_id"], int(extraction["id"])) if extraction else []
+    values = {field.name: field.value for field in fields}
+    required = (
+        "total_rate", "pickup_address", "pickup_window_start", "pickup_window_end",
+        "pickup_timezone", "delivery_address", "delivery_window_start",
+        "delivery_window_end", "delivery_timezone",
+    )
+    missing = [name.replace("_", " ") for name in required if not values.get(name)]
+    if missing:
+        raise HTTPException(400, "Review and confirm: " + ", ".join(missing))
+    for timezone_name in (values["pickup_timezone"], values["delivery_timezone"]):
+        if not re.fullmatch(r"[A-Za-z_+-]+(?:/[A-Za-z_+-]+)+", timezone_name):
+            raise HTTPException(400, "Use IANA facility time zones such as America/Chicago")
+    differences = [dict(row) for row in query_all(
+        "SELECT * FROM ratecon_differences WHERE organization_id=? AND document_id=?",
+        (user["organization_id"], document["id"]),
+    )]
+    material = [row for row in differences if row["classification"] in MATERIAL_CLASSIFICATIONS]
+    if material and not yes(form.get("approve_material")):
+        raise HTTPException(400, "Explicitly approve the material RateCon differences")
+    with db_session() as conn:
+        now = utc_now_iso()
+        conn.execute(
+            """UPDATE ratecon_differences SET approval_status='APPROVED',approved_by=?,approved_at=?
+            WHERE organization_id=? AND document_id=? AND approval_status='PENDING'""",
+            (user["id"], now, user["organization_id"], document["id"]),
+        )
+        load = dict(conn.execute(
+            "SELECT * FROM loads WHERE id=? AND organization_id=?",
+            (document["load_id"], user["organization_id"]),
+        ).fetchone())
+        conn.execute(
+            """UPDATE loads SET pickup_address=?,pickup_window_start=?,pickup_window_end=?,
+            pickup_timezone=?,pickup_contact_name=?,pickup_contact_phone=?,pickup_instructions=?,
+            delivery_address=?,delivery_window_start=?,delivery_window_end=?,delivery_timezone=?,
+            delivery_contact_name=?,delivery_contact_phone=?,delivery_instructions=?
+            WHERE id=? AND organization_id=?""",
+            (
+                values["pickup_address"], values["pickup_window_start"], values["pickup_window_end"],
+                values["pickup_timezone"], values.get("pickup_contact_name", ""),
+                values.get("pickup_contact_phone", ""), values.get("pickup_instructions", ""),
+                values["delivery_address"], values["delivery_window_start"], values["delivery_window_end"],
+                values["delivery_timezone"], values.get("delivery_contact_name", ""),
+                values.get("delivery_contact_phone", ""), values.get("delivery_instructions", ""),
+                load["id"], user["organization_id"],
+            ),
+        )
+        for stop_type, prefix in (("PICKUP", "pickup"), ("DELIVERY", "delivery")):
+            conn.execute(
+                """UPDATE load_stops SET address_line1=?,iana_timezone=?,appointment_local_start=?,
+                appointment_local_end=?,contact_name=?,contact_phone=?,instructions=?,updated_at=?
+                WHERE organization_id=? AND load_id=? AND stop_type=?""",
+                (
+                    values[f"{prefix}_address"], values[f"{prefix}_timezone"],
+                    values[f"{prefix}_window_start"], values[f"{prefix}_window_end"],
+                    values.get(f"{prefix}_contact_name", ""), values.get(f"{prefix}_contact_phone", ""),
+                    values.get(f"{prefix}_instructions", ""), utc_now_iso(),
+                    user["organization_id"], load["id"], stop_type,
+                ),
+            )
+        _insert_load_snapshot(
+            conn,
+            organization_id=user["organization_id"], load_id=load["id"], stage="RATECON_CONFIRMED",
+            inputs={"booking_snapshot_id": load.get("booking_snapshot_id"), "reviewed_fields": values},
+            result={"confirmed_rate_cents": money_to_cents(values["total_rate"], field="RateCon total"), "differences": differences},
+            user_id=user["id"],
+        )
+        _transition_workflow(
+            conn, organization_id=user["organization_id"], load_id=load["id"],
+            target=LoadState.NEEDS_ASSIGNMENT, actor_user_id=user["id"],
+            idempotency_key=f"ratecon:{document_uuid}:approved",
+            reason="Human approved RateCon facts and material differences",
+        )
+        conn.execute(
+            "UPDATE operational_documents SET processing_status='REVIEWED' WHERE id=? AND organization_id=?",
+            (document["id"], user["organization_id"]),
+        )
+    record_audit_event(
+        "ratecon.approved", int(user["organization_id"]), int(user["id"]),
+        {"document_uuid": document_uuid, "load_id": document["load_id"], "material_differences": len(material)},
+    )
+    set_flash(request, "RateCon review approved. The load is ready for driver, truck, and trailer assignment.")
+    return redirect(f"/loads/{document['load_public_uuid']}/dispatch")
+
+
+@app.get("/ratecons/{document_uuid}/download")
+def issue_ratecon_download(request: Request, document_uuid: str):
+    user = require_permission(request, "documents.view_operational")
+    _ratecon_document(user["organization_id"], document_uuid)
+    serializer = URLSafeTimedSerializer(SESSION_SECRET, salt="carrieros-private-document-v1")
+    token = serializer.dumps({"document": document_uuid, "organization": user["organization_id"]})
+    record_audit_event(
+        "ratecon.download_link_issued", int(user["organization_id"]), int(user["id"]),
+        {"document_uuid": document_uuid},
+    )
+    return redirect(f"/private-documents/{document_uuid}?token={quote(token)}")
+
+
+@app.get("/private-documents/{document_uuid}")
+def download_private_document(request: Request, document_uuid: str, token: str):
+    user = require_permission(request, "documents.view_operational")
+    serializer = URLSafeTimedSerializer(SESSION_SECRET, salt="carrieros-private-document-v1")
+    try:
+        payload = serializer.loads(token, max_age=300)
+    except SignatureExpired as exc:
+        raise HTTPException(410, "This private download link expired") from exc
+    except BadSignature as exc:
+        raise HTTPException(404, "Private document not found") from exc
+    if payload.get("document") != document_uuid or int(payload.get("organization") or 0) != int(user["organization_id"]):
+        raise HTTPException(404, "Private document not found")
+    document = _ratecon_document(user["organization_id"], document_uuid)
+    try:
+        body = configured_storage_provider().get(document["storage_key"])
+    except (FileNotFoundError, KeyError) as exc:
+        raise HTTPException(404, "Private document object not found") from exc
+    record_audit_event(
+        "ratecon.downloaded", int(user["organization_id"]), int(user["id"]),
+        {"document_uuid": document_uuid},
+    )
+    safe_name = quote(document["original_filename"])
+    return Response(
+        body,
+        media_type=document["content_type"],
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{safe_name}", "Cache-Control": "no-store"},
+    )
+
+
+def _dispatch_page_context(organization_id: int, load_uuid: str) -> dict[str, Any]:
+    load = _load_by_public_uuid(organization_id, load_uuid)
+    settings = dict(query_one("SELECT * FROM organizations WHERE id=?", (organization_id,)))
+    opportunity = query_one(
+        "SELECT equipment_type FROM load_opportunities WHERE id=? AND organization_id=?",
+        (load.get("opportunity_id") or 0, organization_id),
+    )
+    stops = [dict(row) for row in query_all(
+        """SELECT * FROM load_stops WHERE organization_id=? AND load_id=?
+        ORDER BY sequence_number""",
+        (organization_id, load["id"]),
+    )]
+    pickup_stop = next((item for item in stops if item["stop_type"] == "PICKUP"), {})
+    delivery_stop = next((item for item in reversed(stops) if item["stop_type"] == "DELIVERY"), {})
+    load.update(
+        origin_city=pickup_stop.get("city") or "",
+        origin_state=pickup_stop.get("state") or "",
+        origin_postal_code=pickup_stop.get("postal_code") or "",
+        destination_city=delivery_stop.get("city") or "",
+        destination_state=delivery_stop.get("state") or "",
+        destination_postal_code=delivery_stop.get("postal_code") or "",
+        pickup_at=pickup_stop.get("appointment_local_start") or load.get("pickup_window_start") or load.get("pickup_date"),
+        delivery_at=delivery_stop.get("appointment_local_start") or load.get("delivery_window_start") or load.get("delivery_date"),
+        equipment_requirement=str(opportunity["equipment_type"] if opportunity else ""),
+    )
+    drivers = [dict(row) for row in query_all(
+        "SELECT * FROM drivers WHERE organization_id=? AND active=1 ORDER BY lower(name)",
+        (organization_id,),
+    )]
+    power_units_by_driver: dict[int, dict[str, Any] | None] = {}
+    for driver in drivers:
+        assignment = query_one(
+            """SELECT p.* FROM equipment_assignments e JOIN power_units p ON p.id=e.power_unit_id
+            WHERE e.organization_id=? AND e.driver_id=? AND e.end_at IS NULL AND p.active=1
+            ORDER BY e.start_at DESC,e.id DESC LIMIT 1""",
+            (organization_id, driver["id"]),
+        )
+        if not assignment and driver.get("vehicle_id"):
+            assignment = query_one(
+                """SELECT * FROM power_units WHERE organization_id=? AND legacy_vehicle_id=? AND active=1""",
+                (organization_id, driver["vehicle_id"]),
+            )
+        power_units_by_driver[int(driver["id"])] = dict(assignment) if assignment else None
+    trailers = [dict(row) for row in query_all(
+        "SELECT * FROM trailers WHERE organization_id=? AND active=1 ORDER BY unit_number",
+        (organization_id,),
+    )]
+    schedule_blockers: dict[int, list[str]] = {}
+    compliance_blockers: dict[int, list[str]] = {}
+    for driver in drivers:
+        conflict = query_one(
+            """SELECT load_number,pickup_date,delivery_date FROM loads
+            WHERE organization_id=? AND driver_id=? AND id<>?
+              AND include_in_model=1 AND status_code NOT IN ('CANCELLED','CLOSED')
+              AND COALESCE(pickup_date,'9999-12-31')<=COALESCE(?,'9999-12-31')
+              AND COALESCE(delivery_date,'0001-01-01')>=COALESCE(?,'0001-01-01')
+            ORDER BY pickup_date LIMIT 1""",
+            (organization_id, driver["id"], load["id"], load.get("delivery_date"), load.get("pickup_date")),
+        )
+        if conflict:
+            schedule_blockers[int(driver["id"])] = [
+                f"Schedule conflicts with {conflict['load_number']} ({conflict['pickup_date']} to {conflict['delivery_date']})"
+            ]
+        expired = query_all(
+            """SELECT document_type,expiration_date FROM compliance_items
+            WHERE organization_id=? AND lower(subject_type)='driver' AND subject_id=?
+              AND expiration_date IS NOT NULL AND expiration_date<COALESCE(?,'9999-12-31')""",
+            (organization_id, driver["id"], load.get("delivery_date")),
+        )
+        if expired:
+            compliance_blockers[int(driver["id"])] = [
+                f"{row['document_type']} expires {row['expiration_date']}" for row in expired
+            ]
+    bundle = get_bundle(organization_id)
+    pickup_date = parse_date(load.get("pickup_date")) or date.today()
+    fuel_price = fuel_price_for(pickup_date, bundle["weekly_fuel"], number(settings["fallback_diesel_price"]))
+    candidates = rank_assignments(
+        settings, load, drivers, power_units_by_driver, trailers,
+        latest_driver_locations(organization_id), configured_route_provider(),
+        schedule_blockers=schedule_blockers, compliance_blockers=compliance_blockers,
+        fuel_price=fuel_price,
+    )
+    current_assignment = query_one(
+        """SELECT a.*,d.name AS driver_name,p.company_unit_number,t.unit_number AS trailer_number
+        FROM load_assignments a
+        LEFT JOIN drivers d ON d.id=a.driver_id
+        LEFT JOIN power_units p ON p.id=a.power_unit_id
+        LEFT JOIN trailers t ON t.id=a.trailer_id
+        WHERE a.organization_id=? AND a.load_id=? AND a.ended_at IS NULL
+        ORDER BY a.created_at DESC,a.id DESC LIMIT 1""",
+        (organization_id, load["id"]),
+    )
+    approval = query_one(
+        """SELECT * FROM dispatch_approvals WHERE organization_id=? AND load_id=?
+        ORDER BY id DESC LIMIT 1""",
+        (organization_id, load["id"]),
+    )
+    ack_url = ""
+    if approval and approval["status"] == "AWAITING_DRIVER_ACK":
+        ack_url = f"{CANONICAL_BASE_URL}/driver/dispatch/{_dispatch_token(approval['public_uuid'])}"
+    return {
+        "load": load,
+        "stops": stops,
+        "candidates": candidates,
+        "current_assignment": dict(current_assignment) if current_assignment else None,
+        "approval": dict(approval) if approval else None,
+        "ack_url": ack_url,
+        "hos_disclaimer": HOS_DISCLAIMER,
+    }
+
+
+@app.get("/loads/{load_uuid}/dispatch", response_class=HTMLResponse)
+def dispatch_assignment_page(request: Request, load_uuid: str):
+    user = require_permission(request, "loads.view")
+    return render(request, "dispatch_assignment.html", _dispatch_page_context(user["organization_id"], load_uuid))
+
+
+@app.post("/loads/{load_uuid}/dispatch/assign")
+async def approve_load_assignment(request: Request, load_uuid: str):
+    user = require_permission(request, "loads.manage")
+    form = await verified_form(request)
+    context = _dispatch_page_context(user["organization_id"], load_uuid)
+    load = context["load"]
+    if normalize_state(load["status_code"]) != LoadState.NEEDS_ASSIGNMENT:
+        raise HTTPException(409, "Complete and approve the RateCon review before assignment")
+    driver_id = integer(form.get("driver_id"))
+    power_unit_id = integer(form.get("power_unit_id"))
+    trailer_id = integer(form.get("trailer_id")) or None
+    candidate = next(
+        (
+            item for item in context["candidates"]
+            if int(item.driver["id"]) == driver_id
+            and item.power_unit and int(item.power_unit["id"]) == power_unit_id
+            and int((item.trailer or {}).get("id") or 0) == int(trailer_id or 0)
+        ),
+        None,
+    )
+    if not candidate or not candidate.eligible:
+        raise HTTPException(400, "Choose an eligible driver, power unit, and trailer combination")
+    now = utc_now_iso()
+    with db_session() as conn:
+        conn.execute(
+            "UPDATE load_assignments SET ended_at=? WHERE organization_id=? AND load_id=? AND ended_at IS NULL",
+            (now, user["organization_id"], load["id"]),
+        )
+        assignment_id = int(conn.execute(
+            """INSERT INTO load_assignments
+            (public_uuid,organization_id,load_id,driver_id,power_unit_id,trailer_id,
+             assignment_stage,provisional,deadhead_origin,deadhead_miles_micros,
+             route_source,approved_by,approved_at)
+            VALUES (?,?,?,?,?,?,'RATECON_APPROVED',0,?,?,?,?,?)""",
+            (
+                str(uuid.uuid4()), user["organization_id"], load["id"], driver_id,
+                power_unit_id, trailer_id,
+                str((candidate.location or {}).get("city") or ""),
+                round(candidate.result.deadhead_miles * 1_000_000), candidate.deadhead_source,
+                user["id"], now,
+            ),
+        ).lastrowid)
+        conn.execute(
+            """UPDATE loads SET driver_id=?,vehicle_id=?,deadhead_miles=?
+            WHERE id=? AND organization_id=?""",
+            (
+                driver_id, candidate.power_unit.get("legacy_vehicle_id"),
+                candidate.result.deadhead_miles, load["id"], user["organization_id"],
+            ),
+        )
+        _insert_load_snapshot(
+            conn, organization_id=user["organization_id"], load_id=load["id"], stage="RATECON_CONFIRMED",
+            inputs={
+                "assignment": {
+                    "driver_id": driver_id, "power_unit_id": power_unit_id, "trailer_id": trailer_id,
+                    "deadhead_source": candidate.deadhead_source,
+                },
+                "prior_ratecon_snapshot": "preserved",
+            },
+            result=candidate.result.to_dict(), user_id=user["id"],
+        )
+        _transition_workflow(
+            conn, organization_id=user["organization_id"], load_id=load["id"],
+            target=LoadState.DISPATCH_AWAITING_APPROVAL, actor_user_id=user["id"],
+            idempotency_key=f"assignment:{assignment_id}:approved",
+            reason="Authorized user approved driver and equipment assignment",
+        )
+        conn.execute(
+            """INSERT INTO dispatch_approvals
+            (public_uuid,organization_id,load_id,load_assignment_id,status)
+            VALUES (?,?,?,?,'AWAITING_APPROVAL')""",
+            (str(uuid.uuid4()), user["organization_id"], load["id"], assignment_id),
+        )
+    record_audit_event(
+        "dispatch.assignment_approved", int(user["organization_id"]), int(user["id"]),
+        {"load_id": load["id"], "driver_id": driver_id, "power_unit_id": power_unit_id, "trailer_id": trailer_id},
+    )
+    set_flash(request, "Assignment approved and profitability recalculated. Dispatch still requires final approval.")
+    return redirect(f"/loads/{load_uuid}/dispatch")
+
+
+@app.post("/loads/{load_uuid}/dispatch/approve")
+async def approve_dispatch(request: Request, load_uuid: str):
+    user = require_permission(request, "dispatch.approve")
+    await verified_form(request)
+    load = _load_by_public_uuid(user["organization_id"], load_uuid)
+    approval = query_one(
+        """SELECT * FROM dispatch_approvals WHERE organization_id=? AND load_id=?
+        AND status='AWAITING_APPROVAL' ORDER BY id DESC LIMIT 1""",
+        (user["organization_id"], load["id"]),
+    )
+    if not approval:
+        raise HTTPException(409, "An approved assignment is required before dispatch approval")
+    with db_session() as conn:
+        now = utc_now_iso()
+        conn.execute(
+            """UPDATE dispatch_approvals SET status='AWAITING_DRIVER_ACK',approved_by=?,approved_at=?
+            WHERE id=? AND organization_id=? AND status='AWAITING_APPROVAL'""",
+            (user["id"], now, approval["id"], user["organization_id"]),
+        )
+        _transition_workflow(
+            conn, organization_id=user["organization_id"], load_id=load["id"],
+            target=LoadState.DISPATCHED_AWAITING_ACK, actor_user_id=user["id"],
+            idempotency_key=f"dispatch:{approval['public_uuid']}:approved",
+            reason="Authorized dispatcher approved dispatch",
+        )
+    record_audit_event(
+        "dispatch.approved", int(user["organization_id"]), int(user["id"]),
+        {"load_id": load["id"], "approval_uuid": approval["public_uuid"]},
+    )
+    set_flash(request, "Dispatch approved. Send the secure acknowledgment link to the assigned driver.")
+    return redirect(f"/loads/{load_uuid}/dispatch")
+
+
+def _driver_dispatch_record(token: str) -> dict[str, Any]:
+    approval_uuid = _read_dispatch_token(token)
+    row = query_one(
+        """SELECT a.*,l.public_uuid AS load_public_uuid,l.load_number,l.broker,
+        l.pickup_address,l.pickup_window_start,l.pickup_window_end,l.pickup_contact_name,
+        l.pickup_contact_phone,l.pickup_instructions,l.pickup_timezone,l.delivery_address,
+        l.delivery_window_start,l.delivery_window_end,l.delivery_contact_name,
+        l.delivery_contact_phone,l.delivery_instructions,l.delivery_timezone,d.name AS driver_name
+        FROM dispatch_approvals a
+        JOIN loads l ON l.id=a.load_id AND l.organization_id=a.organization_id
+        JOIN load_assignments la ON la.id=a.load_assignment_id AND la.organization_id=a.organization_id
+        LEFT JOIN drivers d ON d.id=la.driver_id AND d.organization_id=a.organization_id
+        WHERE a.public_uuid=?""",
+        (approval_uuid,),
+    )
+    if not row:
+        raise HTTPException(404, "Dispatch link not found")
+    return dict(row)
+
+
+@app.get("/driver/dispatch/{token}", response_class=HTMLResponse)
+def driver_dispatch_ack_page(request: Request, token: str):
+    record = _driver_dispatch_record(token)
+    package = driver_dispatch_package({
+        **record,
+        "driver": {"name": record.get("driver_name"), "phone": "0000000000"},
+        "ratecon_received_at": True,
+    })
+    return render(request, "driver_dispatch_ack.html", {
+        "dispatch_record": record,
+        "dispatch_package": package,
+        "dispatch_token": token,
+        "public_driver_page": True,
+        "public_page": True,
+    })
+
+
+@app.post("/driver/dispatch/{token}/ack", response_class=HTMLResponse)
+async def acknowledge_driver_dispatch(request: Request, token: str):
+    record = _driver_dispatch_record(token)
+    form = await request.form()
+    note = str(form.get("note") or "").strip()[:500]
+    if record["status"] == "AWAITING_DRIVER_ACK":
+        with db_session() as conn:
+            now = utc_now_iso()
+            conn.execute(
+                """UPDATE dispatch_approvals SET status='ACKNOWLEDGED',acknowledged_at=?,acknowledgement_note=?
+                WHERE id=? AND organization_id=? AND status='AWAITING_DRIVER_ACK'""",
+                (now, note, record["id"], record["organization_id"]),
+            )
+            _transition_workflow(
+                conn, organization_id=record["organization_id"], load_id=record["load_id"],
+                target=LoadState.DISPATCH_ACKNOWLEDGED, actor_user_id=None,
+                idempotency_key=f"dispatch:{record['public_uuid']}:driver-ack",
+                reason="Assigned driver acknowledged the dispatch link",
+            )
+        record_audit_event(
+            "dispatch.driver_acknowledged", int(record["organization_id"]), None,
+            {"load_id": record["load_id"], "approval_uuid": record["public_uuid"]},
+        )
+    refreshed = _driver_dispatch_record(token)
+    package = driver_dispatch_package({
+        **refreshed,
+        "driver": {"name": refreshed.get("driver_name"), "phone": "0000000000"},
+        "ratecon_received_at": True,
+    })
+    return render(request, "driver_dispatch_ack.html", {
+        "dispatch_record": refreshed,
+        "dispatch_package": package,
+        "dispatch_token": token,
+        "public_driver_page": True,
+        "public_page": True,
+    })
+
+
 @app.get("/vehicles", response_class=HTMLResponse)
 def vehicles_page(request: Request):
     user = require_user(request)
     rows = query_all("SELECT * FROM vehicles WHERE organization_id=? ORDER BY active DESC,name", (user["organization_id"],))
+    trailers = query_all(
+        "SELECT * FROM trailers WHERE organization_id=? ORDER BY active DESC,unit_number",
+        (user["organization_id"],),
+    )
     return render(request, "vehicles.html", {
         "vehicles": [dict(r) for r in rows],
+        "trailers": [dict(r) for r in trailers],
         "unit_limit": int(user["active_unit_limit"] if user.get("active_unit_limit") is not None else 2),
     })
 
@@ -2042,13 +3089,57 @@ async def create_vehicle(request: Request):
             set_flash(request, "Your plan's active-unit limit has been reached. Upgrade from Billing to add another active unit.")
             return redirect("/vehicles")
     try:
-        execute(
-            "INSERT INTO vehicles (organization_id,name,equipment_type,active) VALUES (?,?,?,?)",
-            (user["organization_id"], str(form.get("name", "New unit")).strip(), str(form.get("equipment_type", "Truck")).strip(), active),
-        )
+        name = str(form.get("name", "New unit")).strip()
+        equipment_type = str(form.get("equipment_type", "Truck")).strip()
+        with db_session() as conn:
+            public_uuid = str(uuid.uuid4())
+            vehicle_id = int(conn.execute(
+                "INSERT INTO vehicles (organization_id,public_uuid,name,equipment_type,active) VALUES (?,?,?,?,?)",
+                (user["organization_id"], public_uuid, name, equipment_type, active),
+            ).lastrowid)
+            conn.execute(
+                """INSERT INTO power_units
+                (public_uuid,organization_id,legacy_vehicle_id,public_identifier,
+                 company_unit_number,equipment_type,active,legacy_snapshot_json)
+                VALUES (?,?,?,?,?,?,?,?)""",
+                (
+                    str(uuid.uuid4()), user["organization_id"], vehicle_id, name, name,
+                    equipment_type, active, json.dumps({"source": "vehicle_create", "vehicle_public_uuid": public_uuid}),
+                ),
+            )
     except Exception as exc:
         raise HTTPException(400, "That unit name already exists") from exc
     set_flash(request, "Unit added. Assign it on Driver & Equipment Setup.")
+    return redirect("/vehicles")
+
+
+@app.post("/trailers")
+async def create_trailer(request: Request):
+    user = require_permission(request, "loads.manage")
+    form = await verified_form(request)
+    unit_number = str(form.get("unit_number") or "").strip()
+    trailer_type = str(form.get("trailer_type") or "").strip()
+    if not unit_number or not trailer_type:
+        raise HTTPException(400, "Enter a trailer number and type")
+    try:
+        execute(
+            """INSERT INTO trailers
+            (public_uuid,organization_id,unit_number,trailer_type,gvwr_lbs,empty_weight_lbs,
+             dimensions,active)
+            VALUES (?,?,?,?,?,?,?,?)""",
+            (
+                str(uuid.uuid4()), user["organization_id"], unit_number, trailer_type,
+                integer(form.get("gvwr_lbs")) or None, integer(form.get("empty_weight_lbs")) or None,
+                str(form.get("dimensions") or "").strip(), 1 if yes(form.get("active", "on")) else 0,
+            ),
+        )
+    except sqlite3.IntegrityError as exc:
+        raise HTTPException(400, "That trailer number already exists") from exc
+    record_audit_event(
+        "trailer.created", int(user["organization_id"]), int(user["id"]),
+        {"unit_number": unit_number, "trailer_type": trailer_type},
+    )
+    set_flash(request, "Trailer added and available for RateCon assignment checks.")
     return redirect("/vehicles")
 
 
@@ -2073,14 +3164,18 @@ async def update_vehicle(request: Request, vehicle_id: int):
             set_flash(request, "Your plan's active-unit limit has been reached. Deactivate another unit or upgrade first.")
             return redirect("/vehicles")
     try:
-        execute(
-            "UPDATE vehicles SET name=?,equipment_type=?,active=? WHERE id=? AND organization_id=?",
-            (
-                str(form.get("name", "")).strip() or str(existing["name"]),
-                str(form.get("equipment_type", "Truck")).strip(), active,
-                vehicle_id, user["organization_id"],
-            ),
-        )
+        name = str(form.get("name", "")).strip() or str(existing["name"])
+        equipment_type = str(form.get("equipment_type", "Truck")).strip()
+        with db_session() as conn:
+            conn.execute(
+                "UPDATE vehicles SET name=?,equipment_type=?,active=? WHERE id=? AND organization_id=?",
+                (name, equipment_type, active, vehicle_id, user["organization_id"]),
+            )
+            conn.execute(
+                """UPDATE power_units SET public_identifier=?,company_unit_number=?,equipment_type=?,
+                active=?,updated_at=? WHERE organization_id=? AND legacy_vehicle_id=?""",
+                (name, name, equipment_type, active, utc_now_iso(), user["organization_id"], vehicle_id),
+            )
     except Exception as exc:
         raise HTTPException(400, "That unit name already exists") from exc
     record_audit_event(
@@ -2116,15 +3211,15 @@ async def create_driver(request: Request):
     form = await verified_form(request)
     driver_id = execute(
         """INSERT INTO drivers
-        (organization_id,vehicle_id,name,email,phone,role,pay_model,equipment_type,
+        (organization_id,public_uuid,vehicle_id,name,email,phone,role,pay_model,equipment_type,
          fixed_cost_start,fixed_cost_end,truck_financing_monthly,auto_insurance_monthly,
          trailer_financing_monthly,trailer_insurance_monthly,other_fixed_monthly,mpg,
          maintenance_per_mile,driver_profit_split_pct,contractor_gross_split_pct,
          owner_operator_split_pct,flat_rate_per_load,pay_per_loaded_mile,
          pay_per_total_mile,day_rate,payroll_burden_applies,notes,active)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (
-            user["organization_id"], integer(form.get("vehicle_id")) or None, str(form.get("name", "New driver")).strip(),
+            user["organization_id"], str(uuid.uuid4()), integer(form.get("vehicle_id")) or None, str(form.get("name", "New driver")).strip(),
             str(form.get("email", "")).strip(), str(form.get("phone", "")).strip(), str(form.get("role", "Driver")),
             str(form.get("pay_model", "Profit Split")), str(form.get("equipment_type", "")).strip(),
             str(form.get("fixed_cost_start", "")) or None, str(form.get("fixed_cost_end", "")) or None,
@@ -2825,19 +3920,22 @@ async def book_rate_quote(request: Request, opportunity_id: int):
             conn, opportunity, bundle["settings"], driver_data, result, "booking", user["id"], final_rate,
         )
         load_number = f"CO-{date.today():%Y}-{opportunity_id:05d}"
+        load_public_uuid = str(uuid.uuid4())
+        booked_at = utc_now_iso()
         load_id = int(conn.execute(
             """INSERT INTO loads
-            (organization_id,load_number,pickup_date,delivery_date,driver_id,vehicle_id,
+            (organization_id,public_uuid,status_code,updated_at,load_number,pickup_date,delivery_date,driver_id,vehicle_id,
              broker,origin,destination,status,revenue,loaded_miles,deadhead_miles,fuel_override,
              tolls_misc,other_direct_costs,notes,include_in_model,opportunity_id,
              original_offered_rate,final_agreed_rate,quote_snapshot_id,booking_snapshot_id,ratecon_due_at,
              pickup_window_start,delivery_window_start)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
-                user["organization_id"], load_number, str(opportunity["pickup_at"])[:10],
+                user["organization_id"], load_public_uuid, LoadState.BOOKED_AWAITING_RATECON.value,
+                booked_at, load_number, str(opportunity["pickup_at"])[:10],
                 str(opportunity["delivery_at"])[:10], driver_id, vehicle_id,
                 opportunity.get("broker_customer") or "", origin, destination,
-                "Booked — Awaiting RateCon", final_rate, result.loaded_miles, result.deadhead_miles,
+                WORKFLOW_LABELS[LoadState.BOOKED_AWAITING_RATECON], final_rate, result.loaded_miles, result.deadhead_miles,
                 None, number(opportunity.get("tolls")), direct_costs,
                 opportunity.get("notes") or "", 1, opportunity_id,
                 opportunity["original_offered_rate"], final_rate,
@@ -2848,6 +3946,55 @@ async def book_rate_quote(request: Request, opportunity_id: int):
         conn.execute(
             "UPDATE loads SET booking_snapshot_id=? WHERE id=?",
             (booking_snapshot_id, load_id),
+        )
+        conn.execute(
+            """INSERT INTO load_status_history
+            (organization_id,load_id,prior_status,new_status,changed_by,idempotency_key,reason)
+            VALUES (?,?,NULL,?,?,?,?)""",
+            (
+                user["organization_id"], load_id, LoadState.BOOKED_AWAITING_RATECON.value,
+                user["id"], f"booking:{opportunity_id}:initial", "Booked from approved rate quote",
+            ),
+        )
+        for sequence, stop_type, city, state, postal, appointment in (
+            (1, "PICKUP", opportunity.get("origin_city"), opportunity.get("origin_state"), opportunity.get("origin_postal_code"), opportunity.get("pickup_at")),
+            (2, "DELIVERY", opportunity.get("destination_city"), opportunity.get("destination_state"), opportunity.get("destination_postal_code"), opportunity.get("delivery_at")),
+        ):
+            conn.execute(
+                """INSERT INTO load_stops
+                (public_uuid,organization_id,load_id,sequence_number,stop_type,city,state,postal_code,
+                 appointment_local_start,detention_eligible)
+                VALUES (?,?,?,?,?,?,?,?,?,1)""",
+                (
+                    str(uuid.uuid4()), user["organization_id"], load_id, sequence, stop_type,
+                    city or "", state or "", postal or "", appointment or None,
+                ),
+            )
+        conn.execute(
+            """INSERT INTO load_revenue_items
+            (public_uuid,organization_id,load_id,category,description,amount_cents,stage,source)
+            VALUES (?,?,?,'LINEHAUL','Final agreed all-in rate',?,'BOOKED','quote_booking')""",
+            (str(uuid.uuid4()), user["organization_id"], load_id, money_to_cents(final_rate, field="Final agreed rate")),
+        )
+        power_unit = conn.execute(
+            "SELECT id FROM power_units WHERE organization_id=? AND legacy_vehicle_id=?",
+            (user["organization_id"], vehicle_id),
+        ).fetchone()
+        if power_unit:
+            conn.execute(
+                """INSERT INTO load_assignments
+                (public_uuid,organization_id,load_id,driver_id,power_unit_id,assignment_stage,
+                 provisional,deadhead_miles_micros,route_source)
+                VALUES (?,?,?, ?,?,'QUOTE_SELECTED',1,?,'booking_snapshot')""",
+                (
+                    str(uuid.uuid4()), user["organization_id"], load_id, driver_id, power_unit["id"],
+                    round(result.deadhead_miles * 1_000_000),
+                ),
+            )
+        _insert_load_snapshot(
+            conn, organization_id=user["organization_id"], load_id=load_id, stage="BOOKED",
+            inputs={"opportunity_id": opportunity_id, "opportunity_booking_snapshot_id": booking_snapshot_id},
+            result=result.to_dict(), user_id=user["id"],
         )
         conn.execute(
             """UPDATE load_opportunities SET status='Booked',final_agreed_rate=?,booked_load_id=?,

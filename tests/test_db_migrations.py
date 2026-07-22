@@ -58,7 +58,15 @@ def test_existing_organization_gets_launch_columns(
         "load_financial_snapshots",
         "v016_migration_runs",
     } <= tables
-    assert user_version == 13
+    assert {
+        "operational_documents",
+        "ratecon_extractions",
+        "ratecon_extracted_fields",
+        "ratecon_match_candidates",
+        "ratecon_differences",
+        "dispatch_approvals",
+    } <= tables
+    assert user_version == 14
     with connect() as conn:
         payment_columns = {row["name"] for row in conn.execute("PRAGMA table_info(payments)")}
     assert {"voided_at", "voided_by", "void_reason"} <= payment_columns

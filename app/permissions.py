@@ -25,6 +25,7 @@ PERMISSION_MATRIX: dict[Role, frozenset[str]] = {
             "loads.manage",
             "dispatch.approve",
             "documents.view_operational",
+            "documents.manage_operational",
         }
     ),
     Role.ACCOUNTING: frozenset(

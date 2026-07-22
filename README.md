@@ -4,14 +4,14 @@ CarrierOS is a multi-company fleet financial workspace for small carriers. Each 
 
 ## v0.16 review status
 
-The current development branch is **v0.16.0a1, PR 1 — Architecture and Data Integrity**. It adds an audited Decimal/cents strategy beside the protected legacy calculations, golden coverage for all seven supported pay models, additive normalized driver/pay/equipment/load tables, public UUIDs, a controlled load-state transition service, centralized permissions, backup-first migration/rollback tooling, tenant and immutability tests, and corrected public claims.
+The deployed `main` branch contains **v0.16.0a1, PR 1 — Architecture and Data Integrity**. The current development branch is **v0.16.0a2, PR 2 — RateCon to Dispatch**. PR 2 adds safe retained-document boundaries, deterministic/mock OCR and extraction, evidence-bearing human review, candidate matching, material-difference approval, ranked driver/equipment assignment, dispatch approval, and a minimal single-load driver acknowledgment page.
 
-This branch is not merged, deployed, or a claim that the complete v0.16 workflow is available. Customer-facing calculations still use the protected v0.15 path. RateCon automation, driver dispatch/portal, invoice payments, versioned settlements, managed PostgreSQL, private object storage, and production beta hardening remain separate review phases. See `docs/V016_CURRENT_STATE_AUDIT.md`, `docs/V016_PRODUCT_REQUIREMENTS.md`, `docs/V016_ARCHITECTURE.md`, `docs/V016_MIGRATION_PLAN.md`, `docs/V016_THREAT_MODEL.md`, `docs/V016_ROLLBACK_PLAN.md`, and `docs/V016_TEST_PLAN.md`.
+PR 2 is not merged or deployed and does not claim production document processing is ready. Production RateCon upload refuses to run until encrypted private storage is explicitly configured; dispatch remains blocked until a malware scanner returns `CLEAN`. The protected legacy calculation path remains customer-facing while Phase 2 stores separate booking and RateCon-confirmed snapshots. Delivery-to-cash, invoice payments, versioned settlements, managed PostgreSQL, background processing, MFA, and production beta hardening remain PR 3 and PR 4 work. See `docs/PHASE2_RATECON_DISPATCH.md` and the v0.16 architecture, migration, threat, rollback, and test documents.
 
 ## Included in this release candidate
 
 - Phase 1 carrier workflow: broker/customer offer, pre-book profit check, driver comparison, negotiation history, and exactly-once conversion to `Booked — Awaiting RateCon`
-- Verified RateCon dispatch details with driver-ready SMS composition, pickup/delivery appointment windows, contacts, instructions, and Apple/Google navigation links
+- On the deployed release: manually verified RateCon dispatch details with driver-ready SMS composition, pickup/delivery appointment windows, contacts, instructions, and Apple/Google navigation links
 - Deterministic `BOOK`, `NEGOTIATE`, `DECLINE`, and `REVIEW REQUIRED` recommendations based on company margin, profit, profit-per-mile/day, revenue-per-mile, and deadhead thresholds
 - Immutable evaluation/booking snapshots that preserve the original offer, final rate, company settings, and selected driver pay profile
 - Sourced and timestamped driver locations with stale/unknown warnings and a routing-provider boundary; production uses manually verified mileage until a commercial provider is configured
@@ -26,7 +26,7 @@ This branch is not merged, deployed, or a claim that the complete v0.16 workflow
 - Daily consistent SQLite backups with retention, Render disk snapshots, and authenticated company-data export
 - Public Privacy Policy and Terms of Service pages
 
-The earlier V1 roadmap and Phase 1 boundary remain in `docs/V1_PRODUCT_REQUIREMENTS.md`, `docs/V1_ARCHITECTURE.md`, `docs/V1_IMPLEMENTATION_PLAN.md`, and `docs/V1_RISK_REGISTER.md`; the v0.16 documents above are authoritative for the current four-PR program. Commercial routing, OCR for scanned PDFs, raw document retention, general-ledger reconciliation, live GPS/ELD/HOS, automated SMS delivery, settlement approval, invoicing automation, collections, and accounting sync are not available in the deployed v0.15 application. Document results are discrepancy screens and estimates, not accounting entries or professional advice.
+The earlier V1 roadmap and Phase 1 boundary remain in `docs/V1_PRODUCT_REQUIREMENTS.md`, `docs/V1_ARCHITECTURE.md`, `docs/V1_IMPLEMENTATION_PLAN.md`, and `docs/V1_RISK_REGISTER.md`; the v0.16 documents above are authoritative for the current four-PR program. Commercial routing, production OCR, live GPS/ELD/HOS, automated SMS delivery, settlement approval, invoicing automation, collections, and accounting sync are not available in the deployed v0.16.0a1 application. Phase 2 extraction proposes facts for human review; it does not make financial decisions or provide accounting advice.
 
 ## Local development
 
@@ -74,6 +74,10 @@ Configure a Stripe webhook endpoint at `https://YOUR-APP/stripe/webhook` for `ch
 Stripe Connect is intentionally not part of the initial SaaS billing release. Calculating contractor compensation does not by itself justify Connect, and Connect must not be treated as a general payroll or arbitrary payout service. Reassess Connect when CarrierOS has a defined underlying customer-to-fleet or customer-to-contractor payment flow.
 
 Set `CARRIEROS_ROUTE_PROVIDER=manual` in production. The included `estimated` adapter is a clearly labeled non-commercial development estimate and is not appropriate for booking decisions. Automated tests use the deterministic mock adapter.
+
+### Phase 2 document controls
+
+Set `CARRIEROS_PRIVATE_STORAGE_ROOT` to a non-public persistent location. Production upload additionally requires `CARRIEROS_STORAGE_ENCRYPTED_AT_REST=true`; this is an operator assertion that the managed volume or object store supplies encryption at rest. Set `CARRIEROS_MALWARE_SCANNER` only to a configured scanner adapter. The default `manual` scanner cannot advance a document to dispatch. Automated tests use private in-memory storage and deterministic malware/OCR/extraction mocks; they call no production provider.
 
 ## Go-live checklist
 

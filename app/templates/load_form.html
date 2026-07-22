@@ -33,6 +33,7 @@
 <div class="field full"><label>Full pickup address</label><input name="pickup_address" maxlength="500" value="{{ values.pickup_address or '' }}" placeholder="Street, city, state, ZIP"></div>
 <div class="field"><label>Pickup window starts</label><input type="datetime-local" name="pickup_window_start" value="{{ (values.pickup_window_start or '')[:16] }}"></div>
 <div class="field"><label>Pickup window ends</label><input type="datetime-local" name="pickup_window_end" value="{{ (values.pickup_window_end or '')[:16] }}"></div>
+<div class="field"><label>Pickup facility time zone</label><input name="pickup_timezone" value="{{ values.pickup_timezone or '' }}" placeholder="America/Chicago"></div>
 <div class="field"><label>Pickup contact</label><input name="pickup_contact_name" maxlength="200" value="{{ values.pickup_contact_name or '' }}"></div>
 <div class="field"><label>Pickup contact phone</label><input type="tel" name="pickup_contact_phone" maxlength="100" value="{{ values.pickup_contact_phone or '' }}"></div>
 <div class="field full"><label>Pickup instructions</label><textarea name="pickup_instructions" maxlength="2000" placeholder="Appointment number, dock, check-in, PPE, or other driver instructions">{{ values.pickup_instructions or '' }}</textarea></div>
@@ -41,6 +42,7 @@
 <div class="field full"><label>Full delivery address</label><input name="delivery_address" maxlength="500" value="{{ values.delivery_address or '' }}" placeholder="Street, city, state, ZIP"></div>
 <div class="field"><label>Delivery window starts</label><input type="datetime-local" name="delivery_window_start" value="{{ (values.delivery_window_start or '')[:16] }}"></div>
 <div class="field"><label>Delivery window ends</label><input type="datetime-local" name="delivery_window_end" value="{{ (values.delivery_window_end or '')[:16] }}"></div>
+<div class="field"><label>Delivery facility time zone</label><input name="delivery_timezone" value="{{ values.delivery_timezone or '' }}" placeholder="America/New_York"></div>
 <div class="field"><label>Delivery contact</label><input name="delivery_contact_name" maxlength="200" value="{{ values.delivery_contact_name or '' }}"></div>
 <div class="field"><label>Delivery contact phone</label><input type="tel" name="delivery_contact_phone" maxlength="100" value="{{ values.delivery_contact_phone or '' }}"></div>
 <div class="field full"><label>Delivery instructions</label><textarea name="delivery_instructions" maxlength="2000" placeholder="Appointment number, dock, check-in, PPE, or other driver instructions">{{ values.delivery_instructions or '' }}</textarea></div>
