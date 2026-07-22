@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.16.0a1 — Unreleased
+
+- Added a strict Decimal/cents money policy with centralized half-up rounding and invalid-input rejection beside the protected legacy calculation path.
+- Added frozen golden expected values and legacy-versus-Decimal parity tests for all seven supported pay models.
+- Added additive schema-13 foundations for effective-dated driver pay rules, power units, trailers, equipment assignments, ordered load stops, load assignments, cents revenue/expense items, status history, and immutable financial snapshots.
+- Added public UUID backfill, tenant-scoped migration validation, audit/snapshot immutability, and a controlled idempotent load-state transition service.
+- Added a centralized least-privilege role-permission matrix; route enforcement remains a later reviewed change.
+- Added backup-first dry-run/apply/rollback migration tooling and validation documentation. No production migration or deployment is included.
+- Corrected public marketing, demo, and SEO copy to identify fictional estimates and the seven pay models the backend actually supports.
+- Added the v0.16 current-state audit, requirements, architecture, migration, threat, rollback, test, parity, tenant, role, validation, and public-claims reports.
+- Recorded the direct OTW workbook fixture refresh as blocked until the approved spreadsheet artifact runtime is available; the customer-facing financial engine remains unchanged.
+
 ## 0.15.0 — 2026-07-21
 
 - Added privacy-first RateCon, business-bank-statement, and bill-statement audits with structured discrepancies and suggested review actions.

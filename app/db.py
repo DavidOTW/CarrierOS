@@ -10,6 +10,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+from .v016_migration import migrate_v016_foundation
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 APP_DIR = Path(__file__).resolve().parent
 DEFAULT_DB_PATH = BASE_DIR / "carrieros_v02.db"
@@ -776,6 +778,7 @@ def init_db(seed: bool = False) -> None:
             """CREATE UNIQUE INDEX IF NOT EXISTS idx_loads_opportunity_unique
             ON loads(opportunity_id) WHERE opportunity_id IS NOT NULL"""
         )
+        migrate_v016_foundation(conn)
         conn.commit()
     if seed:
         if not SNAPSHOT_PATH.exists():
@@ -828,7 +831,9 @@ def seed_snapshot_data(force: bool = False) -> None:
             ),
         ).lastrowid
         conn.execute(
-            "INSERT INTO users (organization_id, full_name, email, password_hash, is_admin) VALUES (?, ?, ?, ?, 1)",
+            """INSERT INTO users
+            (organization_id, full_name, email, password_hash, is_admin, role)
+            VALUES (?, ?, ?, ?, 1, 'owner')""",
             (org_id, org.get("owner_name") or "Administrator", "admin@example.invalid", hash_password(secrets.token_urlsafe(32))),
         )
         for order, item in enumerate(snapshot.get("overhead_items", []), 1):
@@ -991,6 +996,16 @@ ORGANIZATION_EXPORT_TABLES = (
     "opportunity_snapshots",
     "opportunity_negotiations",
     "driver_locations",
+    "driver_pay_rules",
+    "power_units",
+    "trailers",
+    "equipment_assignments",
+    "load_stops",
+    "load_assignments",
+    "load_revenue_items",
+    "load_expense_items",
+    "load_status_history",
+    "load_financial_snapshots",
 )
 
 
@@ -1002,7 +1017,7 @@ def export_organization_data(organization_id: int) -> dict[str, Any]:
         if not organization:
             raise ValueError("Organization not found")
         users = conn.execute(
-            """SELECT id, organization_id, full_name, email, is_admin, created_at
+            """SELECT id, organization_id, full_name, email, is_admin, role, created_at
             FROM users WHERE organization_id=? ORDER BY id""",
             (organization_id,),
         ).fetchall()
