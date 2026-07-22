@@ -6,9 +6,9 @@ CarrierOS is a multi-company fleet financial workspace for small carriers. Each 
 
 Phase 3 is deployed on `main` as **v0.16.0a3**. The Phase 4 branch is **v0.16.0a4** and adds the first production beta hardening slice: a non-mutating release-readiness gate with live billing, secure storage, managed malware scanning, database integrity, and verified-backup checks. It remains a draft until reviewed and promoted.
 
-The deployed `main` branch contains **v0.16.0a2, PR 2 — RateCon to Dispatch**. The current development branch is **v0.16.0a3, PR 3 — Delivery to Cash (first slice)**. Phase 2 is live with safe retained-document boundaries, evidence-bearing human review, candidate matching, material-difference approval, ranked driver/equipment assignment, dispatch approval, and a single-load driver acknowledgment page.
+The deployed `main` branch contains **v0.16.0a3, PR 3 — Delivery to Cash (first slice)**. The current development branch is **v0.16.0a4, PR 4 — Production Beta Hardening (first slice)**. Phase 2 and Phase 3 are live with safe retained-document boundaries, evidence-bearing human review, candidate matching, material-difference approval, ranked driver/equipment assignment, dispatch approval, driver acknowledgment, controlled delivery status, and private delivery-document review.
 
-Production RateCon upload refuses to run until encrypted private storage is explicitly configured; dispatch remains blocked until a malware scanner returns `CLEAN`. The protected legacy calculation path remains customer-facing while Phase 2 stores separate booking and RateCon-confirmed snapshots. The Phase 3 draft adds controlled pickup/transit/delivery status updates and private BOL/POD/receipt/detention-evidence uploads from the driver dispatch link, with office review surfaces. Invoice packets, payment ledgers, versioned settlements, managed PostgreSQL, background processing, MFA, and production beta hardening remain subsequent Phase 3/4 work. See `docs/PHASE2_RATECON_DISPATCH.md`, `docs/PHASE3_DELIVERY_TO_CASH.md`, and the v0.16 architecture, migration, threat, rollback, and test documents.
+Production RateCon upload refuses to run until encrypted private storage is explicitly configured; dispatch remains blocked until a malware scanner returns `CLEAN`. The protected legacy calculation path remains customer-facing while Phase 2 stores separate booking and RateCon-confirmed snapshots. Phase 3 adds controlled pickup/transit/delivery status updates and private BOL/POD/receipt/detention-evidence uploads from the driver dispatch link, with office review surfaces. Managed PostgreSQL, background processing, MFA, production object storage, observability, and closed-beta hardening remain open Phase 4 work. See `docs/PHASE2_RATECON_DISPATCH.md`, `docs/PHASE3_DELIVERY_TO_CASH.md`, `docs/PHASE4_BETA_HARDENING.md`, and the v0.16 architecture, migration, threat, rollback, and test documents.
 
 ## Included in this release candidate
 
@@ -82,6 +82,10 @@ Set `CARRIEROS_ROUTE_PROVIDER=manual` in production. The included `estimated` ad
 Set `CARRIEROS_PRIVATE_STORAGE_ROOT` to a non-public persistent location. Production upload additionally requires `CARRIEROS_STORAGE_ENCRYPTED_AT_REST=true`; this is an operator assertion that the managed volume or object store supplies encryption at rest. Set `CARRIEROS_MALWARE_SCANNER` only to a configured scanner adapter. The default `manual` scanner cannot advance a document to dispatch. Automated tests use private in-memory storage and deterministic malware/OCR/extraction mocks; they call no production provider.
 
 ## Go-live checklist
+
+Use `docs/PRODUCTION_LAUNCH_CHECKLIST.md` as the launch gate; it distinguishes
+automated evidence from the Render, Stripe, email, legal, and security actions
+that require a human owner.
 
 - Deploy the Docker image to an HTTPS host with persistent storage, platform health monitoring, daily logical backups, and tested off-host restoration.
 - Keep the app on one instance, set the support email, and use a generated strong session secret in host-managed environment variables.

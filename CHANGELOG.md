@@ -4,6 +4,7 @@
 
 - Added a non-mutating production release-readiness gate for live billing, secure document storage, managed malware scanning, database integrity, schema version, and verified backup evidence.
 - Added JSON/console operator output and focused tests; Phase 4 remains a draft and is not deployed.
+- Added a hard-launch checklist that separates automated evidence from required Render, Stripe, email, legal, security, and human-approval actions.
 
 ## 0.16.0a3 — Draft
 
