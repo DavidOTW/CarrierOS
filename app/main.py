@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import quote, urlencode, urlsplit
 
 import stripe
 from docx import Document
@@ -31,6 +31,7 @@ from .calculations import (
     monday_for,
     parse_date,
 )
+from .audits import AuditFileError, MAX_AUDIT_FILE_BYTES, audit_uploaded_document
 from .opportunities import (
     calculate_opportunity,
     compare_drivers,
@@ -38,6 +39,7 @@ from .opportunities import (
     opportunity_input_snapshot,
 )
 from .routing import configured_route_provider
+from .growth import STARTUP_STEPS, equipment_finance_audit, growth_mentor_findings
 from .db import (
     as_dict,
     create_database_backup,
@@ -84,7 +86,7 @@ from .stripe_billing import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
-VERSION = "0.13.0"
+VERSION = "0.15.0"
 ENVIRONMENT = os.getenv("CARRIEROS_ENV", "development").strip().lower()
 IS_PRODUCTION = ENVIRONMENT == "production"
 CANONICAL_BASE_URL = os.getenv(
@@ -98,7 +100,7 @@ BILLING_MODE = os.getenv("CARRIEROS_BILLING_MODE", "stripe").strip().lower()
 if BILLING_MODE not in {"stripe", "beta"}:
     raise RuntimeError("CARRIEROS_BILLING_MODE must be 'stripe' or 'beta'.")
 TRIAL_DAYS = 14
-TERMS_VERSION = "2026-07-21-subscription-v1"
+TERMS_VERSION = "2026-07-21-audit-v2"
 SUPPORT_EMAIL = os.getenv(
     "CARRIEROS_SUPPORT_EMAIL", "david@outsidethewirelogistics.com"
 ).strip().lower()
@@ -133,6 +135,7 @@ def customer_signups_open() -> bool:
     )
 
 PLAN_LIMITS = {
+    "carrier_startup": {"name": "Carrier Startup", "units": 0, "price": 10},
     "owner_operator": {"name": "Owner-Operator", "units": 2, "price": 25},
     "starter_fleet": {"name": "Starter Fleet", "units": 5, "price": 50},
     "small_fleet": {"name": "Small Fleet", "units": 10, "price": 75},
@@ -382,6 +385,130 @@ def callable_phone(value: Any) -> str | None:
     if not 7 <= len(digits) <= 15:
         return None
     return f"+{digits}" if raw.startswith("+") else digits
+
+
+def _dispatch_datetime(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return raw.replace("T", " ")
+    return parsed.strftime("%a %b %d, %Y %-I:%M %p") if os.name != "nt" else parsed.strftime("%a %b %d, %Y %#I:%M %p")
+
+
+def _stop_navigation_links(address: Any) -> dict[str, str]:
+    destination = str(address or "").strip()
+    if not destination:
+        return {"apple": "", "google": ""}
+    return {
+        "apple": f"https://maps.apple.com/?{urlencode({'daddr': destination, 'dirflg': 'd'})}",
+        "google": "https://www.google.com/maps/dir/?"
+        + urlencode({"api": "1", "destination": destination, "travelmode": "driving"}),
+    }
+
+
+def _stop_dispatch_lines(load: dict[str, Any], prefix: str, label: str) -> tuple[list[str], dict[str, str]]:
+    address = str(load.get(f"{prefix}_address") or "").strip()
+    start = _dispatch_datetime(load.get(f"{prefix}_window_start"))
+    end = _dispatch_datetime(load.get(f"{prefix}_window_end"))
+    contact_name = str(load.get(f"{prefix}_contact_name") or "").strip()
+    contact_phone = str(load.get(f"{prefix}_contact_phone") or "").strip()
+    instructions = str(load.get(f"{prefix}_instructions") or "").strip()
+    navigation = _stop_navigation_links(address)
+    lines = [f"{label}: {start} - {end} (local facility time)", address]
+    if contact_name or contact_phone:
+        lines.append("Contact: " + " | ".join(value for value in (contact_name, contact_phone) if value))
+    if instructions:
+        lines.append(f"Instructions: {instructions}")
+    lines.extend((f"Apple Maps: {navigation['apple']}", f"Google Maps: {navigation['google']}"))
+    return lines, navigation
+
+
+def driver_dispatch_package(load: dict[str, Any]) -> dict[str, Any]:
+    driver = load.get("driver") or {}
+    driver_phone = callable_phone(driver.get("phone"))
+    blockers: list[str] = []
+    if not load.get("ratecon_received_at"):
+        blockers.append("Mark the RateCon as received and verified.")
+    if not driver:
+        blockers.append("Assign a driver.")
+    elif not driver_phone:
+        blockers.append("Add a valid mobile number to the assigned driver's profile.")
+    for prefix, label in (("pickup", "pickup"), ("delivery", "delivery")):
+        if not str(load.get(f"{prefix}_address") or "").strip():
+            blockers.append(f"Add the full {label} address.")
+        if not load.get(f"{prefix}_window_start") or not load.get(f"{prefix}_window_end"):
+            blockers.append(f"Add the complete {label} appointment window.")
+    if blockers:
+        return {"ready": False, "blockers": blockers}
+
+    pickup_lines, pickup_navigation = _stop_dispatch_lines(load, "pickup", "PICKUP")
+    delivery_lines, delivery_navigation = _stop_dispatch_lines(load, "delivery", "DELIVERY")
+    header = [f"CarrierOS dispatch | Load {load.get('load_number') or ''}"]
+    if load.get("broker"):
+        header.append(f"Broker/customer: {load['broker']}")
+    if load.get("ratecon_reference"):
+        header.append(f"RateCon ref: {load['ratecon_reference']}")
+    message = "\n".join(
+        header
+        + ["", *pickup_lines, "", *delivery_lines, "", "Please confirm receipt and report any address or appointment discrepancy before departure."]
+    )
+    encoded_message = quote(message, safe="")
+    return {
+        "ready": True,
+        "driver_name": driver.get("name") or "Driver",
+        "phone": driver_phone,
+        "call_url": f"tel:{driver_phone}",
+        "sms_iphone_url": f"sms:{driver_phone}&body={encoded_message}",
+        "sms_android_url": f"sms:{driver_phone}?body={encoded_message}",
+        "message": message,
+        "pickup_navigation": pickup_navigation,
+        "delivery_navigation": delivery_navigation,
+    }
+
+
+def _ratecon_form_fields(form: Any, existing: Any = None) -> dict[str, Any]:
+    received = yes(form.get("ratecon_received"))
+    existing_received_at = str(existing["ratecon_received_at"] or "") if existing is not None else ""
+    fields = {
+        "pickup_address": str(form.get("pickup_address", "")).strip(),
+        "pickup_window_start": str(form.get("pickup_window_start", "")).strip() or None,
+        "pickup_window_end": str(form.get("pickup_window_end", "")).strip() or None,
+        "pickup_contact_name": str(form.get("pickup_contact_name", "")).strip(),
+        "pickup_contact_phone": str(form.get("pickup_contact_phone", "")).strip(),
+        "pickup_instructions": str(form.get("pickup_instructions", "")).strip(),
+        "delivery_address": str(form.get("delivery_address", "")).strip(),
+        "delivery_window_start": str(form.get("delivery_window_start", "")).strip() or None,
+        "delivery_window_end": str(form.get("delivery_window_end", "")).strip() or None,
+        "delivery_contact_name": str(form.get("delivery_contact_name", "")).strip(),
+        "delivery_contact_phone": str(form.get("delivery_contact_phone", "")).strip(),
+        "delivery_instructions": str(form.get("delivery_instructions", "")).strip(),
+        "ratecon_reference": str(form.get("ratecon_reference", "")).strip(),
+        "ratecon_received_at": (existing_received_at or utc_now_iso()) if received else None,
+    }
+    limits = {
+        "pickup_address": 500, "delivery_address": 500,
+        "pickup_contact_name": 200, "delivery_contact_name": 200,
+        "pickup_contact_phone": 100, "delivery_contact_phone": 100,
+        "pickup_instructions": 2000, "delivery_instructions": 2000,
+        "ratecon_reference": 255,
+    }
+    for name, limit in limits.items():
+        if len(str(fields[name] or "")) > limit:
+            raise HTTPException(400, f"{name.replace('_', ' ').title()} is too long")
+    for prefix, label in (("pickup", "Pickup"), ("delivery", "Delivery")):
+        start = fields[f"{prefix}_window_start"]
+        end = fields[f"{prefix}_window_end"]
+        try:
+            parsed_start = datetime.fromisoformat(start) if start else None
+            parsed_end = datetime.fromisoformat(end) if end else None
+        except ValueError as exc:
+            raise HTTPException(400, f"Enter a valid {label.lower()} appointment time") from exc
+        if parsed_start and parsed_end and parsed_end < parsed_start:
+            raise HTTPException(400, f"{label} window end must be after its start")
+    return fields
 
 
 def driver_availability(organization_id: int) -> list[dict[str, Any]]:
@@ -779,6 +906,7 @@ def service_worker() -> Response:
 def robots() -> Response:
     blocked_paths = (
         "/billing",
+        "/audits",
         "/compliance",
         "/dashboard",
         "/detention/",
@@ -786,6 +914,7 @@ def robots() -> Response:
         "/drivers",
         "/financials",
         "/fuel",
+        "/growth",
         "/health",
         "/idle",
         "/loads",
@@ -797,6 +926,7 @@ def robots() -> Response:
         "/receivables",
         "/settings",
         "/stripe/",
+        "/startup",
         "/vehicles",
     )
     body = "User-agent: *\n" + "".join(f"Disallow: {path}\n" for path in blocked_paths)
@@ -1732,20 +1862,35 @@ async def create_load(request: Request):
         (vehicle_id, user["organization_id"]),
     ):
         raise HTTPException(400, "Select a valid unit")
+    ratecon = _ratecon_form_fields(form)
+    status = str(form.get("status", "Booked"))
+    if ratecon["ratecon_received_at"] and "Awaiting RateCon" in status:
+        status = "RateCon Received"
+    elif not ratecon["ratecon_received_at"] and status == "RateCon Received":
+        status = "Booked — Awaiting RateCon"
     load_id = execute(
         """INSERT INTO loads
         (organization_id, load_number, pickup_date, delivery_date, driver_id, vehicle_id,
          broker, origin, destination, status, revenue, loaded_miles, deadhead_miles,
-         fuel_override, tolls_misc, other_direct_costs, notes, include_in_model)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+         fuel_override, tolls_misc, other_direct_costs, notes, include_in_model,
+         pickup_address,pickup_window_start,pickup_window_end,pickup_contact_name,
+         pickup_contact_phone,pickup_instructions,delivery_address,delivery_window_start,
+         delivery_window_end,delivery_contact_name,delivery_contact_phone,
+         delivery_instructions,ratecon_reference,ratecon_received_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (
             user["organization_id"], str(form.get("load_number", "")).strip() or f"LOAD-{datetime.now():%Y%m%d%H%M}",
             str(form.get("pickup_date", "")) or None, str(form.get("delivery_date", "")) or None,
             driver_id, vehicle_id or None, str(form.get("broker", "")).strip(), str(form.get("origin", "")).strip(),
-            str(form.get("destination", "")).strip(), str(form.get("status", "Booked")), optional_number(form.get("revenue")),
+            str(form.get("destination", "")).strip(), status, optional_number(form.get("revenue")),
             number(form.get("loaded_miles")), number(form.get("deadhead_miles")), optional_number(form.get("fuel_override")),
             number(form.get("tolls_misc")), number(form.get("other_direct_costs")), str(form.get("notes", "")).strip(),
             1 if yes(form.get("include_in_model")) else 0,
+            ratecon["pickup_address"], ratecon["pickup_window_start"], ratecon["pickup_window_end"],
+            ratecon["pickup_contact_name"], ratecon["pickup_contact_phone"], ratecon["pickup_instructions"],
+            ratecon["delivery_address"], ratecon["delivery_window_start"], ratecon["delivery_window_end"],
+            ratecon["delivery_contact_name"], ratecon["delivery_contact_phone"], ratecon["delivery_instructions"],
+            ratecon["ratecon_reference"], ratecon["ratecon_received_at"],
         ),
     )
     record_audit_event(
@@ -1787,19 +1932,34 @@ async def update_load(request: Request, load_id: int):
         (vehicle_id, user["organization_id"]),
     ):
         raise HTTPException(400, "Select a valid unit")
+    ratecon = _ratecon_form_fields(form, existing)
+    status = str(form.get("status", "Booked"))
+    if ratecon["ratecon_received_at"] and "Awaiting RateCon" in status:
+        status = "RateCon Received"
+    elif not ratecon["ratecon_received_at"] and status == "RateCon Received":
+        status = "Booked — Awaiting RateCon"
     with db_session() as conn:
         conn.execute(
             """UPDATE loads SET load_number=?,pickup_date=?,delivery_date=?,driver_id=?,vehicle_id=?,
             broker=?,origin=?,destination=?,status=?,revenue=?,loaded_miles=?,deadhead_miles=?,
-            fuel_override=?,tolls_misc=?,other_direct_costs=?,notes=?,include_in_model=?
+            fuel_override=?,tolls_misc=?,other_direct_costs=?,notes=?,include_in_model=?,
+            pickup_address=?,pickup_window_start=?,pickup_window_end=?,pickup_contact_name=?,
+            pickup_contact_phone=?,pickup_instructions=?,delivery_address=?,delivery_window_start=?,
+            delivery_window_end=?,delivery_contact_name=?,delivery_contact_phone=?,
+            delivery_instructions=?,ratecon_reference=?,ratecon_received_at=?
             WHERE id=? AND organization_id=?""",
             (
                 str(form.get("load_number", "")).strip() or f"LOAD-{load_id}", str(form.get("pickup_date", "")) or None,
                 str(form.get("delivery_date", "")) or None, driver_id, vehicle_id or None, str(form.get("broker", "")).strip(),
-                str(form.get("origin", "")).strip(), str(form.get("destination", "")).strip(), str(form.get("status", "Booked")),
+                str(form.get("origin", "")).strip(), str(form.get("destination", "")).strip(), status,
                 optional_number(form.get("revenue")), number(form.get("loaded_miles")), number(form.get("deadhead_miles")),
                 optional_number(form.get("fuel_override")), number(form.get("tolls_misc")), number(form.get("other_direct_costs")),
                 str(form.get("notes", "")).strip(), 1 if yes(form.get("include_in_model")) else 0,
+                ratecon["pickup_address"], ratecon["pickup_window_start"], ratecon["pickup_window_end"],
+                ratecon["pickup_contact_name"], ratecon["pickup_contact_phone"], ratecon["pickup_instructions"],
+                ratecon["delivery_address"], ratecon["delivery_window_start"], ratecon["delivery_window_end"],
+                ratecon["delivery_contact_name"], ratecon["delivery_contact_phone"], ratecon["delivery_instructions"],
+                ratecon["ratecon_reference"], ratecon["ratecon_received_at"],
                 load_id, user["organization_id"],
             ),
         )
@@ -1849,7 +2009,11 @@ def load_detail(request: Request, load_id: int):
         WHERE p.organization_id=? AND p.load_id=? ORDER BY p.paid_at DESC,p.id DESC""",
         (user["organization_id"], load_id),
     )
-    return render(request, "load_detail.html", {"load": item, "payments": [dict(p) for p in payments]})
+    return render(request, "load_detail.html", {
+        "load": item,
+        "payments": [dict(p) for p in payments],
+        "dispatch": driver_dispatch_package(item),
+    })
 
 
 @app.get("/vehicles", response_class=HTMLResponse)
@@ -1858,7 +2022,7 @@ def vehicles_page(request: Request):
     rows = query_all("SELECT * FROM vehicles WHERE organization_id=? ORDER BY active DESC,name", (user["organization_id"],))
     return render(request, "vehicles.html", {
         "vehicles": [dict(r) for r in rows],
-        "unit_limit": int(user.get("active_unit_limit") or 2),
+        "unit_limit": int(user["active_unit_limit"] if user.get("active_unit_limit") is not None else 2),
     })
 
 
@@ -1872,7 +2036,8 @@ async def create_vehicle(request: Request):
             "SELECT COUNT(*) AS total FROM vehicles WHERE organization_id=? AND active=1",
             (user["organization_id"],),
         )
-        if int(active_count["total"] if active_count else 0) >= int(user.get("active_unit_limit") or 2):
+        unit_limit = int(user["active_unit_limit"] if user.get("active_unit_limit") is not None else 2)
+        if int(active_count["total"] if active_count else 0) >= unit_limit:
             set_flash(request, "Your plan's active-unit limit has been reached. Upgrade from Billing to add another active unit.")
             return redirect("/vehicles")
     try:
@@ -1902,7 +2067,8 @@ async def update_vehicle(request: Request, vehicle_id: int):
             "SELECT COUNT(*) AS total FROM vehicles WHERE organization_id=? AND active=1 AND id<>?",
             (user["organization_id"], vehicle_id),
         )
-        if int(active_count["total"] if active_count else 0) >= int(user.get("active_unit_limit") or 2):
+        unit_limit = int(user["active_unit_limit"] if user.get("active_unit_limit") is not None else 2)
+        if int(active_count["total"] if active_count else 0) >= unit_limit:
             set_flash(request, "Your plan's active-unit limit has been reached. Deactivate another unit or upgrade first.")
             return redirect("/vehicles")
     try:
@@ -2663,8 +2829,9 @@ async def book_rate_quote(request: Request, opportunity_id: int):
             (organization_id,load_number,pickup_date,delivery_date,driver_id,vehicle_id,
              broker,origin,destination,status,revenue,loaded_miles,deadhead_miles,fuel_override,
              tolls_misc,other_direct_costs,notes,include_in_model,opportunity_id,
-             original_offered_rate,final_agreed_rate,quote_snapshot_id,booking_snapshot_id,ratecon_due_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+             original_offered_rate,final_agreed_rate,quote_snapshot_id,booking_snapshot_id,ratecon_due_at,
+             pickup_window_start,delivery_window_start)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 user["organization_id"], load_number, str(opportunity["pickup_at"])[:10],
                 str(opportunity["delivery_at"])[:10], driver_id, vehicle_id,
@@ -2674,6 +2841,7 @@ async def book_rate_quote(request: Request, opportunity_id: int):
                 opportunity.get("notes") or "", 1, opportunity_id,
                 opportunity["original_offered_rate"], final_rate,
                 int(quote_snapshot["id"]) if quote_snapshot else None, booking_snapshot_id, due_at,
+                str(opportunity["pickup_at"])[:16], str(opportunity["delivery_at"])[:16],
             ),
         ).lastrowid)
         conn.execute(
@@ -3189,6 +3357,363 @@ async def submit_onboarding(request: Request, token: str):
         JOIN organizations o ON o.id=a.organization_id WHERE a.id=?""", (row["id"],),
     )
     return render(request, "public_onboarding.html", {"application": dict(updated), "submitted": True, "public_page": True})
+
+
+AUDIT_DOCUMENT_LABELS = {
+    "ratecon": "Rate confirmation",
+    "bank_statement": "Business bank statement",
+    "bill_statement": "Business bill statement",
+}
+
+
+def _audit_page_context(organization_id: int) -> dict[str, Any]:
+    loads = query_all(
+        """SELECT id,load_number,pickup_date,delivery_date,status,revenue
+        FROM loads WHERE organization_id=? ORDER BY pickup_date DESC,id DESC""",
+        (organization_id,),
+    )
+    overhead = query_all(
+        "SELECT id,name,monthly_cost FROM overhead_items WHERE organization_id=? ORDER BY sort_order,id",
+        (organization_id,),
+    )
+    audits = query_all(
+        """SELECT a.*,l.load_number,o.name AS overhead_name
+        FROM document_audits a
+        LEFT JOIN loads l ON l.id=a.linked_load_id AND l.organization_id=a.organization_id
+        LEFT JOIN overhead_items o ON o.id=a.overhead_item_id AND o.organization_id=a.organization_id
+        WHERE a.organization_id=? ORDER BY a.created_at DESC,a.id DESC""",
+        (organization_id,),
+    )
+    return {
+        "loads": [dict(row) for row in loads],
+        "overhead_items": [dict(row) for row in overhead],
+        "audits": [dict(row) for row in audits],
+        "document_types": AUDIT_DOCUMENT_LABELS,
+        "max_upload_mb": MAX_AUDIT_FILE_BYTES // (1024 * 1024),
+    }
+
+
+@app.get("/audits", response_class=HTMLResponse)
+def audits_page(request: Request):
+    user = require_user(request)
+    return render(request, "audits.html", _audit_page_context(int(user["organization_id"])))
+
+
+@app.post("/audits/upload")
+async def upload_audit_document(request: Request):
+    user = require_user(request)
+    form = await verified_form(request)
+    document_type = str(form.get("document_type") or "").strip()
+    upload = form.get("document")
+    filename = str(getattr(upload, "filename", "") or "").strip()
+    content_type = str(getattr(upload, "content_type", "") or "")
+    if not upload or not filename or not hasattr(upload, "read"):
+        raise HTTPException(400, "Choose a PDF or CSV file to audit")
+    payload = await upload.read(MAX_AUDIT_FILE_BYTES + 1)
+    if hasattr(upload, "close"):
+        await upload.close()
+
+    organization_id = int(user["organization_id"])
+    linked_load_id = integer(form.get("linked_load_id")) or None
+    overhead_item_id = integer(form.get("overhead_item_id")) or None
+    period_start = parse_date(form.get("period_start"))
+    period_end = parse_date(form.get("period_end"))
+    context: dict[str, Any] = {}
+    expected_amount = 0.0
+
+    if document_type == "bank_statement":
+        if not period_start or not period_end:
+            raise HTTPException(400, "Choose the beginning and ending date for the bank statement")
+        if period_end < period_start:
+            raise HTTPException(400, "The statement ending date must be on or after its beginning date")
+        bundle, state = get_state(organization_id)
+        period_rows = filter_and_sort_loads(
+            loads_with_results(bundle, state),
+            date_from=period_start,
+            date_to=period_end,
+            date_field="delivery_date",
+        )
+        summary = summarize_load_rows(period_rows)
+        expected_amount = float(summary["revenue"])
+        context = {
+            "expected_revenue": expected_amount,
+            "expected_expense": float(summary["operating_expense"]),
+            "period_label": f"{period_start.isoformat()} through {period_end.isoformat()}",
+        }
+    elif document_type == "ratecon":
+        if not linked_load_id:
+            raise HTTPException(400, "Select the CarrierOS load that belongs to this RateCon")
+        bundle, state = get_state(organization_id)
+        load = next(
+            (
+                row for row in loads_with_results(bundle, state)
+                if int(row["id"]) == linked_load_id
+            ),
+            None,
+        )
+        if not load:
+            raise HTTPException(404, "Load not found")
+        dispatch = driver_dispatch_package(load)
+        expected_amount = float(load.get("revenue") or 0)
+        context = {
+            "expected_revenue": expected_amount,
+            "load_number": load.get("load_number"),
+            "dispatch_blockers": [] if dispatch.get("ready") else dispatch.get("blockers", []),
+        }
+    elif document_type == "bill_statement":
+        overhead = None
+        if overhead_item_id:
+            overhead = query_one(
+                "SELECT * FROM overhead_items WHERE id=? AND organization_id=?",
+                (overhead_item_id, organization_id),
+            )
+            if not overhead:
+                raise HTTPException(404, "Overhead estimate not found")
+        expected_amount = float(overhead["monthly_cost"] if overhead else optional_number(form.get("expected_amount")) or 0)
+        context = {
+            "expected_amount": expected_amount,
+            "estimate_name": str(overhead["name"] if overhead else "the entered monthly estimate"),
+        }
+
+    try:
+        result = audit_uploaded_document(
+            document_type=document_type,
+            filename=filename,
+            content_type=content_type,
+            payload=payload,
+            context=context,
+        )
+    except AuditFileError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    duplicate = query_one(
+        """SELECT id FROM document_audits
+        WHERE organization_id=? AND document_type=? AND sha256=? ORDER BY id DESC LIMIT 1""",
+        (organization_id, document_type, result["sha256"]),
+    )
+    if duplicate:
+        set_flash(request, "That exact file was already audited. CarrierOS opened the existing result.")
+        return redirect(f"/audits/{duplicate['id']}")
+
+    extracted = result.get("extracted") or {}
+    if document_type == "bank_statement":
+        observed_amount = extracted.get("deposits")
+    elif document_type == "ratecon":
+        observed_amount = extracted.get("rate")
+    else:
+        observed_amount = extracted.get("amount_due")
+    audit_id = execute(
+        """INSERT INTO document_audits
+        (organization_id,document_type,original_filename,content_type,size_bytes,sha256,status,
+         linked_load_id,overhead_item_id,period_start,period_end,expected_amount,observed_amount,
+         summary,extracted_json,findings_json,created_by)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            organization_id, document_type, result["filename"], result["content_type"],
+            result["size_bytes"], result["sha256"], result["status"], linked_load_id,
+            overhead_item_id, period_start.isoformat() if period_start else None,
+            period_end.isoformat() if period_end else None, expected_amount,
+            observed_amount, result["summary"],
+            json.dumps({
+                "extracted": result.get("extracted") or {},
+                "metrics": result.get("metrics") or [],
+                "raw_file_retained": False,
+            }, separators=(",", ":")),
+            json.dumps(result.get("findings") or [], separators=(",", ":")),
+            int(user["id"]),
+        ),
+    )
+    if document_type == "ratecon" and yes(form.get("mark_ratecon_verified")) and linked_load_id:
+        load_status = query_one(
+            "SELECT status,ratecon_received_at FROM loads WHERE id=? AND organization_id=?",
+            (linked_load_id, organization_id),
+        )
+        if load_status:
+            status = str(load_status["status"] or "Booked")
+            if "Awaiting RateCon" in status:
+                status = "RateCon Received"
+            execute(
+                """UPDATE loads SET ratecon_reference=?,ratecon_received_at=?,status=?
+                WHERE id=? AND organization_id=?""",
+                (
+                    result["filename"], load_status["ratecon_received_at"] or utc_now_iso(),
+                    status, linked_load_id, organization_id,
+                ),
+            )
+    record_audit_event(
+        "document.audit_created", organization_id, int(user["id"]),
+        {"audit_id": audit_id, "document_type": document_type, "raw_file_retained": False},
+    )
+    set_flash(request, "Audit complete. Review every extracted figure before changing a company estimate.")
+    return redirect(f"/audits/{audit_id}")
+
+
+@app.get("/audits/{audit_id}", response_class=HTMLResponse)
+def audit_detail(request: Request, audit_id: int):
+    user = require_user(request)
+    row = query_one(
+        """SELECT a.*,l.load_number,o.name AS overhead_name
+        FROM document_audits a
+        LEFT JOIN loads l ON l.id=a.linked_load_id AND l.organization_id=a.organization_id
+        LEFT JOIN overhead_items o ON o.id=a.overhead_item_id AND o.organization_id=a.organization_id
+        WHERE a.id=? AND a.organization_id=?""",
+        (audit_id, user["organization_id"]),
+    )
+    if not row:
+        raise HTTPException(404, "Audit not found")
+    item = dict(row)
+    try:
+        extracted = json.loads(item.get("extracted_json") or "{}")
+        findings = json.loads(item.get("findings_json") or "[]")
+    except json.JSONDecodeError:
+        extracted, findings = {}, []
+    return render(request, "audit_detail.html", {
+        "audit": item,
+        "extracted": extracted.get("extracted") or {},
+        "metrics": extracted.get("metrics") or [],
+        "findings": findings,
+        "document_label": AUDIT_DOCUMENT_LABELS.get(item["document_type"], item["document_type"]),
+    })
+
+
+@app.post("/audits/{audit_id}/delete")
+async def delete_audit_record(request: Request, audit_id: int):
+    user = require_user(request)
+    await verified_form(request)
+    existing = query_one(
+        "SELECT id,document_type FROM document_audits WHERE id=? AND organization_id=?",
+        (audit_id, user["organization_id"]),
+    )
+    if not existing:
+        raise HTTPException(404, "Audit not found")
+    execute(
+        "DELETE FROM document_audits WHERE id=? AND organization_id=?",
+        (audit_id, user["organization_id"]),
+    )
+    record_audit_event(
+        "document.audit_deleted", int(user["organization_id"]), int(user["id"]),
+        {"audit_id": audit_id, "document_type": existing["document_type"]},
+    )
+    set_flash(request, "The audit result and checksum metadata were deleted. No raw file was retained.")
+    return redirect("/audits")
+
+
+def _growth_page_context(organization_id: int, values: dict[str, Any] | None = None) -> dict[str, Any]:
+    bundle, state = get_state(organization_id)
+    start = date.today() - timedelta(days=89)
+    rows = filter_and_sort_loads(
+        loads_with_results(bundle, state), date_from=start, date_to=date.today(), date_field="delivery_date"
+    )
+    summary = summarize_load_rows(rows)
+    active_units = sum(1 for vehicle in bundle["vehicles"] if int(vehicle.get("active") or 0) == 1)
+    driver_mpg = [float(driver.get("mpg") or 0) for driver in bundle["drivers"] if float(driver.get("mpg") or 0) > 0]
+    defaults = {
+        "purchase_price": 75000,
+        "down_payment": 15000,
+        "apr_pct": 9.0,
+        "term_months": 60,
+        "monthly_insurance": 1800,
+        "other_monthly_costs": 500,
+        "monthly_miles": 8500,
+        "revenue_per_mile": round(float(summary.get("avg_revenue_per_mile") or 2.5), 2),
+        "mpg": round(sum(driver_mpg) / len(driver_mpg), 1) if driver_mpg else 8.0,
+        "diesel_price": float(bundle["settings"].get("fallback_diesel_price") or 4.0),
+        "maintenance_per_mile": 0.20,
+        "driver_pay_pct": 0,
+        "cash_reserve": 30000,
+    }
+    return {
+        "summary": summary,
+        "active_units": active_units,
+        "mentor_findings": growth_mentor_findings(summary, bundle["settings"], active_units),
+        "values": values or defaults,
+        "settings": bundle["settings"],
+        "target_margin_decimal": float(bundle["settings"].get("target_margin_pct") or 10.0) / 100.0,
+        "window_start": start,
+    }
+
+
+@app.get("/growth", response_class=HTMLResponse)
+def growth_page(request: Request):
+    user = require_user(request)
+    return render(request, "growth.html", _growth_page_context(int(user["organization_id"])))
+
+
+@app.post("/growth", response_class=HTMLResponse)
+async def growth_audit(request: Request):
+    user = require_user(request)
+    form = await verified_form(request)
+    values = {
+        "purchase_price": number(form.get("purchase_price")),
+        "down_payment": number(form.get("down_payment")),
+        "apr_pct": number(form.get("apr_pct")),
+        "term_months": max(1, integer(form.get("term_months"), 60)),
+        "monthly_insurance": number(form.get("monthly_insurance")),
+        "other_monthly_costs": number(form.get("other_monthly_costs")),
+        "monthly_miles": number(form.get("monthly_miles")),
+        "revenue_per_mile": number(form.get("revenue_per_mile")),
+        "mpg": number(form.get("mpg"), 8),
+        "diesel_price": number(form.get("diesel_price")),
+        "maintenance_per_mile": number(form.get("maintenance_per_mile")),
+        "driver_pay_pct": number(form.get("driver_pay_pct")),
+        "cash_reserve": number(form.get("cash_reserve")),
+    }
+    context = _growth_page_context(int(user["organization_id"]), values)
+    context["scenario"] = equipment_finance_audit(values, context["settings"])
+    record_audit_event(
+        "growth.equipment_audited", int(user["organization_id"]), int(user["id"]),
+        {"purchase_price": values["purchase_price"], "financed_amount": context["scenario"]["financed_amount"]},
+    )
+    return render(request, "growth.html", context)
+
+
+@app.get("/startup", response_class=HTMLResponse)
+def startup_page(request: Request):
+    user = require_user(request)
+    rows = query_all(
+        "SELECT * FROM startup_checklist_progress WHERE organization_id=?",
+        (user["organization_id"],),
+    )
+    progress = {str(row["item_key"]): dict(row) for row in rows}
+    steps = [{**step, "progress": progress.get(step["key"])} for step in STARTUP_STEPS]
+    completed = sum(1 for step in steps if step["progress"] and step["progress"].get("completed_at"))
+    return render(request, "startup.html", {
+        "steps": steps,
+        "completed": completed,
+        "total": len(steps),
+        "progress_pct": completed / len(steps) if steps else 0,
+    })
+
+
+@app.post("/startup/{item_key}/toggle")
+async def toggle_startup_step(request: Request, item_key: str):
+    user = require_user(request)
+    form = await verified_form(request)
+    allowed = {step["key"] for step in STARTUP_STEPS}
+    if item_key not in allowed:
+        raise HTTPException(404, "Startup step not found")
+    completed = yes(form.get("completed"))
+    notes = str(form.get("notes") or "").strip()
+    if len(notes) > 2000:
+        raise HTTPException(400, "Startup checklist notes are limited to 2,000 characters")
+    with db_session() as conn:
+        conn.execute(
+            """INSERT INTO startup_checklist_progress
+            (organization_id,item_key,completed_at,notes,updated_by,updated_at)
+            VALUES (?,?,?,?,?,?)
+            ON CONFLICT(organization_id,item_key) DO UPDATE SET
+              completed_at=excluded.completed_at,notes=excluded.notes,
+              updated_by=excluded.updated_by,updated_at=excluded.updated_at""",
+            (
+                user["organization_id"], item_key, utc_now_iso() if completed else None,
+                notes, user["id"], utc_now_iso(),
+            ),
+        )
+    record_audit_event(
+        "startup.step_updated", int(user["organization_id"]), int(user["id"]),
+        {"item_key": item_key, "completed": completed},
+    )
+    return redirect(f"/startup#{item_key}")
 
 
 DOCUMENT_TEMPLATES = [

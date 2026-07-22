@@ -201,6 +201,20 @@ CREATE TABLE IF NOT EXISTS loads (
     quote_snapshot_id INTEGER,
     booking_snapshot_id INTEGER,
     ratecon_due_at TEXT,
+    pickup_address TEXT,
+    pickup_window_start TEXT,
+    pickup_window_end TEXT,
+    pickup_contact_name TEXT,
+    pickup_contact_phone TEXT,
+    pickup_instructions TEXT,
+    delivery_address TEXT,
+    delivery_window_start TEXT,
+    delivery_window_end TEXT,
+    delivery_contact_name TEXT,
+    delivery_contact_phone TEXT,
+    delivery_instructions TEXT,
+    ratecon_reference TEXT,
+    ratecon_received_at TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
     FOREIGN KEY (driver_id) REFERENCES drivers(id) ON DELETE SET NULL,
@@ -322,6 +336,45 @@ CREATE TABLE IF NOT EXISTS generated_documents (
     body TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS document_audits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    organization_id INTEGER NOT NULL,
+    document_type TEXT NOT NULL,
+    original_filename TEXT NOT NULL,
+    content_type TEXT,
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    sha256 TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'review_required',
+    linked_load_id INTEGER,
+    overhead_item_id INTEGER,
+    period_start TEXT,
+    period_end TEXT,
+    expected_amount REAL,
+    observed_amount REAL,
+    summary TEXT NOT NULL,
+    extracted_json TEXT NOT NULL DEFAULT '{}',
+    findings_json TEXT NOT NULL DEFAULT '[]',
+    created_by INTEGER,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+    FOREIGN KEY (linked_load_id) REFERENCES loads(id) ON DELETE SET NULL,
+    FOREIGN KEY (overhead_item_id) REFERENCES overhead_items(id) ON DELETE SET NULL,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS startup_checklist_progress (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    organization_id INTEGER NOT NULL,
+    item_key TEXT NOT NULL,
+    completed_at TEXT,
+    notes TEXT,
+    updated_by INTEGER,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (organization_id, item_key),
+    FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+    FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS load_opportunities (
@@ -473,7 +526,7 @@ BEGIN
     SELECT RAISE(ABORT, 'opportunity negotiation history is append-only');
 END;
 
-PRAGMA user_version = 10;
+PRAGMA user_version = 12;
 """
 
 ORGANIZATION_MIGRATIONS = (
@@ -521,6 +574,20 @@ LOAD_MIGRATIONS = (
     ("quote_snapshot_id", "ALTER TABLE loads ADD COLUMN quote_snapshot_id INTEGER"),
     ("booking_snapshot_id", "ALTER TABLE loads ADD COLUMN booking_snapshot_id INTEGER"),
     ("ratecon_due_at", "ALTER TABLE loads ADD COLUMN ratecon_due_at TEXT"),
+    ("pickup_address", "ALTER TABLE loads ADD COLUMN pickup_address TEXT"),
+    ("pickup_window_start", "ALTER TABLE loads ADD COLUMN pickup_window_start TEXT"),
+    ("pickup_window_end", "ALTER TABLE loads ADD COLUMN pickup_window_end TEXT"),
+    ("pickup_contact_name", "ALTER TABLE loads ADD COLUMN pickup_contact_name TEXT"),
+    ("pickup_contact_phone", "ALTER TABLE loads ADD COLUMN pickup_contact_phone TEXT"),
+    ("pickup_instructions", "ALTER TABLE loads ADD COLUMN pickup_instructions TEXT"),
+    ("delivery_address", "ALTER TABLE loads ADD COLUMN delivery_address TEXT"),
+    ("delivery_window_start", "ALTER TABLE loads ADD COLUMN delivery_window_start TEXT"),
+    ("delivery_window_end", "ALTER TABLE loads ADD COLUMN delivery_window_end TEXT"),
+    ("delivery_contact_name", "ALTER TABLE loads ADD COLUMN delivery_contact_name TEXT"),
+    ("delivery_contact_phone", "ALTER TABLE loads ADD COLUMN delivery_contact_phone TEXT"),
+    ("delivery_instructions", "ALTER TABLE loads ADD COLUMN delivery_instructions TEXT"),
+    ("ratecon_reference", "ALTER TABLE loads ADD COLUMN ratecon_reference TEXT"),
+    ("ratecon_received_at", "ALTER TABLE loads ADD COLUMN ratecon_received_at TEXT"),
 )
 
 
@@ -730,7 +797,7 @@ def seed_snapshot_data(force: bool = False) -> None:
             return
         if force:
             for table in (
-                "detention_claims", "invoices", "generated_documents", "onboarding_applications",
+                "document_audits", "startup_checklist_progress", "detention_claims", "invoices", "generated_documents", "onboarding_applications",
                 "compliance_items", "idle_periods", "payments", "loads", "weekly_fuel",
                 "drivers", "vehicles", "quick_links", "overhead_items", "users", "organizations",
             ):
@@ -918,6 +985,8 @@ ORGANIZATION_EXPORT_TABLES = (
     "invoices",
     "detention_claims",
     "generated_documents",
+    "document_audits",
+    "startup_checklist_progress",
     "load_opportunities",
     "opportunity_snapshots",
     "opportunity_negotiations",

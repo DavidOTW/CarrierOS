@@ -32,6 +32,8 @@ services:
         sync: false
       - key: STRIPE_PRICE_OWNER_OPERATOR
         sync: false
+      - key: STRIPE_PRICE_CARRIER_STARTUP
+        sync: false
       - key: STRIPE_PRICE_STARTER_FLEET
         sync: false
       - key: STRIPE_PRICE_SMALL_FLEET

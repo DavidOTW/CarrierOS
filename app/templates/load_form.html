@@ -1,9 +1,11 @@
 {% extends "base.html" %}{% block title %}{% if editing %}Edit load{% else %}Add load{% endif %} &middot; CarrierOS{% endblock %}
 {% block content %}
 <div class="page-title"><div><h2>{% if editing %}Edit {{ values.load_number }}{% else %}Add a load{% endif %}</h2><p>Saving triggers a full recalculation, including shared fixed cost for loads that overlap on the same unit and date.</p></div><a class="btn btn-secondary" href="{% if editing %}/loads/{{ values.id }}{% else %}/loads{% endif %}">Cancel</a></div>
-<form class="card" method="post" action="{% if editing %}/loads/{{ values.id }}/edit{% else %}/loads/new{% endif %}"><div class="form-grid-3">
+<form class="card" method="post" action="{% if editing %}/loads/{{ values.id }}/edit{% else %}/loads/new{% endif %}">
+<div class="section-title"><div><h3>Load and financial details</h3><p>These fields drive fleet reporting, pay, and profitability.</p></div></div>
+<div class="form-grid-3">
 <div class="field"><label>Load number</label><input name="load_number" value="{{ values.load_number or '' }}" placeholder="LOAD-0001"></div>
-<div class="field"><label>Status</label><select name="status">{% for status in ['Booked','Delivered','In Transit','Pending','Cancelled','Quote'] %}<option {% if values.status == status %}selected{% endif %}>{{ status }}</option>{% endfor %}</select></div>
+<div class="field"><label>Status</label><select name="status">{% for status in ['Booked','Booked — Awaiting RateCon','RateCon Received','Delivered','In Transit','Pending','Cancelled','Quote'] %}<option {% if values.status == status %}selected{% endif %}>{{ status }}</option>{% endfor %}</select></div>
 <div class="field inline" style="align-self:end"><input id="include" type="checkbox" name="include_in_model" {% if values.include_in_model %}checked{% endif %}><label for="include">Include in financial model</label></div>
 <div class="field"><label>Pickup date</label><input type="date" name="pickup_date" value="{{ values.pickup_date or '' }}" required></div>
 <div class="field"><label>Delivery date</label><input type="date" name="delivery_date" value="{{ values.delivery_date or '' }}" required></div>
@@ -18,6 +20,31 @@
 <div class="field"><label>Deadhead miles</label><input type="number" step="0.1" min="0" name="deadhead_miles" value="{{ values.deadhead_miles or 0 }}"></div>
 <div class="field"><label>Tolls / lumpers / misc.</label><input type="number" step="0.01" min="0" name="tolls_misc" value="{{ values.tolls_misc or 0 }}"></div>
 <div class="field"><label>Other direct costs</label><input type="number" step="0.01" min="0" name="other_direct_costs" value="{{ values.other_direct_costs or 0 }}"></div>
-<div class="field full"><label>Notes</label><textarea name="notes">{{ values.notes or '' }}</textarea></div>
-</div><div class="form-actions"><button class="btn btn-primary">{% if editing %}Save changes{% else %}Save and calculate{% endif %}</button><a class="btn btn-secondary" href="/loads">Back to loads</a></div></form>
+<div class="field full"><label>Internal load notes</label><textarea name="notes">{{ values.notes or '' }}</textarea><small>Internal notes are never included in the driver dispatch text.</small></div>
+</div>
+
+<div class="section-title form-section-divider"><div><h3>RateCon &amp; driver dispatch details</h3><p>Enter the verified stop information the driver should receive. Appointment times are treated as the facility's local time.</p></div></div>
+<div class="notice warn"><strong>Secure RateCon boundary:</strong> CarrierOS records that the RateCon was received and stores only the dispatch details below. The PDF itself is not uploaded or stored in this release.</div>
+<div class="form-grid-3">
+<div class="field inline full"><input id="ratecon_received" type="checkbox" name="ratecon_received" {% if values.ratecon_received_at %}checked{% endif %}><label for="ratecon_received">RateCon received/imported and dispatch details verified</label></div>
+<div class="field full"><label>RateCon reference or filename</label><input name="ratecon_reference" maxlength="255" value="{{ values.ratecon_reference or '' }}" placeholder="Example: RC-1048 or Broker-RC-1048.pdf"></div>
+
+<div class="field full stop-heading"><strong>Pickup</strong><span>Required before the trip text becomes available.</span></div>
+<div class="field full"><label>Full pickup address</label><input name="pickup_address" maxlength="500" value="{{ values.pickup_address or '' }}" placeholder="Street, city, state, ZIP"></div>
+<div class="field"><label>Pickup window starts</label><input type="datetime-local" name="pickup_window_start" value="{{ (values.pickup_window_start or '')[:16] }}"></div>
+<div class="field"><label>Pickup window ends</label><input type="datetime-local" name="pickup_window_end" value="{{ (values.pickup_window_end or '')[:16] }}"></div>
+<div class="field"><label>Pickup contact</label><input name="pickup_contact_name" maxlength="200" value="{{ values.pickup_contact_name or '' }}"></div>
+<div class="field"><label>Pickup contact phone</label><input type="tel" name="pickup_contact_phone" maxlength="100" value="{{ values.pickup_contact_phone or '' }}"></div>
+<div class="field full"><label>Pickup instructions</label><textarea name="pickup_instructions" maxlength="2000" placeholder="Appointment number, dock, check-in, PPE, or other driver instructions">{{ values.pickup_instructions or '' }}</textarea></div>
+
+<div class="field full stop-heading"><strong>Delivery</strong><span>Required before the trip text becomes available.</span></div>
+<div class="field full"><label>Full delivery address</label><input name="delivery_address" maxlength="500" value="{{ values.delivery_address or '' }}" placeholder="Street, city, state, ZIP"></div>
+<div class="field"><label>Delivery window starts</label><input type="datetime-local" name="delivery_window_start" value="{{ (values.delivery_window_start or '')[:16] }}"></div>
+<div class="field"><label>Delivery window ends</label><input type="datetime-local" name="delivery_window_end" value="{{ (values.delivery_window_end or '')[:16] }}"></div>
+<div class="field"><label>Delivery contact</label><input name="delivery_contact_name" maxlength="200" value="{{ values.delivery_contact_name or '' }}"></div>
+<div class="field"><label>Delivery contact phone</label><input type="tel" name="delivery_contact_phone" maxlength="100" value="{{ values.delivery_contact_phone or '' }}"></div>
+<div class="field full"><label>Delivery instructions</label><textarea name="delivery_instructions" maxlength="2000" placeholder="Appointment number, dock, check-in, PPE, or other driver instructions">{{ values.delivery_instructions or '' }}</textarea></div>
+</div>
+<div class="form-actions"><button class="btn btn-primary">{% if editing %}Save changes{% else %}Save and calculate{% endif %}</button><a class="btn btn-secondary" href="/loads">Back to loads</a></div>
+</form>
 {% endblock %}
