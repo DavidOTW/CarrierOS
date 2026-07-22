@@ -27,7 +27,8 @@ closed and recorded by a human owner.
       then.
 - [ ] Move customer data to managed PostgreSQL before heavy traffic or a
       multi-instance deployment.
-- [ ] Copy logical backups off-host and complete a documented restore rehearsal.
+- [ ] Configure the optional S3-compatible off-host adapter and complete a
+      documented restore rehearsal from the remote object.
 
 ## **Blocker — billing and customer operations**
 

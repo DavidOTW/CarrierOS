@@ -13,6 +13,7 @@ from typing import Any, Iterable
 from .v016_migration import migrate_v016_foundation
 from .phase2_migration import migrate_phase2_ratecon_dispatch
 from .phase3_migration import migrate_phase3_delivery_to_cash
+from .offsite_backup import upload_backup_if_configured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 APP_DIR = Path(__file__).resolve().parent
@@ -970,6 +971,7 @@ def create_database_backup() -> Path | None:
         if not result or result[0] != "ok":
             destination.unlink(missing_ok=True)
             raise RuntimeError("CarrierOS database backup failed integrity verification")
+    upload_backup_if_configured(destination)
     retention = max(2, int(os.getenv("CARRIEROS_BACKUP_RETENTION", "14")))
     backups = sorted(
         backup_dir.glob("carrieros-*.db"), key=lambda item: item.stat().st_mtime, reverse=True
