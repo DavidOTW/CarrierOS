@@ -1,0 +1,24 @@
+name: Production readiness monitor
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  readiness:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check production readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location \
+            --max-time 20 \
+            --retry 2 \
+            --retry-delay 3 \
+            --header 'Accept: application/json' \
+            https://otwcarrieros.com/health/ready
