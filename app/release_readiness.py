@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import tempfile
 from pathlib import Path
 from typing import Mapping
 from urllib.parse import urlsplit
@@ -54,12 +55,16 @@ def verify_sqlite_database(path: Path, *, expected_schema: int = EXPECTED_SCHEMA
 
     if not path.exists():
         return {"ok": False, "detail": "database file is missing", "schema_version": None}
+    connection: sqlite3.Connection | None = None
     try:
-        with sqlite3.connect(path, timeout=5) as connection:
-            integrity = connection.execute("PRAGMA quick_check").fetchone()
-            schema_version = int(connection.execute("PRAGMA user_version").fetchone()[0])
+        connection = sqlite3.connect(path, timeout=5)
+        integrity = connection.execute("PRAGMA quick_check").fetchone()
+        schema_version = int(connection.execute("PRAGMA user_version").fetchone()[0])
     except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
         return {"ok": False, "detail": f"database could not be checked ({type(exc).__name__})", "schema_version": None}
+    finally:
+        if connection is not None:
+            connection.close()
     if not integrity or integrity[0] != "ok":
         return {"ok": False, "detail": "PRAGMA quick_check did not return ok", "schema_version": schema_version}
     if schema_version < expected_schema:
@@ -72,7 +77,7 @@ def verify_sqlite_database(path: Path, *, expected_schema: int = EXPECTED_SCHEMA
 
 
 def verify_latest_backup(path: Path, *, expected_schema: int = EXPECTED_SCHEMA_VERSION) -> dict[str, object]:
-    """Verify the newest retained CarrierOS backup without changing it."""
+    """Verify and rehearse restoring the newest retained CarrierOS backup."""
 
     if not path.exists() or not path.is_dir():
         return {"ok": False, "detail": "backup directory is missing", "path": None}
@@ -81,9 +86,41 @@ def verify_latest_backup(path: Path, *, expected_schema: int = EXPECTED_SCHEMA_V
         return {"ok": False, "detail": "no retained carrieros-*.db backup was found", "path": None}
     latest = backups[0]
     report = verify_sqlite_database(latest, expected_schema=expected_schema)
+    if not report["ok"]:
+        return {
+            "ok": False,
+            "detail": f"backup verification failed ({latest.name}): {report['detail']}",
+            "path": str(latest),
+            "backup_count": len(backups),
+        }
+    try:
+        with tempfile.TemporaryDirectory(prefix="carrieros-restore-check-") as restore_dir:
+            restored = Path(restore_dir) / "restored.db"
+            source = sqlite3.connect(latest, timeout=5)
+            target = sqlite3.connect(restored, timeout=5)
+            try:
+                source.backup(target)
+            finally:
+                target.close()
+                source.close()
+            restore_report = verify_sqlite_database(restored, expected_schema=expected_schema)
+    except (OSError, sqlite3.Error) as exc:
+        return {
+            "ok": False,
+            "detail": f"backup restore rehearsal failed ({type(exc).__name__})",
+            "path": str(latest),
+            "backup_count": len(backups),
+        }
+    if not restore_report["ok"]:
+        return {
+            "ok": False,
+            "detail": f"restored backup failed verification ({latest.name}): {restore_report['detail']}",
+            "path": str(latest),
+            "backup_count": len(backups),
+        }
     return {
-        "ok": bool(report["ok"]),
-        "detail": f"{report['detail']} ({latest.name})",
+        "ok": True,
+        "detail": f"{report['detail']}; restore rehearsal passed ({latest.name})",
         "path": str(latest),
         "backup_count": len(backups),
     }

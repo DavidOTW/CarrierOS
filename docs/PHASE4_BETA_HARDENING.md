@@ -12,8 +12,16 @@ Run the check from the repository root after loading the target environment:
 python scripts/v016_release_readiness.py --json
 ```
 
-The command is non-mutating. It never prints secret values, creates a backup,
-creates a directory, or changes a database. It checks:
+The same gate is available to uptime and deployment monitors at
+`GET /health/ready`. It returns `200` only when ready and `503` when blocked,
+with check names and safe remediation messages but no secret values. Render
+continues to use `/health` for process health; `/health/ready` is the stricter
+promotion signal.
+
+The command is non-mutating with respect to the application data. It never
+prints secret values, creates a retained backup, or changes a source database;
+it uses a temporary restore workspace that is removed before the command
+returns. It checks:
 
 - production mode, a long session secret, and an HTTPS canonical URL;
 - live Stripe secret/webhook configuration and every subscription price ID;
@@ -22,7 +30,7 @@ creates a directory, or changes a database. It checks:
   blocked for production);
 - SQLite integrity and schema version 15 or newer; and
 - the newest retained `carrieros-*.db` backup with the same integrity/schema
-  checks.
+  checks and a temporary SQLite restore rehearsal.
 
 The result is `READY` only when every check passes. A `READY` result is
 evidence for review, not an automatic authorization to deploy. The operator

@@ -66,3 +66,13 @@ def test_release_gate_reports_missing_backup_without_mutating_database(tmp_path:
     assert report["ready"] is False
     assert any("backup restoration evidence" in blocker for blocker in report["blockers"])
     assert not (tmp_path / "missing").exists()
+
+
+def test_backup_restore_rehearsal_rejects_corrupt_latest_backup(tmp_path: Path) -> None:
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+    corrupt = backup_dir / "carrieros-20260721-010000.db"
+    corrupt.write_bytes(b"not a sqlite database")
+    report = verify_latest_backup(backup_dir)
+    assert report["ok"] is False
+    assert "backup verification failed" in str(report["detail"])
