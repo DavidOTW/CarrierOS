@@ -2373,6 +2373,11 @@ def _ratecon_page_context(organization_id: int, document: dict[str, Any]) -> dic
         row["classification"] in MATERIAL_CLASSIFICATIONS and row["approval_status"] == "PENDING"
         for row in differences
     )
+    delivery_documents = (
+        _delivery_documents_for_load(organization_id, int(document["load_id"]))
+        if document.get("load_id")
+        else []
+    )
     return {
         "document": document,
         "extraction": dict(extraction) if extraction else None,
@@ -2387,6 +2392,10 @@ def _ratecon_page_context(organization_id: int, document: dict[str, Any]) -> dic
         "candidates": candidates,
         "differences": differences,
         "material_pending": material_pending,
+        "max_ratecon_mb": 12,
+        "proof_of_delivery_documents": [
+            row for row in delivery_documents if row.get("document_kind") == "POD"
+        ],
     }
 
 
@@ -2541,6 +2550,104 @@ def ratecon_detail_page(request: Request, document_uuid: str):
     user = require_permission(request, "documents.view_operational")
     document = _ratecon_document(user["organization_id"], document_uuid)
     return render(request, "ratecon_detail.html", _ratecon_page_context(user["organization_id"], document))
+
+
+@app.post("/ratecons/{document_uuid}/pod", response_class=HTMLResponse)
+async def upload_ratecon_pod(request: Request, document_uuid: str):
+    """Store an office-uploaded POD alongside the load's RateCon."""
+    user = require_permission(request, "documents.manage_operational")
+    form = await verified_form(request)
+    document = _ratecon_document(user["organization_id"], document_uuid)
+    if document.get("document_type") != "RATECON":
+        raise HTTPException(404, "RateCon not found")
+    if not document.get("load_id"):
+        raise HTTPException(409, "Attach the RateCon to a booked load before uploading a POD")
+    upload = form.get("pod")
+    if upload is None or not hasattr(upload, "read"):
+        raise HTTPException(400, "Choose a signed proof of delivery file")
+    payload = await upload.read(MAX_RATECON_BYTES + 1)
+    filename = Path(str(getattr(upload, "filename", "proof-of-delivery"))).name.replace("\x00", "")[:255]
+    try:
+        validated = validate_ratecon_upload(
+            payload,
+            filename=filename,
+            claimed_content_type=str(getattr(upload, "content_type", "")),
+        )
+    except RateConError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    storage = configured_storage_provider()
+    if not storage.secure_at_rest:
+        raise HTTPException(503, "Private encrypted document storage is not configured")
+    scan = configured_malware_scan_provider().scan(payload, filename=filename)
+    if scan.status != "CLEAN":
+        raise HTTPException(
+            400,
+            f"The proof of delivery cannot be accepted until malware screening is CLEAN ({scan.status})",
+        )
+    pod_uuid = str(uuid.uuid4())
+    storage_key = (
+        f"organizations/{user['organization_id']}/loads/{document['load_id']}"
+        f"/delivery/{pod_uuid}.{validated.extension}"
+    )
+    storage.put(storage_key, payload, content_type=validated.media_type)
+    try:
+        with db_session() as conn:
+            document_id = int(
+                conn.execute(
+                    """INSERT INTO operational_documents
+                    (public_uuid,organization_id,load_id,document_type,storage_key,storage_provider,
+                     original_filename,content_type,size_bytes,page_count,sha256,malware_status,
+                     processing_status,retention_date,created_by)
+                    VALUES (?,?,?,'POD',?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        pod_uuid,
+                        user["organization_id"],
+                        document["load_id"],
+                        storage_key,
+                        storage.name,
+                        filename,
+                        validated.media_type,
+                        validated.size_bytes,
+                        validated.page_count,
+                        validated.sha256,
+                        scan.status,
+                        "RECEIVED",
+                        default_retention_date(),
+                        user["id"],
+                    ),
+                ).lastrowid
+            )
+            conn.execute(
+                """INSERT INTO delivery_document_links
+                (public_uuid,organization_id,document_id,load_id,document_kind,source,captured_by_user,notes)
+                VALUES (?,?,?,?,?,'office',?,?)""",
+                (
+                    str(uuid.uuid4()),
+                    user["organization_id"],
+                    document_id,
+                    document["load_id"],
+                    "POD",
+                    user["id"],
+                    str(form.get("notes") or "").strip()[:500],
+                ),
+            )
+    except sqlite3.IntegrityError as exc:
+        storage.delete(storage_key)
+        raise HTTPException(409, "This proof of delivery was already uploaded for the load") from exc
+    record_audit_event(
+        "delivery_document.uploaded",
+        int(user["organization_id"]),
+        int(user["id"]),
+        {
+            "load_id": document["load_id"],
+            "document_uuid": pod_uuid,
+            "document_kind": "POD",
+            "source": "office",
+            "sha256": validated.sha256,
+        },
+    )
+    set_flash(request, "Proof of delivery stored privately and attached to the load.")
+    return redirect(f"/ratecons/{document['public_uuid']}")
 
 
 @app.post("/ratecons/{document_uuid}/attach/{load_uuid}")
