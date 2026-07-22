@@ -4,9 +4,9 @@ CarrierOS is a multi-company fleet financial workspace for small carriers. Each 
 
 ## v0.16 review status
 
-The deployed `main` branch contains **v0.16.0a1, PR 1 — Architecture and Data Integrity**. The current development branch is **v0.16.0a2, PR 2 — RateCon to Dispatch**. PR 2 adds safe retained-document boundaries, deterministic/mock OCR and extraction, evidence-bearing human review, candidate matching, material-difference approval, ranked driver/equipment assignment, dispatch approval, and a minimal single-load driver acknowledgment page.
+The deployed `main` branch contains **v0.16.0a2, PR 2 — RateCon to Dispatch**. The current development branch is **v0.16.0a3, PR 3 — Delivery to Cash (first slice)**. Phase 2 is live with safe retained-document boundaries, evidence-bearing human review, candidate matching, material-difference approval, ranked driver/equipment assignment, dispatch approval, and a single-load driver acknowledgment page.
 
-PR 2 is not merged or deployed and does not claim production document processing is ready. Production RateCon upload refuses to run until encrypted private storage is explicitly configured; dispatch remains blocked until a malware scanner returns `CLEAN`. The protected legacy calculation path remains customer-facing while Phase 2 stores separate booking and RateCon-confirmed snapshots. Delivery-to-cash, invoice payments, versioned settlements, managed PostgreSQL, background processing, MFA, and production beta hardening remain PR 3 and PR 4 work. See `docs/PHASE2_RATECON_DISPATCH.md` and the v0.16 architecture, migration, threat, rollback, and test documents.
+Production RateCon upload refuses to run until encrypted private storage is explicitly configured; dispatch remains blocked until a malware scanner returns `CLEAN`. The protected legacy calculation path remains customer-facing while Phase 2 stores separate booking and RateCon-confirmed snapshots. The Phase 3 draft adds controlled pickup/transit/delivery status updates and private BOL/POD/receipt/detention-evidence uploads from the driver dispatch link, with office review surfaces. Invoice packets, payment ledgers, versioned settlements, managed PostgreSQL, background processing, MFA, and production beta hardening remain subsequent Phase 3/4 work. See `docs/PHASE2_RATECON_DISPATCH.md`, `docs/PHASE3_DELIVERY_TO_CASH.md`, and the v0.16 architecture, migration, threat, rollback, and test documents.
 
 ## Included in this release candidate
 
@@ -26,7 +26,7 @@ PR 2 is not merged or deployed and does not claim production document processing
 - Daily consistent SQLite backups with retention, Render disk snapshots, and authenticated company-data export
 - Public Privacy Policy and Terms of Service pages
 
-The earlier V1 roadmap and Phase 1 boundary remain in `docs/V1_PRODUCT_REQUIREMENTS.md`, `docs/V1_ARCHITECTURE.md`, `docs/V1_IMPLEMENTATION_PLAN.md`, and `docs/V1_RISK_REGISTER.md`; the v0.16 documents above are authoritative for the current four-PR program. Commercial routing, production OCR, live GPS/ELD/HOS, automated SMS delivery, settlement approval, invoicing automation, collections, and accounting sync are not available in the deployed v0.16.0a1 application. Phase 2 extraction proposes facts for human review; it does not make financial decisions or provide accounting advice.
+The earlier V1 roadmap and Phase 1 boundary remain in `docs/V1_PRODUCT_REQUIREMENTS.md`, `docs/V1_ARCHITECTURE.md`, `docs/V1_IMPLEMENTATION_PLAN.md`, and `docs/V1_RISK_REGISTER.md`; the v0.16 documents above are authoritative for the current four-PR program. Commercial routing, production OCR, live GPS/ELD/HOS, automated SMS delivery, invoice/payment automation, settlement approval, collections, and accounting sync are not available in the deployed v0.16.0a2 application. Phase 2 extraction and Phase 3 delivery documents propose facts for human review; they do not make financial decisions or provide accounting advice.
 
 ## Local development
 
