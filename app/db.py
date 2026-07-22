@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .v016_migration import migrate_v016_foundation
+from .phase2_migration import migrate_phase2_ratecon_dispatch
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 APP_DIR = Path(__file__).resolve().parent
@@ -779,6 +780,7 @@ def init_db(seed: bool = False) -> None:
             ON loads(opportunity_id) WHERE opportunity_id IS NOT NULL"""
         )
         migrate_v016_foundation(conn)
+        migrate_phase2_ratecon_dispatch(conn)
         conn.commit()
     if seed:
         if not SNAPSHOT_PATH.exists():
@@ -1006,6 +1008,12 @@ ORGANIZATION_EXPORT_TABLES = (
     "load_expense_items",
     "load_status_history",
     "load_financial_snapshots",
+    "operational_documents",
+    "ratecon_extractions",
+    "ratecon_extracted_fields",
+    "ratecon_match_candidates",
+    "ratecon_differences",
+    "dispatch_approvals",
 )
 
 

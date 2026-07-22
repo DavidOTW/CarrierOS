@@ -55,6 +55,7 @@
       <a class="{% if request.url.path.startswith('/audits') %}active{% endif %}" href="/audits"><span class="nav-icon">AU</span>Document audits</a>
       <a class="{% if request.url.path.startswith('/startup') %}active{% endif %}" href="/startup"><span class="nav-icon">SU</span>Startup guide</a>
       <div class="nav-section">Supporting tools</div>
+      <a class="{% if request.url.path.startswith('/ratecons') %}active{% endif %}" href="/ratecons"><span class="nav-icon">RC</span>RateCon inbox</a>
       <a class="{% if request.url.path.startswith('/payments') %}active{% endif %}" href="/payments"><span class="nav-icon">PY</span>Driver pay</a>
       <a class="{% if request.url.path.startswith('/fuel') %}active{% endif %}" href="/fuel"><span class="nav-icon">FL</span>Weekly fuel</a>
       <a class="{% if request.url.path.startswith('/vehicles') %}active{% endif %}" href="/vehicles"><span class="nav-icon">UN</span>Power units</a>
@@ -74,7 +75,7 @@
         {% if user %}<div class="user-avatar">{{ user.full_name[:1]|upper }}</div><div class="user-chip"><strong>{{ user.full_name }}</strong><a href="/logout">Log out</a></div>{% endif %}
       </div>
       <details class="mobile-nav"><summary>Menu</summary><div class="mobile-menu-panel">
-        <a href="/dashboard">Today</a><a href="/rate-quotes">Rate Quotes</a><a href="/loads">Loads</a><a href="/financials">Money</a><a href="/drivers">Drivers &amp; Equipment</a><a href="/growth">Growth</a><a href="/audits">Audits</a><a href="/startup">Startup</a><a href="/compliance">Compliance</a><a href="/idle">Reports</a><a href="/links">Connections</a><a href="/settings">Settings</a><a href="/payments">Driver pay</a><a href="/fuel">Fuel</a><a href="/vehicles">Units</a><a href="/onboarding">Onboarding</a><a href="/documents">Documents</a><a href="/receivables">A/R</a><a href="/billing">Billing</a><a href="/logout">Log out</a>
+        <a href="/dashboard">Today</a><a href="/rate-quotes">Rate Quotes</a><a href="/loads">Loads</a><a href="/financials">Money</a><a href="/ratecons">RateCon inbox</a><a href="/drivers">Drivers &amp; Equipment</a><a href="/growth">Growth</a><a href="/audits">Audits</a><a href="/startup">Startup</a><a href="/compliance">Compliance</a><a href="/idle">Reports</a><a href="/links">Connections</a><a href="/settings">Settings</a><a href="/payments">Driver pay</a><a href="/fuel">Fuel</a><a href="/vehicles">Units</a><a href="/onboarding">Onboarding</a><a href="/documents">Documents</a><a href="/receivables">A/R</a><a href="/billing">Billing</a><a href="/logout">Log out</a>
       </div></details>
     </header>
     <div class="content">{% if flash %}<div class="notice good">{{ flash }}</div>{% endif %}

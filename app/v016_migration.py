@@ -792,6 +792,12 @@ def migrate_v016_foundation(conn: sqlite3.Connection) -> MigrationValidation:
 
 
 V016_ROLLBACK_TABLES = (
+    "dispatch_approvals",
+    "ratecon_differences",
+    "ratecon_match_candidates",
+    "ratecon_extracted_fields",
+    "ratecon_extractions",
+    "operational_documents",
     "v016_migration_runs",
     "load_financial_snapshots",
     "load_status_history",
@@ -817,6 +823,8 @@ def rollback_v016_foundation(conn: sqlite3.Connection) -> None:
     conn.execute("DROP TRIGGER IF EXISTS load_financial_snapshots_no_delete")
     conn.execute("DROP TRIGGER IF EXISTS audit_events_no_update")
     conn.execute("DROP TRIGGER IF EXISTS audit_events_no_delete")
+    conn.execute("DROP TRIGGER IF EXISTS ratecon_extractions_no_update")
+    conn.execute("DROP TRIGGER IF EXISTS ratecon_extractions_no_delete")
     for table in V016_ROLLBACK_TABLES:
         conn.execute(f"DROP TABLE IF EXISTS {table}")
     conn.execute("PRAGMA user_version=12")

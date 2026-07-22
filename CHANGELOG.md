@@ -1,6 +1,17 @@
 # Changelog
 
-## 0.16.0a1 — Unreleased
+## 0.16.0a2 — Unreleased
+
+- Added the Phase 2 RateCon inbox with PDF/JPEG/PNG signature validation, size/page limits, organization-prefixed private object keys, duplicate checks, retention metadata, and audited signed download links.
+- Added storage, malware scan, OCR, and extraction provider boundaries with deterministic mocks and a manual production fallback; uploads remain disabled when encrypted storage is not configured, and dispatch remains blocked until malware screening passes.
+- Added immutable extraction runs and evidence-bearing fields with confidence, page, provider/version, human review, and tenant-scoped candidate matching.
+- Added booking-versus-RateCon comparison with explicit financial and operational difference classifications and human approval for material changes.
+- Added ranked driver, power-unit, and trailer assignment using saved locations, schedule conflicts, compliance expirations, equipment compatibility, equipment-specific profitability, and a mandatory HOS disclaimer.
+- Added final dispatch approval and a short-lived, single-load driver acknowledgment link with stops, facility time zones, contacts, instructions, and Apple/Google navigation without fleet financial access.
+- Added normalized dual writes for newly created power units, trailers, drivers, quote-booked loads, manual loads, stops, assignments, revenue items, status history, and immutable booking/RateCon snapshots.
+- Added additive schema version 14 and Phase 2 rollback support, tenant/provider/workflow tests, updated privacy disclosures, and Phase 2 operating documentation.
+
+## 0.16.0a1 — 2026-07-21
 
 - Added a strict Decimal/cents money policy with centralized half-up rounding and invalid-input rejection beside the protected legacy calculation path.
 - Added frozen golden expected values and legacy-versus-Decimal parity tests for all seven supported pay models.
