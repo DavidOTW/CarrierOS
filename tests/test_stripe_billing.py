@@ -8,11 +8,12 @@ from app import stripe_billing
 
 
 class FakePrices:
-    def __init__(self, price):
+    def __init__(self, price, price_id="price_owner"):
         self.price = price
+        self.price_id = price_id
 
     def retrieve(self, price_id):
-        assert price_id == "price_owner"
+        assert price_id == self.price_id
         return self.price
 
 
@@ -28,10 +29,10 @@ class FakeCheckoutSessions:
 
 
 class FakeStripeClient:
-    def __init__(self, price):
+    def __init__(self, price, price_id="price_owner"):
         self.sessions = FakeCheckoutSessions()
         self.v1 = SimpleNamespace(
-            prices=FakePrices(price),
+            prices=FakePrices(price, price_id),
             checkout=SimpleNamespace(sessions=self.sessions),
         )
 
@@ -79,6 +80,25 @@ def test_checkout_collects_payment_method_and_starts_card_on_file_trial(
         "end_behavior": {"missing_payment_method": "cancel"}
     }
     assert fake.sessions.params["customer_email"] == "owner@example.com"
+
+
+def test_startup_plan_validates_zero_unit_monthly_price(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_example")
+    monkeypatch.setenv("STRIPE_PRICE_CARRIER_STARTUP", "price_startup")
+    fake = FakeStripeClient(valid_monthly_price(unit_amount=1000), "price_startup")
+    monkeypatch.setattr(stripe_billing, "_stripe_client", lambda: fake)
+    stripe_billing._validated_price_id.cache_clear()
+
+    stripe_billing.create_checkout_session(
+        organization_id=43,
+        owner_email="startup@example.com",
+        plan_code="carrier_startup",
+        expected_monthly_price=10,
+        success_url="https://otwcarrieros.com/billing?checkout=success",
+        cancel_url="https://otwcarrieros.com/billing?checkout=cancelled",
+    )
+
+    assert fake.sessions.params["line_items"] == [{"price": "price_startup", "quantity": 1}]
 
 
 @pytest.mark.parametrize(

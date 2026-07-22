@@ -48,6 +48,7 @@ def create_active_account(client: TestClient, email: str = "owner@example.com") 
 def configure_stripe(monkeypatch: pytest.MonkeyPatch, secret_key: str) -> None:
     monkeypatch.setenv("STRIPE_SECRET_KEY", secret_key)
     monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_example")
+    monkeypatch.setenv("STRIPE_PRICE_CARRIER_STARTUP", "price_startup")
     monkeypatch.setenv("STRIPE_PRICE_OWNER_OPERATOR", "price_owner")
     monkeypatch.setenv("STRIPE_PRICE_STARTER_FLEET", "price_starter")
     monkeypatch.setenv("STRIPE_PRICE_SMALL_FLEET", "price_small")

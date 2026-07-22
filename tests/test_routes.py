@@ -49,6 +49,7 @@ def signup(client: TestClient, email: str, company: str = "Acme Carrier", activa
 def configure_stripe(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_example")
     monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_example")
+    monkeypatch.setenv("STRIPE_PRICE_CARRIER_STARTUP", "price_startup")
     monkeypatch.setenv("STRIPE_PRICE_OWNER_OPERATOR", "price_owner")
     monkeypatch.setenv("STRIPE_PRICE_STARTER_FLEET", "price_starter")
     monkeypatch.setenv("STRIPE_PRICE_SMALL_FLEET", "price_small")
@@ -60,6 +61,7 @@ def test_launch_pricing_uses_active_power_units() -> None:
         (code, plan["units"], plan["price"])
         for code, plan in main_module.PLAN_LIMITS.items()
     ] == [
+        ("carrier_startup", 0, 10),
         ("owner_operator", 2, 25),
         ("starter_fleet", 5, 50),
         ("small_fleet", 10, 75),
@@ -76,6 +78,9 @@ def test_public_marketing_home_uses_launch_pricing_and_real_app_links(
         assert response.status_code == 200
         assert "Run the fleet" in response.text
         assert "live demo" in response.text.lower()
+        assert "Pre-authority" in response.text
+        assert "$10" in response.text
+        assert "Carrier startup checklist" in response.text
         assert "Up to 2 active power units" in response.text
         assert "$25" in response.text
         assert "Up to 20 active power units" in response.text
@@ -222,6 +227,7 @@ def test_signup_empty_workspace_and_authenticated_pages(monkeypatch: pytest.Monk
             "/dashboard", "/loads", "/loads/new", "/vehicles", "/drivers", "/fuel",
             "/payments", "/quotes", "/rate-quotes", "/rate-quotes/new", "/financials", "/idle", "/settings",
             "/compliance", "/onboarding", "/documents", "/receivables", "/links", "/billing",
+            "/audits", "/growth", "/startup",
             "/manifest.webmanifest", "/service-worker.js",
         ):
             response = client.get(page)
@@ -560,3 +566,128 @@ def test_webhooks_activate_update_and_deduplicate_subscription(
         ignored = client.post("/stripe/webhook", content=b"{}", headers={"stripe-signature": "test"})
         assert ignored.status_code == 200
         assert query_one("SELECT subscription_status FROM organizations")["subscription_status"] == "active"
+
+
+def test_verified_ratecon_creates_reviewable_driver_trip_text(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "dispatch.db"))
+    with TestClient(app) as client:
+        signup(client, "dispatch@example.com")
+        assert client.post(
+            "/vehicles",
+            data={"name": "Truck 27", "equipment_type": "Tractor", "active": "on"},
+        ).status_code == 200
+        vehicle = query_one("SELECT id FROM vehicles WHERE name='Truck 27'")
+        assert client.post(
+            "/drivers",
+            data={
+                "name": "Jordan Driver",
+                "phone": "(615) 555-0147",
+                "role": "Driver",
+                "pay_model": "Flat Rate per Load",
+                "vehicle_id": str(vehicle["id"]),
+                "flat_rate_per_load": "350",
+                "mpg": "9.5",
+                "maintenance_per_mile": "0.22",
+                "active": "on",
+            },
+            follow_redirects=False,
+        ).status_code == 303
+        driver = query_one("SELECT id FROM drivers WHERE name='Jordan Driver'")
+        created = client.post(
+            "/loads/new",
+            data={
+                "load_number": "DISPATCH-1048",
+                "status": "Booked — Awaiting RateCon",
+                "include_in_model": "on",
+                "pickup_date": "2026-07-22",
+                "delivery_date": "2026-07-23",
+                "driver_id": str(driver["id"]),
+                "vehicle_id": str(vehicle["id"]),
+                "broker": "Acme Brokerage",
+                "revenue": "3250",
+                "origin": "Nashville, TN",
+                "destination": "Charlotte, NC",
+                "loaded_miles": "410",
+                "deadhead_miles": "35",
+                "notes": "INTERNAL ONLY: margin discussion",
+                "ratecon_received": "on",
+                "ratecon_reference": "RC-1048.pdf",
+                "pickup_address": "1200 Freight Way, Nashville, TN 37210",
+                "pickup_window_start": "2026-07-22T08:00",
+                "pickup_window_end": "2026-07-22T10:00",
+                "pickup_contact_name": "Pat Shipping",
+                "pickup_contact_phone": "615-555-0101",
+                "pickup_instructions": "Check in at gate 2; reference PO 88.",
+                "delivery_address": "850 Distribution Blvd, Charlotte, NC 28208",
+                "delivery_window_start": "2026-07-23T13:00",
+                "delivery_window_end": "2026-07-23T15:30",
+                "delivery_contact_name": "Lee Receiving",
+                "delivery_contact_phone": "704-555-0188",
+                "delivery_instructions": "Use south receiving entrance.",
+            },
+            follow_redirects=False,
+        )
+        assert created.status_code == 303
+        load = query_one("SELECT * FROM loads WHERE load_number='DISPATCH-1048'")
+        assert load["status"] == "RateCon Received"
+        assert load["ratecon_received_at"]
+        assert load["pickup_address"].startswith("1200 Freight Way")
+
+        detail = client.get(created.headers["location"])
+        assert detail.status_code == 200
+        assert "Ready for Jordan Driver" in detail.text
+        assert "Text trip &middot; iPhone" in detail.text
+        assert "Text trip &middot; Android" in detail.text
+        assert 'href="sms:6155550147&amp;body=' in detail.text
+        assert 'href="sms:6155550147?body=' in detail.text
+        assert "https://maps.apple.com/" in detail.text
+        assert "https://www.google.com/maps/dir/" in detail.text
+        assert "Pat Shipping" in detail.text
+        assert "Check in at gate 2; reference PO 88." in detail.text
+        assert "Lee Receiving" in detail.text
+        assert "Please confirm receipt" in detail.text
+        assert "INTERNAL ONLY: margin discussion" not in detail.text
+
+
+def test_driver_trip_text_lists_missing_requirements_and_rejects_reversed_window(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "dispatch-blockers.db"))
+    with TestClient(app) as client:
+        signup(client, "dispatch-blockers@example.com")
+        client.post("/vehicles", data={"name": "Truck 9", "equipment_type": "Tractor", "active": "on"})
+        vehicle = query_one("SELECT id FROM vehicles WHERE name='Truck 9'")
+        client.post(
+            "/drivers",
+            data={
+                "name": "No Phone Driver", "role": "Driver", "pay_model": "Flat Rate per Load",
+                "vehicle_id": str(vehicle["id"]), "flat_rate_per_load": "300", "active": "on",
+            },
+        )
+        driver = query_one("SELECT id FROM drivers WHERE name='No Phone Driver'")
+        base = {
+            "load_number": "BLOCKED-1", "status": "Booked", "include_in_model": "on",
+            "pickup_date": "2026-07-22", "delivery_date": "2026-07-23",
+            "driver_id": str(driver["id"]), "vehicle_id": str(vehicle["id"]),
+            "revenue": "1200", "loaded_miles": "200", "deadhead_miles": "10",
+        }
+        created = client.post("/loads/new", data=base, follow_redirects=False)
+        detail = client.get(created.headers["location"])
+        assert "Mark the RateCon as received and verified" in detail.text
+        assert "Add a valid mobile number" in detail.text
+        assert "Add the full pickup address" in detail.text
+        assert "Add the complete delivery appointment window" in detail.text
+
+        invalid = client.post(
+            "/loads/new",
+            data={
+                **base,
+                "load_number": "BAD-WINDOW",
+                "pickup_window_start": "2026-07-22T11:00",
+                "pickup_window_end": "2026-07-22T08:00",
+            },
+        )
+        assert invalid.status_code == 400
+        assert "Pickup window end must be after its start" in invalid.text

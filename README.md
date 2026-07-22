@@ -5,19 +5,22 @@ CarrierOS is a multi-company fleet financial workspace for small carriers. Each 
 ## Included in this release candidate
 
 - Phase 1 carrier workflow: broker/customer offer, pre-book profit check, driver comparison, negotiation history, and exactly-once conversion to `Booked — Awaiting RateCon`
+- Verified RateCon dispatch details with driver-ready SMS composition, pickup/delivery appointment windows, contacts, instructions, and Apple/Google navigation links
 - Deterministic `BOOK`, `NEGOTIATE`, `DECLINE`, and `REVIEW REQUIRED` recommendations based on company margin, profit, profit-per-mile/day, revenue-per-mile, and deadhead thresholds
 - Immutable evaluation/booking snapshots that preserve the original offer, final rate, company settings, and selected driver pay profile
 - Sourced and timestamped driver locations with stale/unknown warnings and a routing-provider boundary; production uses manually verified mileage until a commercial provider is configured
 - Customer signup with versioned terms consent, sign-in, secure sessions, production CSRF checks, account throttling, security headers, self-service password reset when SMTP is configured, and an append-only account audit trail
 - Organization-scoped loads, units, drivers, payments, fuel, quoting, financials, compliance, onboarding, documents, detention, and receivables
+- Privacy-first document audits for text-based RateCon PDFs, business-bank PDF/CSV exports, and bill PDFs; raw uploads are discarded after structured findings and a checksum are produced
+- A carrier-startup checklist with official-source tutorials plus equipment purchase/finance scenario mentoring
 - Seven driver-pay structures: profit split, contractor gross split, owner-operator split, flat rate per load, loaded-mile rate, total-mile rate, and day rate
-- Plans for 2, 5, 10, and 20 active power units at $25, $50, $75, and $100 per month, with unlimited driver records and office users
+- A $10/month pre-authority startup plan with zero active units, plus plans for 2, 5, 10, and 20 active power units at $25, $50, $75, and $100 per month
 - Stripe-hosted subscription Checkout, Customer Portal, webhook-driven entitlements, and a card-on-file 14-day trial
 - Docker packaging with a non-root process, dynamic platform port, health check, and persistent data volume
 - Daily consistent SQLite backups with retention, Render disk snapshots, and authenticated company-data export
 - Public Privacy Policy and Terms of Service pages
 
-The full V1 roadmap and Phase 1 boundary are documented in `docs/V1_PRODUCT_REQUIREMENTS.md`, `docs/V1_ARCHITECTURE.md`, `docs/V1_IMPLEMENTATION_PLAN.md`, and `docs/V1_RISK_REGISTER.md`. Commercial routing, RateCon upload/extraction, live GPS/ELD/HOS, execution automation, settlement approval, invoicing automation, collections, and accounting sync are not part of v0.13.0.
+The full V1 roadmap and Phase 1 boundary are documented in `docs/V1_PRODUCT_REQUIREMENTS.md`, `docs/V1_ARCHITECTURE.md`, `docs/V1_IMPLEMENTATION_PLAN.md`, and `docs/V1_RISK_REGISTER.md`. Commercial routing, OCR for scanned PDFs, raw document retention, general-ledger reconciliation, live GPS/ELD/HOS, automated SMS delivery, settlement approval, invoicing automation, collections, and accounting sync are not part of v0.15.0. Document results are discrepancy screens and estimates, not accounting entries or professional advice.
 
 ## Local development
 
@@ -54,7 +57,7 @@ The HTTPS reverse proxy or hosting platform must terminate TLS. CarrierOS create
 
 Squarespace remains the marketing site and sends plan links directly to CarrierOS signup; it does not create a second Squarespace Commerce subscription. CarrierOS associates the authenticated organization with a server-created Stripe Checkout Session. Stripe Billing is the subscription system of record. CarrierOS grants or removes paid access only after signature-verified, idempotently processed Stripe webhooks; the Checkout success redirect never grants access. Before every Checkout Session, CarrierOS retrieves the configured Stripe Price and refuses checkout unless its active status, USD amount, monthly recurrence, and licensed billing model match the selected CarrierOS plan.
 
-Configure a Stripe webhook endpoint at `https://YOUR-APP/stripe/webhook` for `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `customer.subscription.trial_will_end`, `invoice.paid`, and `invoice.payment_failed`. The four standard monthly Price IDs must be supplied through the corresponding `STRIPE_PRICE_*` environment variables. Configure the Stripe Customer Portal to allow the plan changes and cancellation behavior you intend to support.
+Configure a Stripe webhook endpoint at `https://YOUR-APP/stripe/webhook` for `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `customer.subscription.trial_will_end`, `invoice.paid`, and `invoice.payment_failed`. The five standard monthly Price IDs must be supplied through the corresponding `STRIPE_PRICE_*` environment variables. Configure the Stripe Customer Portal to allow the plan changes and cancellation behavior you intend to support.
 
 Stripe Connect is intentionally not part of the initial SaaS billing release. Calculating contractor compensation does not by itself justify Connect, and Connect must not be treated as a general payroll or arbitrary payout service. Reassess Connect when CarrierOS has a defined underlying customer-to-fleet or customer-to-contractor payment flow.
 
@@ -66,7 +69,7 @@ Set `CARRIEROS_ROUTE_PROVIDER=manual` in production. The included `estimated` ad
 - Keep the app on one instance, set the support email, and use a generated strong session secret in host-managed environment variables.
 - Review the included Privacy Policy and Terms of Service with a qualified attorney before paid sales.
 - Configure a verified SMTP sender so the included single-use, 30-minute password-reset flow can deliver email. Until then, recovery falls back to the published support address.
-- Before replacing test credentials with live credentials, create the four recurring Stripe Prices in live mode, configure the Customer Portal, and test every subscription lifecycle event.
+- Before replacing test credentials with live credentials, create the five recurring Stripe Prices in live mode, configure the Customer Portal, and test every subscription lifecycle event.
 - Run an independent security review before storing regulated or highly sensitive data, and move to managed PostgreSQL before horizontal scaling or higher-availability requirements.
 
-CarrierOS operational and document outputs require professional review. Do not enter Social Security numbers, banking credentials, or identity-document images in CarrierOS.
+CarrierOS operational, startup, audit, and growth outputs require professional review. Uploaded audit documents are processed in memory and discarded, but filenames, checksums, extracted figures, and findings are retained in the company workspace. Do not upload or enter Social Security numbers, banking credentials, full account numbers, tax IDs, or identity-document images.

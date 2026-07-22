@@ -44,7 +44,8 @@ def test_existing_organization_gets_launch_columns(
     assert "password_reset_tokens" in tables
     assert "quick_links" in tables
     assert {"load_opportunities", "opportunity_snapshots", "opportunity_negotiations", "driver_locations"} <= tables
-    assert user_version == 10
+    assert {"document_audits", "startup_checklist_progress"} <= tables
+    assert user_version == 12
     with connect() as conn:
         payment_columns = {row["name"] for row in conn.execute("PRAGMA table_info(payments)")}
     assert {"voided_at", "voided_by", "void_reason"} <= payment_columns
@@ -53,6 +54,11 @@ def test_existing_organization_gets_launch_columns(
     assert {
         "opportunity_id", "original_offered_rate", "final_agreed_rate",
         "quote_snapshot_id", "booking_snapshot_id", "ratecon_due_at",
+        "pickup_address", "pickup_window_start", "pickup_window_end",
+        "pickup_contact_name", "pickup_contact_phone", "pickup_instructions",
+        "delivery_address", "delivery_window_start", "delivery_window_end",
+        "delivery_contact_name", "delivery_contact_phone", "delivery_instructions",
+        "ratecon_reference", "ratecon_received_at",
     } <= load_columns
     with connect() as conn:
         onboarding_columns = {

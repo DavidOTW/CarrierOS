@@ -4,7 +4,8 @@
   <div><span class="workspace-kicker">Private fleet workspace</span><h2>Welcome back, {{ user.full_name.split()[0] }}.</h2><p>See the loads, pay obligations, costs, and exceptions shaping your fleet today.</p></div>
   <div class="actions"><a class="btn btn-primary" href="/loads/new">Add load <span aria-hidden="true">&rarr;</span></a><a class="btn btn-ghost" href="/quotes">Quote a lane</a></div>
 </div>
-{% if not bundle.drivers or not bundle.vehicles %}<div class="notice workspace-start"><strong>Start your workspace:</strong> add an active power unit, then create its driver and pay profile. No shared or sample financial data is added to customer accounts.</div>{% endif %}
+{% if user.active_unit_limit == 0 %}<div class="notice good"><strong>Your Carrier Startup workspace is ready.</strong> Begin with the guided <a href="/startup">carrier-launch checklist</a>, then use the <a href="/growth">equipment finance mentor</a> before committing to a truck. Upgrade from Billing when you are ready to activate a power unit.</div>{% endif %}
+{% if user.active_unit_limit != 0 and (not bundle.drivers or not bundle.vehicles) %}<div class="notice workspace-start"><strong>Start your workspace:</strong> add an active power unit, then create its driver and pay profile. No shared or sample financial data is added to customer accounts.</div>{% endif %}
 
 <section class="workspace-metrics" aria-label="Fleet summary">
   <article><span>Total revenue</span><strong>{{ money(stats.total_revenue) }}</strong><small>Included loads</small></article>

@@ -51,6 +51,9 @@
       <a class="{% if request.url.path.startswith('/idle') %}active{% endif %}" href="/idle"><span class="nav-icon">RP</span>Reports</a>
       <a class="{% if request.url.path.startswith('/links') %}active{% endif %}" href="/links"><span class="nav-icon">CN</span>Connections</a>
       <a class="{% if request.url.path.startswith('/settings') %}active{% endif %}" href="/settings"><span class="nav-icon">ST</span>Settings</a>
+      <a class="{% if request.url.path.startswith('/growth') %}active{% endif %}" href="/growth"><span class="nav-icon">GR</span>Growth mentor</a>
+      <a class="{% if request.url.path.startswith('/audits') %}active{% endif %}" href="/audits"><span class="nav-icon">AU</span>Document audits</a>
+      <a class="{% if request.url.path.startswith('/startup') %}active{% endif %}" href="/startup"><span class="nav-icon">SU</span>Startup guide</a>
       <div class="nav-section">Supporting tools</div>
       <a class="{% if request.url.path.startswith('/payments') %}active{% endif %}" href="/payments"><span class="nav-icon">PY</span>Driver pay</a>
       <a class="{% if request.url.path.startswith('/fuel') %}active{% endif %}" href="/fuel"><span class="nav-icon">FL</span>Weekly fuel</a>
@@ -60,7 +63,7 @@
       <a class="{% if request.url.path.startswith('/receivables') %}active{% endif %}" href="/receivables"><span class="nav-icon">AR</span>Detention &amp; A/R</a>
       <a class="{% if request.url.path.startswith('/billing') %}active{% endif %}" href="/billing"><span class="nav-icon">BL</span>Billing</a>
     </nav>
-    {% if user %}<div class="sidebar-account"><span>{{ user.full_name[:1]|upper }}</span><div><strong>{{ user.organization_name }}</strong><small>Up to {{ user.active_unit_limit }} active power units</small></div></div>{% endif %}
+    {% if user %}<div class="sidebar-account"><span>{{ user.full_name[:1]|upper }}</span><div><strong>{{ user.organization_name }}</strong><small>{% if user.active_unit_limit == 0 %}Startup planning &middot; 0 units{% else %}Up to {{ user.active_unit_limit }} active power units{% endif %}</small></div></div>{% endif %}
     <div class="sidebar-footer">Private customer workspace &middot; v{{ version }}<br><a href="/terms">Terms</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="mailto:{{ support_email }}">Support</a></div>
   </aside>
   <main class="main">
@@ -71,7 +74,7 @@
         {% if user %}<div class="user-avatar">{{ user.full_name[:1]|upper }}</div><div class="user-chip"><strong>{{ user.full_name }}</strong><a href="/logout">Log out</a></div>{% endif %}
       </div>
       <details class="mobile-nav"><summary>Menu</summary><div class="mobile-menu-panel">
-        <a href="/dashboard">Today</a><a href="/rate-quotes">Rate Quotes</a><a href="/loads">Loads</a><a href="/financials">Money</a><a href="/drivers">Drivers &amp; Equipment</a><a href="/compliance">Compliance</a><a href="/idle">Reports</a><a href="/links">Connections</a><a href="/settings">Settings</a><a href="/payments">Driver pay</a><a href="/fuel">Fuel</a><a href="/vehicles">Units</a><a href="/onboarding">Onboarding</a><a href="/documents">Documents</a><a href="/receivables">A/R</a><a href="/billing">Billing</a><a href="/logout">Log out</a>
+        <a href="/dashboard">Today</a><a href="/rate-quotes">Rate Quotes</a><a href="/loads">Loads</a><a href="/financials">Money</a><a href="/drivers">Drivers &amp; Equipment</a><a href="/growth">Growth</a><a href="/audits">Audits</a><a href="/startup">Startup</a><a href="/compliance">Compliance</a><a href="/idle">Reports</a><a href="/links">Connections</a><a href="/settings">Settings</a><a href="/payments">Driver pay</a><a href="/fuel">Fuel</a><a href="/vehicles">Units</a><a href="/onboarding">Onboarding</a><a href="/documents">Documents</a><a href="/receivables">A/R</a><a href="/billing">Billing</a><a href="/logout">Log out</a>
       </div></details>
     </header>
     <div class="content">{% if flash %}<div class="notice good">{{ flash }}</div>{% endif %}
