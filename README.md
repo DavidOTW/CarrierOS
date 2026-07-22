@@ -63,6 +63,13 @@ docker compose up --build -d
 
 The HTTPS reverse proxy or hosting platform must terminate TLS. CarrierOS creates consistent SQLite backups in `CARRIEROS_BACKUP_DIR` every 24 hours and keeps the latest 14 by default. Render also snapshots the persistent disk daily. Copy logical backups off-host and test restoration regularly. SQLite requires a single application replica; migrate to a managed transactional database before horizontal scaling.
 
+An optional S3-compatible off-host backup adapter is included. It activates
+only when `CARRIEROS_OFFSITE_BACKUP_BUCKET` is set and uploads each verified
+backup with server-side encryption. Provider setup, least-privilege credentials,
+PostgreSQL migration, SMTP, Stripe lifecycle testing, and human legal/security
+review are documented in `docs/OPERATIONS_HANDOFF.md` and still require an
+operator to create accounts, approve costs, and enter secrets.
+
 ### Render deployment
 
 `render.yaml` defines a single Starter web service with a 1 GB persistent disk mounted at `/data`, automated logical-backup settings, a generated production session secret, Stripe billing mode, required secret placeholders, the public application URL, and a health check. Create a Render Blueprint from this repository and review the displayed recurring price before applying it. Do not remove the persistent disk or scale the SQLite service above one instance.

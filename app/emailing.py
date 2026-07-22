@@ -7,9 +7,17 @@ from email.message import EmailMessage
 
 
 def smtp_configured() -> bool:
+    host = os.getenv("CARRIEROS_SMTP_HOST", "").strip()
+    from_email = os.getenv("CARRIEROS_SMTP_FROM", "").strip()
+    security = os.getenv("CARRIEROS_SMTP_SECURITY", "starttls").strip().lower()
+    auth_required = os.getenv("CARRIEROS_SMTP_AUTH_REQUIRED", "true").strip().lower() == "true"
+    username = os.getenv("CARRIEROS_SMTP_USERNAME", "").strip()
+    password = os.getenv("CARRIEROS_SMTP_PASSWORD", "")
     return bool(
-        os.getenv("CARRIEROS_SMTP_HOST", "").strip()
-        and os.getenv("CARRIEROS_SMTP_FROM", "").strip()
+        host
+        and from_email
+        and security in {"starttls", "ssl", "none"}
+        and (not auth_required or (username and password))
     )
 
 
