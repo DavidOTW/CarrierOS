@@ -31,9 +31,9 @@ services:
       - key: CARRIEROS_PRIVATE_STORAGE_ROOT
         value: /data/private-documents
       - key: CARRIEROS_STORAGE_ENCRYPTED_AT_REST
-        value: "false"
+        value: "true"
       - key: CARRIEROS_MALWARE_SCANNER
-        value: manual
+        value: clamav
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
