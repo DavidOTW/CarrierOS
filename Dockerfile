@@ -7,7 +7,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 RUN addgroup --system carrieros && adduser --system --ingroup carrieros carrieros \
-    && mkdir -p /data && chown carrieros:carrieros /data
+    && mkdir -p /data /var/lib/clamav \
+    && chown -R carrieros:carrieros /data /var/lib/clamav
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends clamav clamav-freshclam \
+    && freshclam --stdout --no-warnings \
+    && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY --chown=carrieros:carrieros . .

@@ -5,6 +5,9 @@ import io
 import json
 import os
 import re
+import shutil
+import subprocess
+import tempfile
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -209,6 +212,67 @@ class MockMalwareScanProvider:
     def scan(self, payload: bytes, *, filename: str) -> MalwareScanResult:
         del payload, filename
         return MalwareScanResult("CLEAN" if self.clean else "REJECTED", self.name)
+
+
+class ClamAVMalwareScanProvider:
+    """Fail-closed adapter for a local ClamAV installation.
+
+    The production container installs ClamAV and refreshes its signatures at
+    image build time. A scan error is never treated as clean, so document
+    workflows remain blocked until the scanner is healthy again.
+    """
+
+    name = "clamav"
+
+    def __init__(self, *, executable: str | None = None, timeout_seconds: float | None = None):
+        self.executable = executable or os.getenv("CARRIEROS_CLAMAV_EXECUTABLE", "clamscan").strip()
+        try:
+            configured_timeout = float(os.getenv("CARRIEROS_CLAMAV_TIMEOUT_SECONDS", "45"))
+        except ValueError:
+            configured_timeout = 45.0
+        self.timeout_seconds = max(5.0, timeout_seconds if timeout_seconds is not None else configured_timeout)
+
+    @property
+    def available(self) -> bool:
+        return bool(self.executable) and bool(shutil.which(self.executable))
+
+    def scan(self, payload: bytes, *, filename: str) -> MalwareScanResult:
+        if not self.available:
+            return MalwareScanResult(
+                "SCAN_ERROR",
+                self.name,
+                "ClamAV executable is unavailable; document processing is fail-closed.",
+            )
+        suffix = Path(filename).suffix.lower() or ".bin"
+        temporary_path: str | None = None
+        try:
+            with tempfile.NamedTemporaryFile(prefix="carrieros-scan-", suffix=suffix, delete=False) as temporary:
+                temporary.write(payload)
+                temporary_path = temporary.name
+            completed = subprocess.run(
+                [self.executable, "--no-summary", "--infected", temporary_path],
+                capture_output=True,
+                text=True,
+                timeout=self.timeout_seconds,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            return MalwareScanResult("SCAN_ERROR", self.name, "ClamAV scan timed out; document processing is fail-closed.")
+        except OSError as exc:
+            return MalwareScanResult("SCAN_ERROR", self.name, f"ClamAV could not run ({type(exc).__name__}); fail-closed.")
+        finally:
+            if temporary_path:
+                try:
+                    Path(temporary_path).unlink(missing_ok=True)
+                except OSError:
+                    pass
+
+        detail = (completed.stdout or completed.stderr or "").strip().replace("\x00", " ")[:500]
+        if completed.returncode == 0:
+            return MalwareScanResult("CLEAN", self.name, detail)
+        if completed.returncode == 1:
+            return MalwareScanResult("REJECTED", self.name, detail or "ClamAV detected malware.")
+        return MalwareScanResult("SCAN_ERROR", self.name, detail or "ClamAV returned an error; fail-closed.")
 
 
 class ManualOcrProvider:
@@ -472,8 +536,11 @@ def configured_storage_provider() -> ObjectStorageProvider:
 
 
 def configured_malware_scan_provider() -> MalwareScanProvider:
-    if os.getenv("CARRIEROS_MALWARE_SCANNER", "manual").strip().lower() == "mock-clean":
+    scanner = os.getenv("CARRIEROS_MALWARE_SCANNER", "manual").strip().lower()
+    if scanner == "mock-clean":
         return MockMalwareScanProvider()
+    if scanner == "clamav":
+        return ClamAVMalwareScanProvider()
     return ManualMalwareScanProvider()
 
 
