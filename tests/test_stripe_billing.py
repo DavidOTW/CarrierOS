@@ -42,8 +42,9 @@ def test_stripe_client_uses_bounded_network_timeout(monkeypatch: pytest.MonkeyPa
     monkeypatch.setenv("CARRIEROS_STRIPE_TIMEOUT_SECONDS", "90")
     captured: dict[str, object] = {}
 
-    def fake_http_client(*, timeout):
+    def fake_http_client(*, timeout, allow_sync_methods):
         captured["timeout"] = timeout
+        captured["allow_sync_methods"] = allow_sync_methods
         return "http-client"
 
     def fake_stripe_client(api_key, *, http_client):
@@ -57,6 +58,7 @@ def test_stripe_client_uses_bounded_network_timeout(monkeypatch: pytest.MonkeyPa
     assert stripe_billing._stripe_client() == "stripe-client"
     assert captured == {
         "timeout": 30.0,
+        "allow_sync_methods": True,
         "api_key": "sk_test_example",
         "http_client": "http-client",
     }

@@ -41,7 +41,14 @@ def _stripe_client() -> stripe.StripeClient:
     timeout_seconds = min(30.0, max(5.0, timeout_seconds))
     return stripe.StripeClient(
         _required_env("STRIPE_SECRET_KEY"),
-        http_client=stripe.HTTPXClient(timeout=timeout_seconds),
+        # Checkout and price validation are intentionally synchronous calls.
+        # Stripe's HTTPX client defaults to async-only in recent SDK versions;
+        # explicitly enable sync methods so a checkout request cannot become a
+        # raw 500 before Stripe receives it.
+        http_client=stripe.HTTPXClient(
+            timeout=timeout_seconds,
+            allow_sync_methods=True,
+        ),
     )
 
 
