@@ -116,6 +116,8 @@ def test_public_marketing_home_uses_launch_pricing_and_real_app_links(
         assert "Purple Heart recipient" in response.text
         assert "20 years of experience" in response.text
         assert 'href="https://www.linkedin.com/in/davidbryant89"' in response.text
+        assert 'href="/carrier-startup-checklist"' in response.text
+        assert "See the startup plan" in response.text
         assert '<a class="public-signin" href="/login">Log in</a>' in response.text
         assert '"@type": "Person"' in response.text
         assert response.headers["cache-control"].startswith("public")
@@ -136,6 +138,7 @@ def test_search_pages_sitemap_and_crawl_controls(
             "/small-fleet-trucking-software": "Small Fleet Trucking Software",
             "/driver-settlement-software": "Driver Pay Tracking",
             "/load-profitability-calculator": "Truck Load Profitability Calculator",
+            "/carrier-startup-checklist": "How to Start a Trucking Company",
         }
         for path, phrase in expected.items():
             response = client.get(path)

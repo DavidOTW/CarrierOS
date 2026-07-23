@@ -258,6 +258,33 @@ SEO_PAGES = {
             ("Are the calculated results financial advice?", "No. Results are operational estimates based on user-entered assumptions and should be reviewed before business, tax, accounting, payroll, or compliance decisions."),
         ],
     },
+    "carrier-startup-checklist": {
+        "title": "How to Start a Trucking Company | CarrierOS",
+        "description": "A practical carrier startup checklist for aspiring owner-operators. Organize authority, safety, cash, equipment, and first-load readiness in one guided workspace.",
+        "eyebrow": "Carrier startup checklist",
+        "heading": "Start your carrier with a plan for the first load.",
+        "lead": "CarrierOS gives aspiring owner-operators a step-by-step planning workspace for authority, safety, cash, equipment, records, and the operating math behind the first truck.",
+        "audience": "For people preparing to start a U.S. carrier, purchase their first truck, or move from driving into owner-operator and small-fleet ownership.",
+        "problem_title": "The first truck comes with more than a truck payment.",
+        "problem_copy": "A new carrier needs a coordinated plan for registration, insurance, safety, cash reserves, equipment, records, and freight decisions. The Carrier Startup plan keeps those questions visible before the first load is booked.",
+        "benefits": [
+            ("Authority and registration", "Keep the major registration, filing, and operating-authority questions in one checklist with official-source links."),
+            ("Safety and compliance", "Organize the records and renewal dates that should be reviewed before operations begin."),
+            ("Cash and equipment", "Model down payment, financing, insurance, maintenance, fuel, and reserve assumptions before committing cash."),
+            ("First-load readiness", "Set up the operating assumptions you will use to evaluate freight and understand early carrier economics."),
+        ],
+        "workflow_title": "A guided path from idea to operating carrier",
+        "workflow": [
+            ("Complete the startup checklist", "Work through authority, safety, insurance, cash, equipment, and recordkeeping steps."),
+            ("Model the first truck", "Test purchase, financing, fixed costs, fuel, maintenance, revenue, and driver-pay assumptions."),
+            ("Open the operations workspace", "Upgrade when you are ready to manage loads, dispatch, driver pay, payments, and profit in one place."),
+        ],
+        "faqs": [
+            ("What does the Carrier Startup plan include?", "The $10 per month startup plan is designed for 0 active power units and includes the guided checklist, official-source tutorials, document audit center, and equipment finance mentor."),
+            ("Does CarrierOS register my company or provide legal advice?", "No. CarrierOS organizes planning questions and links to official resources; it does not file registrations or replace legal, tax, insurance, accounting, or regulatory professionals."),
+            ("Can I upgrade when I buy my first truck?", "Yes. Upgrade to an operating plan when you are ready to manage active power units, loads, drivers, dispatch, and profitability."),
+        ],
+    },
 }
 
 INDEXABLE_PATHS = {"/", "/demo", *(f"/{slug}" for slug in SEO_PAGES)}
@@ -1225,6 +1252,7 @@ def demo(request: Request):
 @app.get("/small-fleet-trucking-software", response_class=HTMLResponse)
 @app.get("/driver-settlement-software", response_class=HTMLResponse)
 @app.get("/load-profitability-calculator", response_class=HTMLResponse)
+@app.get("/carrier-startup-checklist", response_class=HTMLResponse)
 def seo_landing_page(request: Request):
     seo_slug = request.url.path.strip("/")
     page = SEO_PAGES.get(seo_slug)
