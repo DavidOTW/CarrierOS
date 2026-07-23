@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Account deleted &middot; CarrierOS{% endblock %}
+{% block content %}
+<main class="public-marketing account-deleted-page">
+  <section class="public-checkout-hero">
+    <span class="public-release"><i></i> Account closed</span>
+    <h1>Your CarrierOS account was deleted.</h1>
+    <p>Your workspace data and private uploaded documents were removed, and any active subscription was canceled. Stripe may retain transaction records as required for billing, tax, fraud prevention, and legal compliance.</p>
+    <div class="public-hero-actions"><a class="public-btn public-btn-orange" href="/">Return to CarrierOS</a><a class="public-btn public-btn-light" href="mailto:{{ support_email }}">Contact support</a></div>
+  </section>
+</main>
+{% endblock %}

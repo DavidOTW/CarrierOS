@@ -14,4 +14,34 @@
 </div>
 <section class="card" style="margin-top:18px"><h3>Custom Fleet</h3><p>More than 20 active power units. Contact us for a tailored quote and onboarding plan.</p><a class="btn btn-secondary" href="mailto:{{ support_email }}?subject=CarrierOS%20Custom%20Fleet">Request a custom quote</a></section>
 {% endif %}
+<section class="card billing-account-actions" style="margin-top:18px">
+  <h3>Cancel or delete your account</h3>
+  {% if billing_mode != 'beta' %}
+  <p>Manage payment methods, invoices, and plan changes through Stripe. If you cancel, your workspace stays available until the current billing period ends.</p>
+  {% if user.billing_subscription_reference and user.subscription_status not in ['canceled', 'incomplete_expired'] and not user.subscription_cancel_at_period_end %}
+  <form method="post" action="/billing/cancel" onsubmit="return confirm('Schedule this subscription to cancel at the end of the current billing period?');">
+    <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+    <button class="btn btn-secondary" type="submit">Cancel subscription</button>
+  </form>
+  {% elif user.subscription_cancel_at_period_end %}
+  <p class="notice warn">Cancellation is already scheduled for the end of the current billing period.</p>
+  {% endif %}
+  {% else %}
+  <p>This founding beta has no paid subscription to cancel. You can still permanently delete your CarrierOS account below.</p>
+  {% endif %}
+  <details class="danger-zone">
+    <summary>Delete workspace and account permanently</summary>
+    <div class="danger-zone-body">
+      <p><strong>This cannot be undone.</strong> Download your company data first from <a href="/settings">Settings</a>. Deletion removes your CarrierOS workspace, loads, driver records, payments, reports, and uploaded documents. Any active Stripe subscription is canceled immediately first.</p>
+      <form method="post" action="/account/delete" onsubmit="return confirm('Permanently delete this CarrierOS account and all workspace data? This cannot be undone.');">
+        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+        <div class="form-grid">
+          <div class="field"><label for="delete-password">Current password</label><input id="delete-password" type="password" name="password" autocomplete="current-password" required></div>
+          <div class="field"><label for="delete-confirmation">Type DELETE to confirm</label><input id="delete-confirmation" name="confirmation" autocomplete="off" required pattern="DELETE" placeholder="DELETE"></div>
+        </div>
+        <div class="form-actions"><button class="btn btn-danger" type="submit">Permanently delete account</button></div>
+      </form>
+    </div>
+  </details>
+</section>
 {% endblock %}

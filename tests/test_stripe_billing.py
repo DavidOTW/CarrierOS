@@ -28,12 +28,28 @@ class FakeCheckoutSessions:
         return {"id": "cs_test_carrieros", "url": "https://checkout.stripe.test/session"}
 
 
+class FakeSubscriptions:
+    def __init__(self):
+        self.updated = None
+        self.canceled = None
+
+    def update(self, subscription_id, *, params):
+        self.updated = (subscription_id, params)
+        return {"id": subscription_id, "current_period_end": 1800000000}
+
+    def cancel(self, subscription_id):
+        self.canceled = subscription_id
+        return {"id": subscription_id, "status": "canceled"}
+
+
 class FakeStripeClient:
     def __init__(self, price, price_id="price_owner"):
         self.sessions = FakeCheckoutSessions()
+        self.subscriptions = FakeSubscriptions()
         self.v1 = SimpleNamespace(
             prices=FakePrices(price, price_id),
             checkout=SimpleNamespace(sessions=self.sessions),
+            subscriptions=self.subscriptions,
         )
 
 
@@ -107,6 +123,21 @@ def test_checkout_collects_payment_method_and_starts_card_on_file_trial(
         "end_behavior": {"missing_payment_method": "cancel"}
     }
     assert fake.sessions.params["customer_email"] == "owner@example.com"
+
+
+def test_subscription_cancellation_helpers_use_safe_stripe_operations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = FakeStripeClient(valid_monthly_price())
+    monkeypatch.setattr(stripe_billing, "_stripe_client", lambda: fake)
+
+    updated = stripe_billing.cancel_subscription_at_period_end(subscription_id="sub_test")
+    assert updated["id"] == "sub_test"
+    assert fake.subscriptions.updated == ("sub_test", {"cancel_at_period_end": True})
+
+    canceled = stripe_billing.cancel_subscription_immediately(subscription_id="sub_test")
+    assert canceled["status"] == "canceled"
+    assert fake.subscriptions.canceled == "sub_test"
 
 
 def test_startup_plan_validates_zero_unit_monthly_price(monkeypatch: pytest.MonkeyPatch) -> None:

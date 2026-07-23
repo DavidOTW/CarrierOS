@@ -1048,5 +1048,50 @@ def export_organization_data(organization_id: int) -> dict[str, Any]:
         return payload
 
 
+_ORGANIZATION_DELETE_GUARDS = {
+    "opportunity_snapshots_no_delete": """CREATE TRIGGER IF NOT EXISTS opportunity_snapshots_no_delete
+BEFORE DELETE ON opportunity_snapshots
+BEGIN
+    SELECT RAISE(ABORT, 'opportunity snapshots are immutable');
+END;""",
+    "opportunity_negotiations_no_delete": """CREATE TRIGGER IF NOT EXISTS opportunity_negotiations_no_delete
+BEFORE DELETE ON opportunity_negotiations
+BEGIN
+    SELECT RAISE(ABORT, 'opportunity negotiation history is append-only');
+END;""",
+    "ratecon_extractions_no_delete": """CREATE TRIGGER IF NOT EXISTS ratecon_extractions_no_delete
+BEFORE DELETE ON ratecon_extractions
+BEGIN
+    SELECT RAISE(ABORT, 'ratecon extractions are immutable');
+END;""",
+    "load_financial_snapshots_no_delete": """CREATE TRIGGER IF NOT EXISTS load_financial_snapshots_no_delete
+BEFORE DELETE ON load_financial_snapshots
+BEGIN
+    SELECT RAISE(ABORT, 'load financial snapshots are immutable');
+END;""",
+}
+
+
+def delete_organization(organization_id: int) -> bool:
+    """Permanently remove a workspace and its cascading operational records.
+
+    Immutable calculation/extraction histories normally reject deletes. A
+    confirmed account deletion is the one intentional exception; the guards
+    are dropped only for this transaction and recreated before it commits.
+    Minimal security audit events are retained with their foreign keys nulled.
+    """
+    with db_session() as conn:
+        if not conn.execute("SELECT 1 FROM organizations WHERE id=?", (organization_id,)).fetchone():
+            return False
+        for trigger_name in _ORGANIZATION_DELETE_GUARDS:
+            conn.execute(f"DROP TRIGGER IF EXISTS {trigger_name}")
+        try:
+            deleted = conn.execute("DELETE FROM organizations WHERE id=?", (organization_id,)).rowcount
+        finally:
+            for statement in _ORGANIZATION_DELETE_GUARDS.values():
+                conn.execute(statement)
+        return deleted == 1
+
+
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()

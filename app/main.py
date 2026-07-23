@@ -70,6 +70,7 @@ from .db import (
     create_database_backup,
     create_password_reset_token,
     db_session,
+    delete_organization,
     execute,
     export_organization_data,
     hash_password,
@@ -98,6 +99,8 @@ from .services import (
 )
 from .stripe_billing import (
     BillingConfigurationError,
+    cancel_subscription_at_period_end,
+    cancel_subscription_immediately,
     construct_webhook_event,
     create_checkout_session,
     create_portal_session,
@@ -1729,6 +1732,131 @@ async def billing_portal(request: Request):
         set_flash_error(request, "Stripe did not return a secure billing link. Please contact support.")
         return redirect("/billing")
     return redirect(portal_url)
+
+
+@app.post("/billing/cancel")
+async def billing_cancel(request: Request):
+    """Schedule the current Stripe subscription to cancel without revoking access early."""
+    user = current_user(request)
+    if not user:
+        return redirect("/login")
+    await verified_form(request)
+    subscription_id = str(user.get("billing_subscription_reference") or "")
+    status = str(user.get("subscription_status") or "").lower()
+    if BILLING_MODE == "beta" or not subscription_id:
+        set_flash(request, "There is no paid subscription to cancel on this workspace.")
+        return redirect("/billing")
+    if status in {"canceled", "incomplete_expired"} or user.get("subscription_cancel_at_period_end"):
+        set_flash(request, "Your subscription is already scheduled to end. No further action is needed.")
+        return redirect("/billing")
+    if not stripe_configured() or (IS_PRODUCTION and not stripe_live_configured()):
+        set_flash_error(request, "Secure Stripe billing is not available right now. Please contact support.")
+        return redirect("/billing")
+    try:
+        subscription = await asyncio.to_thread(
+            cancel_subscription_at_period_end,
+            subscription_id=subscription_id,
+        )
+    except BillingConfigurationError as exc:
+        logger.error("Stripe cancellation configuration error type=%s detail=%s", type(exc).__name__, str(exc))
+        set_flash_error(request, "Secure Stripe billing is not configured yet. Please contact support.")
+        return redirect("/billing")
+    except stripe.StripeError as exc:
+        logger.error(
+            "Stripe cancellation API error type=%s code=%s request_id=%s",
+            type(exc).__name__,
+            str(getattr(exc, "code", "") or "none"),
+            str(getattr(exc, "request_id", "") or "none"),
+        )
+        set_flash_error(request, "Stripe could not schedule cancellation. Please try again or contact support.")
+        return redirect("/billing")
+    except Exception as exc:
+        logger.exception("Unexpected Stripe cancellation failure type=%s", type(exc).__name__)
+        set_flash_error(request, "CarrierOS could not schedule cancellation. Please try again or contact support.")
+        return redirect("/billing")
+    period_end = unix_date(object_value(subscription, "current_period_end"))
+    execute(
+        """UPDATE organizations SET subscription_cancel_at_period_end=1,
+        subscription_current_period_end=COALESCE(?, subscription_current_period_end) WHERE id=?""",
+        (period_end, user["organization_id"]),
+    )
+    record_audit_event(
+        "billing.subscription_cancel_scheduled",
+        organization_id=int(user["organization_id"]),
+        user_id=int(user["id"]),
+        details={"period_end": period_end},
+    )
+    set_flash(request, "Cancellation scheduled. Your workspace remains available through the current billing period.")
+    return redirect("/billing")
+
+
+@app.post("/account/delete")
+async def delete_account(request: Request):
+    """Cancel billing, remove private documents, and permanently delete the workspace."""
+    user = current_user(request)
+    if not user:
+        return redirect("/login")
+    form = await verified_form(request)
+    if str(form.get("confirmation", "")).strip() != "DELETE":
+        set_flash_error(request, "Type DELETE exactly to confirm permanent account deletion.")
+        return redirect("/billing")
+    if not verify_password(str(form.get("password", "")), str(user.get("password_hash") or "")):
+        set_flash_error(request, "The password was not correct. Your account was not deleted.")
+        return redirect("/billing")
+
+    subscription_id = str(user.get("billing_subscription_reference") or "")
+    status = str(user.get("subscription_status") or "").lower()
+    if subscription_id and status not in {"canceled", "incomplete_expired"}:
+        if not stripe_configured() or (IS_PRODUCTION and not stripe_live_configured()):
+            set_flash_error(request, "Secure Stripe billing is not available, so deletion is paused to prevent future charges.")
+            return redirect("/billing")
+        try:
+            await asyncio.to_thread(
+                cancel_subscription_immediately,
+                subscription_id=subscription_id,
+            )
+        except BillingConfigurationError as exc:
+            logger.error("Stripe deletion-cancellation configuration error type=%s detail=%s", type(exc).__name__, str(exc))
+            set_flash_error(request, "Secure Stripe billing is not configured, so deletion is paused. Please contact support.")
+            return redirect("/billing")
+        except stripe.StripeError as exc:
+            logger.error(
+                "Stripe deletion-cancellation API error type=%s code=%s request_id=%s",
+                type(exc).__name__,
+                str(getattr(exc, "code", "") or "none"),
+                str(getattr(exc, "request_id", "") or "none"),
+            )
+            set_flash_error(request, "Stripe could not cancel billing, so your account was not deleted. Please try again or contact support.")
+            return redirect("/billing")
+        except Exception as exc:
+            logger.exception("Unexpected Stripe deletion-cancellation failure type=%s", type(exc).__name__)
+            set_flash_error(request, "CarrierOS could not cancel billing, so your account was not deleted. Please try again or contact support.")
+            return redirect("/billing")
+
+    documents = query_all(
+        "SELECT storage_key FROM operational_documents WHERE organization_id=?",
+        (user["organization_id"],),
+    )
+    try:
+        storage = configured_storage_provider()
+        for document in documents:
+            storage.delete(str(document["storage_key"]))
+    except Exception as exc:
+        logger.exception("Account deletion could not remove private documents type=%s", type(exc).__name__)
+        set_flash_error(request, "Private documents could not be removed, so your account was not deleted. Please contact support.")
+        return redirect("/billing")
+
+    try:
+        deleted = delete_organization(int(user["organization_id"]))
+    except Exception as exc:
+        logger.exception("Account deletion database failure type=%s", type(exc).__name__)
+        set_flash_error(request, "Your account could not be deleted completely. Please contact support before trying again.")
+        return redirect("/billing")
+    if not deleted:
+        set_flash_error(request, "Your workspace was not found. Please contact support.")
+        return redirect("/billing")
+    request.session.clear()
+    return render(request, "account_deleted.html", {"public_page": True})
 
 
 def _stripe_metadata(obj: Any) -> dict[str, Any]:

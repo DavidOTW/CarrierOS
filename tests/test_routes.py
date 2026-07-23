@@ -624,6 +624,60 @@ def test_checkout_surfaces_live_price_configuration_failure(
         assert 'class="notice bad"' in billing.text
 
 
+def test_customer_can_schedule_subscription_cancellation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "cancel.db"))
+    configure_stripe(monkeypatch)
+    captured = {}
+
+    def fake_cancel(**kwargs):
+        captured.update(kwargs)
+        return {"id": kwargs["subscription_id"], "current_period_end": 1800000000}
+
+    monkeypatch.setattr(main_module, "cancel_subscription_at_period_end", fake_cancel)
+    with TestClient(app) as client:
+        signup(client, "cancel@example.com")
+        organization = query_one("SELECT id FROM organizations")
+        with db_session() as conn:
+            conn.execute(
+                "UPDATE organizations SET billing_subscription_reference='sub_cancel', subscription_status='active' WHERE id=?",
+                (organization["id"],),
+            )
+        response = client.post("/billing/cancel", follow_redirects=False)
+        assert response.status_code == 303
+        assert captured == {"subscription_id": "sub_cancel"}
+        row = query_one("SELECT subscription_cancel_at_period_end FROM organizations WHERE id=?", (organization["id"],))
+        assert row["subscription_cancel_at_period_end"] == 1
+        assert "Cancellation scheduled" in client.get("/billing").text
+
+
+def test_customer_can_delete_workspace_after_password_confirmation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "delete.db"))
+    configure_stripe(monkeypatch)
+    canceled = []
+    monkeypatch.setattr(main_module, "cancel_subscription_immediately", lambda **kwargs: canceled.append(kwargs))
+    with TestClient(app) as client:
+        signup(client, "delete@example.com")
+        organization = query_one("SELECT id FROM organizations")
+        with db_session() as conn:
+            conn.execute(
+                "UPDATE organizations SET billing_subscription_reference='sub_delete', subscription_status='active' WHERE id=?",
+                (organization["id"],),
+            )
+        response = client.post(
+            "/account/delete",
+            data={"password": "StrongPassword!42", "confirmation": "DELETE"},
+        )
+        assert response.status_code == 200
+        assert "account was deleted" in response.text
+        assert canceled == [{"subscription_id": "sub_delete"}]
+        assert query_one("SELECT id FROM organizations WHERE id=?", (organization["id"],)) is None
+        assert query_one("SELECT id FROM users WHERE email=?", ("delete@example.com",)) is None
+
+
 def test_webhooks_activate_update_and_deduplicate_subscription(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
