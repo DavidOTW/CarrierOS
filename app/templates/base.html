@@ -101,7 +101,24 @@
       if (!button) return;
       button.disabled = true;
       button.dataset.originalLabel = button.textContent;
-      button.textContent = 'Opening secure checkout…';
+      button.textContent = 'Opening secure checkout...';
+
+      // A Stripe-hosted page can be delayed by a browser privacy extension,
+      // mobile network, or a transient Stripe edge issue even after CarrierOS
+      // has successfully created the session. Do not leave the customer with
+      // a permanently disabled button when that happens: return a retryable
+      // state and explain what to do without exposing billing details.
+      const status = document.createElement('span');
+      status.className = 'muted checkout-status';
+      status.setAttribute('role', 'status');
+      status.textContent = 'Connecting to secure Stripe checkout...';
+      form.appendChild(status);
+      window.setTimeout(() => {
+        if (!button.disabled || document.visibilityState !== 'visible') return;
+        button.disabled = false;
+        button.textContent = 'Try checkout again';
+        status.textContent = 'Stripe is taking longer than expected. Check your connection and try again.';
+      }, 15000);
     });
   });
   document.querySelectorAll('form[data-signup-form]').forEach((form) => {

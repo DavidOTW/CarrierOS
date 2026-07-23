@@ -1641,6 +1641,15 @@ async def billing_checkout(request: Request):
     if not checkout_url.startswith("https://"):
         set_flash_error(request, "Stripe did not return a secure checkout link. Please contact support.")
         return redirect("/billing")
+    # Keep enough server-side evidence to distinguish a failed Stripe API call
+    # from a browser that is slow to load the Stripe-hosted page, without ever
+    # logging the session URL or any customer billing data.
+    logger.info(
+        "Stripe checkout session created plan=%s session_id=%s host=%s",
+        plan_code,
+        str(object_value(session, "id") or "unknown"),
+        urlsplit(checkout_url).netloc or "unknown",
+    )
     return redirect(checkout_url)
 
 
