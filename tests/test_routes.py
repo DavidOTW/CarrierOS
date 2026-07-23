@@ -122,7 +122,8 @@ def test_public_marketing_home_uses_launch_pricing_and_real_app_links(
         stylesheet = client.get("/static/app.css")
         assert ".public-signin{display:inline-flex" in stylesheet.text
         assert ".public-signin{display:none}" not in stylesheet.text
-        assert "max-height:calc(100dvh - 84px)" in stylesheet.text
+        assert "position:fixed" in stylesheet.text
+        assert "bottom:12px" in stylesheet.text
         assert "overflow-y:auto" in stylesheet.text
 
 
