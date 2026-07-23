@@ -1626,6 +1626,17 @@ async def billing_checkout(request: Request):
             message = "Stripe could not start checkout. Please try again or contact support."
         set_flash_error(request, message)
         return redirect("/billing")
+    except Exception as exc:
+        # Keep an SDK/runtime regression from becoming an opaque 500 page for
+        # a customer. The full traceback stays in the server log; the browser
+        # receives only a safe retry message.
+        logger.exception(
+            "Unexpected Stripe checkout failure plan=%s type=%s",
+            plan_code,
+            type(exc).__name__,
+        )
+        set_flash_error(request, "CarrierOS could not start checkout. Please try again or contact support.")
+        return redirect("/billing")
     checkout_url = str(object_value(session, "url") or "")
     if not checkout_url.startswith("https://"):
         set_flash_error(request, "Stripe did not return a secure checkout link. Please contact support.")
@@ -1661,6 +1672,10 @@ async def billing_portal(request: Request):
             str(getattr(exc, "request_id", "") or "none"),
         )
         set_flash_error(request, "Stripe could not open the billing portal. Please try again or contact support.")
+        return redirect("/billing")
+    except Exception as exc:
+        logger.exception("Unexpected Stripe portal failure type=%s", type(exc).__name__)
+        set_flash_error(request, "CarrierOS could not open billing management. Please try again or contact support.")
         return redirect("/billing")
     portal_url = str(object_value(session, "url") or "")
     if not portal_url.startswith("https://"):
