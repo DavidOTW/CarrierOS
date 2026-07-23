@@ -296,7 +296,7 @@ def test_dispatch_page_shows_next_empty_window_and_shortcuts(
         ).status_code == 303
         assert client.post(
             "/links",
-            data={"label": "Load board", "url": "https://example.com/load-board", "category": "Load boards"},
+            data={"label": "Load board", "url": "https://example.com/load-board", "category": "Load board"},
             follow_redirects=False,
         ).status_code == 303
 
