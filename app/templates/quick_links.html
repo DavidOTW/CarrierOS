@@ -1,13 +1,13 @@
-{% extends "base.html" %}{% block title %}Business links &middot; CarrierOS{% endblock %}
+{% extends "base.html" %}{% block title %}Dispatch shortcuts &middot; CarrierOS{% endblock %}
 {% block content %}
 <div class="workspace-heading">
-  <div><span class="workspace-kicker">Workspace shortcuts</span><h2>Business links</h2><p>Keep the load boards, broker portals, and daily tools your team relies on one click away.</p></div>
-  <a class="btn btn-ghost" href="/dashboard">Back to overview</a>
+  <div><span class="workspace-kicker">Dispatch shortcuts</span><h2>Dispatch shortcuts</h2><p>Keep the load boards, broker portals, routing tools, and daily apps your team relies on one click away.</p></div>
+  <div class="actions"><a class="btn btn-primary" href="/dispatch">Back to dispatch</a><a class="btn btn-ghost" href="/dashboard">Dashboard</a></div>
 </div>
 
 <div class="business-links-layout">
   <section class="workspace-panel link-form-panel">
-    <div class="workspace-panel-heading"><div><span>Add shortcut</span><h3>Save a business link</h3></div><small>{{ links|length }} / {{ quick_link_limit }}</small></div>
+    <div class="workspace-panel-heading"><div><span>Custom buttons</span><h3>Add a dispatch shortcut</h3></div><small>{{ links|length }} / {{ quick_link_limit }}</small></div>
     <p>Links are visible only inside your organization&rsquo;s CarrierOS workspace and always open in a new tab.</p>
     {% if error %}<div class="notice bad" role="alert">{{ error }}</div>{% endif %}
     <form method="post" action="/links">

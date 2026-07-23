@@ -233,7 +233,7 @@ def test_signup_empty_workspace_and_authenticated_pages(monkeypatch: pytest.Monk
         assert "sk_test" not in readiness.text
         assert signup(client, "owner@example.com").status_code == 303
         for page in (
-            "/dashboard", "/loads", "/loads/new", "/vehicles", "/drivers", "/fuel",
+            "/dashboard", "/dispatch", "/loads", "/loads/new", "/vehicles", "/drivers", "/fuel",
             "/payments", "/quotes", "/rate-quotes", "/rate-quotes/new", "/financials", "/idle", "/settings",
             "/compliance", "/onboarding", "/documents", "/receivables", "/links", "/billing",
             "/audits", "/growth", "/startup",
@@ -246,6 +246,69 @@ def test_signup_empty_workspace_and_authenticated_pages(monkeypatch: pytest.Monk
     with TestClient(app) as public_client:
         assert public_client.get("/privacy").status_code == 200
         assert public_client.get("/terms").status_code == 200
+
+
+def test_dispatch_page_shows_next_empty_window_and_shortcuts(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "dispatch-page.db"))
+    delivery = date.today() + timedelta(days=4)
+    with TestClient(app) as client:
+        signup(client, "dispatch-page@example.com", "Dispatch Page Fleet")
+        assert client.post(
+            "/vehicles",
+            data={"name": "Unit 7", "equipment_type": "Box Truck", "active": "on"},
+            follow_redirects=False,
+        ).status_code == 303
+        vehicle = query_one("SELECT id FROM vehicles WHERE name='Unit 7'")
+        assert client.post(
+            "/drivers",
+            data={
+                "name": "Jordan Driver",
+                "phone": "615-555-0101",
+                "role": "Driver",
+                "pay_model": "Flat Rate per Load",
+                "vehicle_id": str(vehicle["id"]),
+                "flat_rate_per_load": "400",
+                "active": "on",
+            },
+            follow_redirects=False,
+        ).status_code == 303
+        driver = query_one("SELECT id FROM drivers WHERE name='Jordan Driver'")
+        assert client.post(
+            "/loads/new",
+            data={
+                "load_number": "DSP-200",
+                "status": "Booked",
+                "include_in_model": "on",
+                "pickup_date": date.today().isoformat(),
+                "delivery_date": delivery.isoformat(),
+                "driver_id": str(driver["id"]),
+                "vehicle_id": str(vehicle["id"]),
+                "broker": "Dispatch Broker",
+                "revenue": "2800",
+                "origin": "Nashville, TN",
+                "destination": "Birmingham, AL",
+                "loaded_miles": "195",
+                "deadhead_miles": "25",
+            },
+            follow_redirects=False,
+        ).status_code == 303
+        assert client.post(
+            "/links",
+            data={"label": "Load board", "url": "https://example.com/load-board", "category": "Load boards"},
+            follow_redirects=False,
+        ).status_code == 303
+
+        response = client.get("/dispatch")
+        display_date = delivery.strftime("%b %d, %Y").replace(" 0", " ")
+        assert response.status_code == 200
+        assert "Dispatch" in response.text
+        assert "Jordan Driver" in response.text
+        assert "Birmingham, AL" in response.text
+        assert f"Available {display_date}" in response.text
+        assert "Load board" in response.text
+        assert 'href="tel:6155550101"' in response.text
 
 
 def test_business_links_are_safe_and_tenant_isolated(

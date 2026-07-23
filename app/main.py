@@ -586,6 +586,9 @@ def driver_availability(organization_id: int) -> list[dict[str, Any]]:
         item["delivery_display"] = (
             delivery.strftime("%b %d, %Y").replace(" 0", " ") if delivery else None
         )
+        item["next_empty_date"] = item.get("delivery_date") or None
+        item["next_empty_date_display"] = item["delivery_display"]
+        item["next_empty_location"] = destination if item.get("load_id") else None
         if not item.get("load_id"):
             item.update(
                 availability_label="Available now",
@@ -1810,6 +1813,43 @@ def dashboard(request: Request, month: str | None = None):
         "quick_links": [as_dict(row) for row in quick_link_rows],
         "open_exceptions": open_exceptions,
         "driver_availability": driver_availability(int(user["organization_id"])),
+    })
+
+
+@app.get("/dispatch", response_class=HTMLResponse)
+def dispatch_page(request: Request):
+    """Provide a dispatch-first view of the next open window for each driver.
+
+    Availability is intentionally derived from the latest non-cancelled,
+    non-quote operational load assigned to each driver.  CarrierOS does not
+    infer live GPS, HOS, or appointment completion from this view.
+    """
+    user = require_user(request)
+    organization_id = int(user["organization_id"])
+    availability = driver_availability(organization_id)
+    operational_loads = query_all(
+        """SELECT id, load_number, status, driver_id, delivery_date, destination
+        FROM loads
+        WHERE organization_id=?
+          AND lower(trim(status)) NOT IN ('cancelled', 'canceled', 'quote')
+        ORDER BY delivery_date, id""",
+        (organization_id,),
+    )
+    quick_link_rows = query_all(
+        """SELECT * FROM quick_links WHERE organization_id=?
+        ORDER BY sort_order, lower(label) LIMIT 8""",
+        (organization_id,),
+    )
+    return render(request, "dispatch.html", {
+        "driver_availability": availability,
+        "operational_loads": [as_dict(row) for row in operational_loads],
+        "quick_links": [as_dict(row) for row in quick_link_rows],
+        "dispatch_summary": {
+            "drivers": len(availability),
+            "scheduled": sum(1 for item in availability if item.get("load_id")),
+            "open_now": sum(1 for item in availability if item.get("availability_tone") == "good"),
+            "needs_contact": sum(1 for item in availability if not item.get("phone_href")),
+        },
     })
 
 
