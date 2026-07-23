@@ -126,6 +126,8 @@ def test_public_marketing_home_uses_launch_pricing_and_real_app_links(
         assert ".public-signin{display:none}" not in stylesheet.text
         assert "position:fixed" in stylesheet.text
         assert "bottom:12px" in stylesheet.text
+        assert "height:calc(100svh - 84px)" in stylesheet.text
+        assert "align-content:start" in stylesheet.text
         assert "overflow-y:auto" in stylesheet.text
 
 
