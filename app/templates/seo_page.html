@@ -1,11 +1,13 @@
 {% extends "base.html" %}
 {% block title %}{{ seo_title }}{% endblock %}
 {% block content %}
+{% set page_signup_href = '/signup?plan=carrier_startup' if seo_slug == 'carrier-startup-checklist' and signups_open else signup_href %}
+{% set page_signup_cta = 'Start the $10 startup plan' if seo_slug == 'carrier-startup-checklist' and signups_open else signup_cta %}
 <main class="public-marketing seo-landing" id="top">
   <header class="public-nav">
     <a class="public-brand" href="/"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a>
     <nav aria-label="Primary navigation"><a href="/#platform">Platform</a><a href="/#pay">Driver pay</a><a href="/#pricing">Pricing</a><a href="/demo">Live demo</a></nav>
-    <div class="public-nav-actions"><a class="public-signin" href="/login">Log in</a><a class="public-btn public-btn-dark" href="{{ signup_href }}">{{ signup_cta }} <span aria-hidden="true">&rarr;</span></a></div>
+    <div class="public-nav-actions"><a class="public-signin" href="/login">Log in</a><a class="public-btn public-btn-dark" href="{{ page_signup_href }}">{{ page_signup_cta }} <span aria-hidden="true">&rarr;</span></a></div>
   </header>
 
   <section class="seo-hero">
@@ -14,7 +16,7 @@
       <h1>{{ page.heading }}</h1>
       <p class="seo-lead">{{ page.lead }}</p>
       <p class="seo-audience">{{ page.audience }}</p>
-      <div class="public-hero-actions"><a class="public-btn public-btn-orange" href="/demo">Try the live demo <span aria-hidden="true">&rarr;</span></a><a class="public-btn public-btn-light" href="{{ signup_href }}">{{ signup_cta }}</a></div>
+      <div class="public-hero-actions"><a class="public-btn public-btn-orange" href="/demo">Try the live demo <span aria-hidden="true">&rarr;</span></a><a class="public-btn public-btn-light" href="{{ page_signup_href }}">{{ page_signup_cta }}</a></div>
     </div>
     <aside class="seo-hero-card" aria-label="CarrierOS product summary">
       <span>Carrier-built software</span>
@@ -57,7 +59,7 @@
     <div>{% for question, answer in page.faqs %}<details><summary>{{ question }}</summary><p>{{ answer }}</p></details>{% endfor %}</div>
   </section>
 
-  <section class="public-launch"><span class="public-eyebrow">See the workflow before signing up</span><h2>Explore CarrierOS with a fictional sample fleet.</h2><p>Try dispatch, driver pay, load profitability, and pricing without creating an account.</p><div><a class="public-btn public-btn-orange" href="/demo">Open the live demo <span aria-hidden="true">&rarr;</span></a><a class="public-btn public-btn-outline" href="{{ signup_href }}">{{ signup_cta }}</a></div></section>
+  <section class="public-launch"><span class="public-eyebrow">See the workflow before signing up</span><h2>Explore CarrierOS with a fictional sample fleet.</h2><p>Try dispatch, driver pay, load profitability, and pricing without creating an account.</p><div><a class="public-btn public-btn-orange" href="/demo">Open the live demo <span aria-hidden="true">&rarr;</span></a><a class="public-btn public-btn-outline" href="{{ page_signup_href }}">{{ page_signup_cta }}</a></div></section>
   <footer class="public-footer"><a class="public-brand" href="/"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a><p>A product of <a href="https://www.outsidethewirelogistics.com/">Outside The Wire Logistics LLC</a>.</p><nav><a href="/">CarrierOS home</a><a href="/demo">Live demo</a><a href="/login">Customer login</a><a href="mailto:{{ support_email }}">Contact</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav><small>Operational estimates depend on user-entered assumptions. Review results before relying on them.</small></footer>
 </main>
 {% endblock %}

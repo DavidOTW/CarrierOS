@@ -147,6 +147,9 @@ def test_search_pages_sitemap_and_crawl_controls(
             assert f'<link rel="canonical" href="https://otwcarrieros.com{path}">' in response.text
             assert 'content="index, follow' in response.text
             assert '"@type": "FAQPage"' in response.text
+        startup = client.get("/carrier-startup-checklist")
+        assert 'href="/signup?plan=carrier_startup"' in startup.text
+        assert "Start the $10 startup plan" in startup.text
 
         sitemap = client.get("/sitemap.xml")
         assert sitemap.status_code == 200
