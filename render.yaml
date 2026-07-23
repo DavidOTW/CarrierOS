@@ -64,6 +64,8 @@ services:
         sync: false
       - key: STRIPE_TAX_ENABLED
         value: "false"
+      - key: CARRIEROS_STRIPE_TIMEOUT_SECONDS
+        value: "20"
       - key: CARRIEROS_SMTP_HOST
         sync: false
       - key: CARRIEROS_SMTP_PORT

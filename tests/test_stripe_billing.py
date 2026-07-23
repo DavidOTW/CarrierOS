@@ -37,6 +37,31 @@ class FakeStripeClient:
         )
 
 
+def test_stripe_client_uses_bounded_network_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_example")
+    monkeypatch.setenv("CARRIEROS_STRIPE_TIMEOUT_SECONDS", "90")
+    captured: dict[str, object] = {}
+
+    def fake_http_client(*, timeout):
+        captured["timeout"] = timeout
+        return "http-client"
+
+    def fake_stripe_client(api_key, *, http_client):
+        captured["api_key"] = api_key
+        captured["http_client"] = http_client
+        return "stripe-client"
+
+    monkeypatch.setattr(stripe_billing.stripe, "HTTPXClient", fake_http_client)
+    monkeypatch.setattr(stripe_billing.stripe, "StripeClient", fake_stripe_client)
+
+    assert stripe_billing._stripe_client() == "stripe-client"
+    assert captured == {
+        "timeout": 30.0,
+        "api_key": "sk_test_example",
+        "http_client": "http-client",
+    }
+
+
 def valid_monthly_price(**overrides):
     values = {
         "active": True,

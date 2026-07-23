@@ -30,7 +30,19 @@ def _required_env(name: str) -> str:
 
 
 def _stripe_client() -> stripe.StripeClient:
-    return stripe.StripeClient(_required_env("STRIPE_SECRET_KEY"))
+    # Stripe's SDK defaults to an 80-second network timeout. That is too long
+    # for a single-worker web request: a transient Stripe/network issue would
+    # make the plan selection page look frozen. Fail promptly so the route can
+    # return a useful retry message while the app remains responsive.
+    try:
+        timeout_seconds = float(os.getenv("CARRIEROS_STRIPE_TIMEOUT_SECONDS", "20"))
+    except ValueError:
+        timeout_seconds = 20.0
+    timeout_seconds = min(30.0, max(5.0, timeout_seconds))
+    return stripe.StripeClient(
+        _required_env("STRIPE_SECRET_KEY"),
+        http_client=stripe.HTTPXClient(timeout=timeout_seconds),
+    )
 
 
 @lru_cache(maxsize=16)
