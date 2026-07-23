@@ -20,6 +20,10 @@
       {% endfor %}
       <article><h3>Custom Fleet</h3><p>More than 20 active power units</p><div><strong>Custom</strong></div><small>Guided setup for larger operations.</small><a href="mailto:{{ support_email }}?subject=CarrierOS%20Custom%20Fleet" class="public-btn public-btn-light">Request a quote <span aria-hidden="true">&rarr;</span></a></article>
     </div>
+    <div class="public-checkout-total" aria-live="polite">
+      <div><span class="public-eyebrow">Selected plan</span><strong>{{ plans[selected_plan].name }}</strong><p>Your total after the 14-day trial is <b>{{ money(plans[selected_plan].price) }} per month</b>. Cancel before the trial ends to avoid a charge.</p></div>
+      <div class="public-checkout-total-amount"><strong>{{ money(plans[selected_plan].price) }}</strong><span>per month</span></div>
+    </div>
   </section>
   <section class="public-launch"><span class="public-eyebrow">Want to see it first?</span><h2>Explore the live demo before creating an account.</h2><p>Try dispatch, driver pay, load profitability, and pricing with fictional sample data.</p><div><a class="public-btn public-btn-orange" href="/demo">Open the live demo <span aria-hidden="true">&rarr;</span></a><a class="public-btn public-btn-outline" href="/">Back to CarrierOS</a></div></section>
   <footer class="public-footer"><a class="public-brand" href="/"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a><p>A product of <a href="https://www.outsidethewirelogistics.com/">Outside The Wire Logistics LLC</a>.</p><nav><a href="/login">Customer login</a><a href="/demo">Live demo</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav></footer>

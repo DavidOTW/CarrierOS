@@ -6,6 +6,7 @@
   <div class="checkout-handoff-icon" aria-hidden="true">$</div>
   <h3>Continue securely with Stripe</h3>
   <p>CarrierOS created your private checkout session. Stripe hosts the payment page and CarrierOS never stores your card or bank details.</p>
+  <div class="checkout-monthly-total"><span>Monthly total after the 14-day trial</span><strong>{{ money(plan.price) }} <small>per month</small></strong></div>
   <div class="actions"><a class="btn btn-primary" href="{{ checkout_url }}" target="_blank" rel="noopener noreferrer">Open Stripe checkout</a><a class="btn btn-secondary" href="/billing">Choose a different plan</a></div>
   <p class="muted small">If Stripe did not open automatically, use the button above. It opens in a new tab so your CarrierOS workspace stays available.</p>
 </section>
