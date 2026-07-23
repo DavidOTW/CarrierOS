@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Secure checkout &middot; CarrierOS{% endblock %}
+{% block content %}
+<div class="page-heading"><div><h2>Secure checkout</h2><p>{{ plan.name }} &middot; {{ money(plan.price) }} per month after the 14-day trial.</p></div><a class="btn btn-secondary" href="/billing">Back to billing</a></div>
+<section class="card checkout-handoff-card">
+  <div class="checkout-handoff-icon" aria-hidden="true">$</div>
+  <h3>Continue securely with Stripe</h3>
+  <p>CarrierOS created your private checkout session. Stripe hosts the payment page and CarrierOS never stores your card or bank details.</p>
+  <div class="actions"><a class="btn btn-primary" href="{{ checkout_url }}" target="_blank" rel="noopener noreferrer">Open Stripe checkout</a><a class="btn btn-secondary" href="/billing">Choose a different plan</a></div>
+  <p class="muted small">If Stripe did not open automatically, use the button above. It opens in a new tab so your CarrierOS workspace stays available.</p>
+</section>
+<script>
+  (() => {
+    const checkoutUrl = {{ checkout_url|tojson }};
+    window.setTimeout(() => {
+      try { window.location.assign(checkoutUrl); } catch (_) { /* The visible link remains available. */ }
+    }, 150);
+  })();
+</script>
+{% endblock %}

@@ -579,8 +579,9 @@ def test_checkout_uses_server_side_plan_whitelist(monkeypatch: pytest.MonkeyPatc
             data={"plan": "starter_fleet"},
             follow_redirects=False,
         )
-        assert response.status_code == 303
-        assert response.headers["location"] == "https://checkout.stripe.test/session"
+        assert response.status_code == 200
+        assert "Open Stripe checkout" in response.text
+        assert "https://checkout.stripe.test/session" in response.text
         assert captured["plan_code"] == "starter_fleet"
         assert captured["expected_monthly_price"] == 50
         assert captured["owner_email"] == "checkout@example.com"

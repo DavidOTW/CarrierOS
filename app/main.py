@@ -287,7 +287,7 @@ SEO_PAGES = {
     },
 }
 
-INDEXABLE_PATHS = {"/", "/demo", *(f"/{slug}" for slug in SEO_PAGES)}
+INDEXABLE_PATHS = {"/", "/demo", "/checkout", *(f"/{slug}" for slug in SEO_PAGES)}
 PUBLIC_CRAWL_FILES = {"/robots.txt", "/sitemap.xml"}
 LOGIN_WINDOW_SECONDS = 15 * 60
 LOGIN_MAX_ATTEMPTS = 10
@@ -358,10 +358,15 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         if path not in INDEXABLE_PATHS and path not in PUBLIC_CRAWL_FILES and not path.startswith("/static/"):
             response.headers["X-Robots-Tag"] = "noindex, nofollow"
         production_upgrade = "; upgrade-insecure-requests" if IS_PRODUCTION else ""
+        # Stripe Checkout is hosted by Stripe. Keep the default policy tight,
+        # but allow only the Stripe origins required by the checkout handoff.
         response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
-            "script-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; "
-            f"base-uri 'self'; form-action 'self'{production_upgrade}"
+            "default-src 'self'; img-src 'self' data: https://*.stripe.com; "
+            "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://js.stripe.com; "
+            "connect-src 'self' https://api.stripe.com https://checkout.stripe.com https://r.stripe.com; "
+            "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://checkout.stripe.com; "
+            "font-src 'self'; frame-ancestors 'none'; "
+            f"base-uri 'self'; form-action 'self' https://checkout.stripe.com{production_upgrade}"
         )
         if IS_PRODUCTION:
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
@@ -1212,7 +1217,7 @@ def robots() -> Response:
 @app.get("/sitemap.xml")
 def sitemap() -> Response:
     updated = "2026-07-21"
-    paths = ["/", "/demo", *(f"/{slug}" for slug in SEO_PAGES)]
+    paths = ["/", "/demo", "/checkout", *(f"/{slug}" for slug in SEO_PAGES)]
     urls = "".join(
         f"<url><loc>{CANONICAL_BASE_URL}{path}</loc><lastmod>{updated}</lastmod></url>"
         for path in paths
@@ -1235,6 +1240,28 @@ def index(request: Request):
                 "Small Fleet Trucking Software | CarrierOS",
                 description,
                 page_type="WebPage",
+            ),
+        },
+    )
+
+
+@app.get("/checkout", response_class=HTMLResponse)
+def public_checkout(request: Request, plan: str = "owner_operator"):
+    """Public pricing/checkout entry point for CarrierOS and Squarespace CTAs."""
+    if current_user(request):
+        return redirect("/billing")
+    selected_plan = plan if plan in PLAN_LIMITS else "owner_operator"
+    return render(
+        request,
+        "public_checkout.html",
+        {
+            "public_page": True,
+            "plans": PLAN_LIMITS,
+            "selected_plan": selected_plan,
+            **seo_context(
+                "/checkout",
+                "CarrierOS Plans & Checkout | Fleet Operations Software",
+                "Choose a CarrierOS plan for carrier startup planning or a small fleet, then create a private workspace and start a 14-day trial.",
             ),
         },
     )
@@ -1650,7 +1677,18 @@ async def billing_checkout(request: Request):
         str(object_value(session, "id") or "unknown"),
         urlsplit(checkout_url).netloc or "unknown",
     )
-    return redirect(checkout_url)
+    # Keep the checkout handoff on the CarrierOS origin. Some browsers and
+    # privacy settings do not complete a cross-origin redirect from a POST;
+    # this page gives the customer a visible Stripe link they can click.
+    return render(
+        request,
+        "checkout_redirect.html",
+        {
+            "checkout_url": checkout_url,
+            "plan": PLAN_LIMITS[plan_code],
+            "plan_code": plan_code,
+        },
+    )
 
 
 @app.post("/billing/portal")

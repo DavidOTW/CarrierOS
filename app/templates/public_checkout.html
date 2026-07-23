@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}{{ seo_title }}{% endblock %}
+{% block content %}
+<main class="public-marketing public-checkout-page" id="top">
+  <header class="public-nav">
+    <a class="public-brand" href="/"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a>
+    <nav aria-label="Primary navigation"><a href="/">Platform</a><a href="/demo">Live demo</a><a href="#plans">Plans</a></nav>
+    <div class="public-nav-actions"><a class="public-signin" href="/login">Log in</a></div>
+  </header>
+  <section class="public-checkout-hero">
+    <span class="public-release"><i></i> Secure Stripe checkout &middot; 14-day trial</span>
+    <h1>Choose the workspace that fits your fleet.</h1>
+    <p>Create your private CarrierOS workspace first. The next step takes you to Stripe's hosted checkout to collect a payment method securely.</p>
+  </section>
+  <section class="public-section public-pricing" id="plans">
+    <div class="public-section-intro public-centered"><span class="public-eyebrow">Simple subscription plans</span><h2>Price the fleet, not the office.</h2><p>Unlimited driver records and office users. Plans are based on active power units.</p></div>
+    <div class="public-plans">
+      {% for code, option in plans.items() %}
+      <article class="{% if code == selected_plan %}featured{% endif %}"><h3>{{ option.name }}</h3><p>{% if option.units == 0 %}Pre-authority &middot; 0 active units{% else %}Up to {{ option.units }} active power units{% endif %}</p><div><strong>{{ money(option.price) }}</strong><span>/ month</span></div><small>{% if option.units == 0 %}Startup checklist and equipment finance planning.{% else %}Dispatch, driver pay, loads, and profit tracking.{% endif %}</small><a href="/signup?plan={{ code }}" class="public-btn {% if code == selected_plan %}public-btn-orange{% else %}public-btn-light{% endif %}">Create workspace <span aria-hidden="true">&rarr;</span></a></article>
+      {% endfor %}
+      <article><h3>Custom Fleet</h3><p>More than 20 active power units</p><div><strong>Custom</strong></div><small>Guided setup for larger operations.</small><a href="mailto:{{ support_email }}?subject=CarrierOS%20Custom%20Fleet" class="public-btn public-btn-light">Request a quote <span aria-hidden="true">&rarr;</span></a></article>
+    </div>
+  </section>
+  <section class="public-launch"><span class="public-eyebrow">Want to see it first?</span><h2>Explore the live demo before creating an account.</h2><p>Try dispatch, driver pay, load profitability, and pricing with fictional sample data.</p><div><a class="public-btn public-btn-orange" href="/demo">Open the live demo <span aria-hidden="true">&rarr;</span></a><a class="public-btn public-btn-outline" href="/">Back to CarrierOS</a></div></section>
+  <footer class="public-footer"><a class="public-brand" href="/"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a><p>A product of <a href="https://www.outsidethewirelogistics.com/">Outside The Wire Logistics LLC</a>.</p><nav><a href="/login">Customer login</a><a href="/demo">Live demo</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav></footer>
+</main>
+{% endblock %}
