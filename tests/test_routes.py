@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 
 import pytest
+import stripe
 from fastapi.testclient import TestClient
 
 from app.db import db_session, query_one
@@ -590,6 +591,36 @@ def test_checkout_uses_server_side_plan_whitelist(monkeypatch: pytest.MonkeyPatc
             follow_redirects=False,
         )
         assert invalid.status_code == 400
+
+
+def test_checkout_surfaces_live_price_configuration_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "checkout-error.db"))
+    monkeypatch.setenv("CARRIEROS_PUBLIC_URL", "https://app.carrieros.example")
+    configure_stripe(monkeypatch)
+
+    def failed_checkout(**kwargs):
+        raise stripe.InvalidRequestError(
+            "No such price",
+            param="line_items[0][price]",
+            code="resource_missing",
+        )
+
+    monkeypatch.setattr(main_module, "create_checkout_session", failed_checkout)
+    with TestClient(app) as client:
+        signup(client, "checkout-error@example.com", activate=False)
+        response = client.post(
+            "/billing/checkout",
+            data={"plan": "owner_operator"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        assert response.headers["location"] == "/billing"
+        billing = client.get("/billing")
+        assert billing.status_code == 200
+        assert "rejected this plan in live mode" in billing.text
+        assert 'class="notice bad"' in billing.text
 
 
 def test_webhooks_activate_update_and_deduplicate_subscription(

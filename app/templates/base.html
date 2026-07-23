@@ -77,7 +77,7 @@
         <a href="/dashboard">Dashboard</a><a href="/dispatch">Dispatch</a><a href="/rate-quotes">Rate quotes</a><a href="/ratecons">RateCon inbox</a><a href="/loads">Loads</a><a href="/drivers">Drivers &amp; equipment</a><a href="/financials">Money</a><a href="/idle">Reports</a><a href="/links">Shortcuts</a><a href="/compliance">Compliance</a><a href="/documents">Documents</a><a href="/receivables">A/R</a><a href="/fuel">Fuel</a><a href="/growth">Growth</a><a href="/audits">Audits</a><a href="/startup">Startup</a><a href="/onboarding">Onboarding</a><a href="/settings">Settings</a><a href="/billing">Billing</a><a href="/logout">Log out</a>
       </div></details>
     </header>
-    <div class="content">{% if flash %}<div class="notice good">{{ flash }}</div>{% endif %}
+    <div class="content">{% if flash %}<div class="notice {{ flash_kind or 'good' }}">{{ flash }}</div>{% endif %}
 {% endif %}
 {% block content %}{% endblock %}
 {% if not public_page %}

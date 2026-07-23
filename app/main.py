@@ -111,7 +111,7 @@ from .stripe_billing import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
-VERSION = "0.16.0a6"
+VERSION = "0.16.0a7"
 ENVIRONMENT = os.getenv("CARRIEROS_ENV", "development").strip().lower()
 IS_PRODUCTION = ENVIRONMENT == "production"
 CANONICAL_BASE_URL = os.getenv(
@@ -899,6 +899,7 @@ def render(request: Request, name: str, context: dict[str, Any] | None = None, s
         "email_delivery_ready": smtp_configured(),
         "csrf_token": csrf_token,
         "flash": request.session.pop("flash", None) if hasattr(request, "session") else None,
+        "flash_kind": request.session.pop("flash_kind", "good") if hasattr(request, "session") else "good",
     })
     return templates.TemplateResponse(request=request, name=name, context=context, status_code=status_code)
 
@@ -1082,6 +1083,13 @@ def public_url(request: Request) -> str:
 
 def set_flash(request: Request, text: str) -> None:
     request.session["flash"] = text
+    request.session["flash_kind"] = "good"
+
+
+def set_flash_error(request: Request, text: str) -> None:
+    """Show a failed operation as an error instead of a success notice."""
+    request.session["flash"] = text
+    request.session["flash_kind"] = "bad"
 
 
 def compliance_status(expiration_date: str | None) -> tuple[str, int | None]:
@@ -1578,15 +1586,49 @@ async def billing_checkout(request: Request):
             success_url=f"{base_url}/billing?checkout=success&session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{base_url}/billing?checkout=cancelled",
         )
-    except BillingConfigurationError:
-        set_flash(request, "Secure billing is not configured yet. Please contact support.")
+    except BillingConfigurationError as exc:
+        logger.error(
+            "Stripe checkout configuration error plan=%s type=%s detail=%s",
+            plan_code,
+            type(exc).__name__,
+            str(exc),
+        )
+        set_flash_error(
+            request,
+            "This plan is not configured for live Stripe billing yet. Please choose another plan or contact support.",
+        )
         return redirect("/billing")
-    except stripe.StripeError:
-        set_flash(request, "Stripe could not start checkout. Please try again or contact support.")
+    except stripe.StripeError as exc:
+        error_code = str(getattr(exc, "code", "") or "").lower()
+        error_type = type(exc).__name__.lower()
+        request_id = str(getattr(exc, "request_id", "") or "")
+        logger.error(
+            "Stripe checkout API error plan=%s type=%s code=%s request_id=%s",
+            plan_code,
+            type(exc).__name__,
+            error_code or "none",
+            request_id or "none",
+        )
+        if error_code in {
+            "resource_missing",
+            "parameter_unknown",
+            "parameter_invalid_empty",
+            "authentication_error",
+            "permission_error",
+        } or "invalidrequest" in error_type:
+            message = (
+                "Stripe rejected this plan in live mode. Its live product or price may be missing, inactive, or not yet approved. "
+                "Please choose another plan or contact support."
+            )
+        elif error_code in {"api_connection_error", "api_error", "rate_limit_error"} or "connection" in error_type:
+            message = "Stripe is temporarily unavailable. Please wait a moment and try again."
+        else:
+            message = "Stripe could not start checkout. Please try again or contact support."
+        set_flash_error(request, message)
         return redirect("/billing")
     checkout_url = str(object_value(session, "url") or "")
     if not checkout_url.startswith("https://"):
-        set_flash(request, "Stripe did not return a secure checkout link. Please contact support.")
+        set_flash_error(request, "Stripe did not return a secure checkout link. Please contact support.")
         return redirect("/billing")
     return redirect(checkout_url)
 
@@ -1607,12 +1649,22 @@ async def billing_portal(request: Request):
             customer_id=customer_id,
             return_url=f"{public_url(request)}/billing",
         )
-    except (BillingConfigurationError, stripe.StripeError):
-        set_flash(request, "Stripe could not open the billing portal. Please try again or contact support.")
+    except BillingConfigurationError as exc:
+        logger.error("Stripe portal configuration error type=%s detail=%s", type(exc).__name__, str(exc))
+        set_flash_error(request, "Secure billing is not configured yet. Please contact support.")
+        return redirect("/billing")
+    except stripe.StripeError as exc:
+        logger.error(
+            "Stripe portal API error type=%s code=%s request_id=%s",
+            type(exc).__name__,
+            str(getattr(exc, "code", "") or "none"),
+            str(getattr(exc, "request_id", "") or "none"),
+        )
+        set_flash_error(request, "Stripe could not open the billing portal. Please try again or contact support.")
         return redirect("/billing")
     portal_url = str(object_value(session, "url") or "")
     if not portal_url.startswith("https://"):
-        set_flash(request, "Stripe did not return a secure billing link. Please contact support.")
+        set_flash_error(request, "Stripe did not return a secure billing link. Please contact support.")
         return redirect("/billing")
     return redirect(portal_url)
 

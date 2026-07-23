@@ -1,3 +1,3 @@
 """CarrierOS public beta application."""
 
-__version__ = "0.16.0a6"
+__version__ = "0.16.0a7"
