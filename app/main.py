@@ -1537,7 +1537,8 @@ async def billing_checkout(request: Request):
         return redirect("/billing")
     try:
         base_url = public_url(request)
-        session = create_checkout_session(
+        session = await asyncio.to_thread(
+            create_checkout_session,
             organization_id=int(user["organization_id"]),
             owner_email=str(user["owner_email"] or user["email"]),
             plan_code=plan_code,
@@ -1570,7 +1571,8 @@ async def billing_portal(request: Request):
         set_flash(request, "Start a subscription before opening the billing portal.")
         return redirect("/billing")
     try:
-        session = create_portal_session(
+        session = await asyncio.to_thread(
+            create_portal_session,
             customer_id=customer_id,
             return_url=f"{public_url(request)}/billing",
         )

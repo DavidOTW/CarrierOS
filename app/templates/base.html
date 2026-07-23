@@ -96,6 +96,24 @@
     field.value = carrierCsrfToken;
     form.appendChild(field);
   });
+  document.querySelectorAll('form[data-checkout-form]').forEach((form) => {
+    form.addEventListener('submit', () => {
+      const button = form.querySelector('button[type="submit"], button:not([type])');
+      if (!button) return;
+      button.disabled = true;
+      button.dataset.originalLabel = button.textContent;
+      button.textContent = 'Opening secure checkout…';
+    });
+  });
+  document.querySelectorAll('form[data-signup-form]').forEach((form) => {
+    form.addEventListener('submit', () => {
+      const button = form.querySelector('button[type="submit"], button:not([type])');
+      if (!button) return;
+      button.disabled = true;
+      button.dataset.originalLabel = button.textContent;
+      button.textContent = 'Creating your workspace…';
+    });
+  });
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => navigator.serviceWorker.register('/service-worker.js').catch(() => {}));
   }
