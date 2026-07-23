@@ -113,6 +113,70 @@
       button.textContent = 'Creating your workspace…';
     });
   });
+  // Make monetary and percentage number fields unambiguous while keeping the
+  // posted values numeric. Untouched values are restored before submit so
+  // precision such as three-decimal fuel prices is never lost.
+  (() => {
+    const moneyNames = new Set([
+      'expected_amount', 'truck_financing_monthly', 'auto_insurance_monthly',
+      'trailer_financing_monthly', 'trailer_insurance_monthly', 'other_fixed_monthly',
+      'maintenance_per_mile', 'flat_rate_per_load', 'pay_per_loaded_mile',
+      'pay_per_total_mile', 'day_rate', 'average_price', 'revenue', 'fuel_override',
+      'tolls_misc', 'other_direct_costs', 'amount', 'hourly_rate', 'fuel_price',
+      'original_offered_rate', 'total_rate', 'linehaul_revenue', 'fuel_surcharge',
+      'additional_revenue', 'stop_pay_revenue', 'tolls', 'lumper', 'misc_expenses',
+      'counteroffer_rate', 'final_agreed_rate', 'quoted_revenue', 'admin_fee_per_load',
+      'min_company_profit_per_mile', 'min_total_profit', 'min_profit_per_day',
+      'min_revenue_per_total_mile', 'fallback_diesel_price', 'monthly_cost', 'purchase_price',
+      'down_payment', 'monthly_insurance', 'other_monthly_costs', 'revenue_per_mile',
+      'diesel_price', 'cash_reserve'
+    ]);
+    const percentNames = new Set([
+      'processing_fee_pct', 'payroll_burden_pct', 'owner_distribution_pct',
+      'target_margin_pct', 'target_max_deadhead_pct', 'quote_counteroffer_pct',
+      'tax_reserve_pct', 'growth_reserve_pct', 'driver_profit_split_pct',
+      'contractor_gross_split_pct', 'owner_operator_split_pct', 'factoring_pct',
+      'quick_pay_pct', 'apr_pct', 'driver_pay_pct'
+    ]);
+    const formatFor = (input) => {
+      if (input.dataset.format === 'money' || input.dataset.format === 'currency') return 'money';
+      if (input.dataset.format === 'percent') return 'percent';
+      const name = (input.name || '').toLowerCase();
+      if (percentNames.has(name) || /(?:^|_)(?:pct|percent|margin|split)$/.test(name)) return 'percent';
+      if (moneyNames.has(name) || name.startsWith('overhead_')) return 'money';
+      return null;
+    };
+    document.querySelectorAll('input[type="number"]').forEach((input) => {
+      const format = formatFor(input);
+      if (!format || input.closest('.input-affix')) return;
+      const original = input.value;
+      const wrapper = document.createElement('span');
+      wrapper.className = `input-affix ${format}-input`;
+      const affix = document.createElement('span');
+      affix.textContent = format === 'money' ? '$' : '%';
+      affix.setAttribute('aria-hidden', 'true');
+      input.parentNode.insertBefore(wrapper, input);
+      wrapper.appendChild(input);
+      wrapper.appendChild(affix);
+      if (format === 'money') wrapper.insertBefore(affix, input);
+      if (original !== '') {
+        const numeric = Number(original);
+        if (Number.isFinite(numeric)) {
+          input.dataset.originalFormattedValue = numeric.toFixed(2);
+          input.dataset.originalValue = original;
+          input.value = input.dataset.originalFormattedValue;
+        }
+      }
+      input.dataset.format = format;
+    });
+    document.querySelectorAll('form').forEach((form) => {
+      form.addEventListener('submit', () => {
+        form.querySelectorAll('input[data-original-value][data-original-formatted-value]').forEach((input) => {
+          if (input.value === input.dataset.originalFormattedValue) input.value = input.dataset.originalValue;
+        });
+      });
+    });
+  })();
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => navigator.serviceWorker.register('/service-worker.js').catch(() => {}));
   }

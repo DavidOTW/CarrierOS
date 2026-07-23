@@ -69,6 +69,25 @@ def test_launch_pricing_uses_active_power_units() -> None:
     ]
 
 
+def test_money_and_percent_helpers_use_explicit_display_formats() -> None:
+    assert main_module.money(168.89) == "$168.89"
+    assert main_module.money(35.0) == "$35.00"
+    assert main_module.percent(0.5) == "50.0%"
+
+
+def test_shared_numeric_formatter_covers_currency_and_percentage_inputs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "formatting.db"))
+    with TestClient(app) as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert "const moneyNames" in response.text
+        assert "const percentNames" in response.text
+        assert "input-affix" in client.get("/static/app.css").text
+        assert "toFixed(2)" in response.text
+
+
 def test_public_marketing_home_uses_launch_pricing_and_real_app_links(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
