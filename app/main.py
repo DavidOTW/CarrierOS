@@ -130,7 +130,7 @@ from .referrals import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
-VERSION = "0.16.0a12"
+VERSION = "0.16.0a13"
 ENVIRONMENT = os.getenv("CARRIEROS_ENV", "development").strip().lower()
 IS_PRODUCTION = ENVIRONMENT == "production"
 CANONICAL_BASE_URL = os.getenv(

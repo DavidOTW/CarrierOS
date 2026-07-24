@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.16.0a13 - Dependency updates
+
+- Updated the GitHub Actions checkout and Python setup runtimes to version 7.
+- Updated the Stripe Python SDK from 14.4.1 to 15.3.1 and verified the checkout, billing-portal, webhook, subscription, referral, refund, and dispute paths.
+
 ## 0.16.0a12 - Google Analytics
 
 - Installed the `G-RMCP51Y4Y7` Google Analytics 4 tag across the CarrierOS website and application.
