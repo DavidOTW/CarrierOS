@@ -1396,7 +1396,7 @@ def demo(request: Request):
             **seo_context(
                 "/demo",
                 "CarrierOS Live Demo | Small Fleet Trucking Software",
-                "Try the CarrierOS live demo with fictional fleet data. Explore dispatch, seven supported driver pay structures, pricing, and estimated profit per load.",
+                "Tour CarrierOS with fictional fleet data. Explore rate quotes, RateCon review, dispatch, loads, seven driver-pay models, receivables, compliance, audits, reports, and billing.",
             ),
         },
     )
