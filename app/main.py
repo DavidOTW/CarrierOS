@@ -130,7 +130,7 @@ from .referrals import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
-VERSION = "0.16.0a14"
+VERSION = "0.16.0a15"
 ENVIRONMENT = os.getenv("CARRIEROS_ENV", "development").strip().lower()
 IS_PRODUCTION = ENVIRONMENT == "production"
 CANONICAL_BASE_URL = os.getenv(
@@ -404,9 +404,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # Stripe Checkout is hosted by Stripe. Keep the default policy tight,
         # but allow only the Stripe origins required by the checkout handoff.
         response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; img-src 'self' data: https://*.stripe.com; "
-            "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://js.stripe.com; "
-            "connect-src 'self' https://api.stripe.com https://checkout.stripe.com https://r.stripe.com; "
+            "default-src 'self'; img-src 'self' data: https://*.stripe.com "
+            "https://www.google-analytics.com https://www.googletagmanager.com; "
+            "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' "
+            "https://js.stripe.com https://www.googletagmanager.com; "
+            "connect-src 'self' https://api.stripe.com https://checkout.stripe.com https://r.stripe.com "
+            "https://www.google-analytics.com https://region1.google-analytics.com "
+            "https://stats.g.doubleclick.net; "
             "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://checkout.stripe.com; "
             "font-src 'self'; frame-ancestors 'none'; "
             f"base-uri 'self'; form-action 'self' https://checkout.stripe.com{production_upgrade}"
@@ -2883,6 +2887,12 @@ def dashboard(request: Request, month: str | None = None):
         "quick_links": [as_dict(row) for row in quick_link_rows],
         "open_exceptions": open_exceptions,
         "driver_availability": driver_availability(int(user["organization_id"])),
+        "share_carrieros_url": (
+            f"{CANONICAL_BASE_URL}/signup"
+            "?utm_source=customer_dashboard"
+            "&utm_medium=referral_link"
+            "&utm_campaign=spread_the_word"
+        ),
     })
 
 

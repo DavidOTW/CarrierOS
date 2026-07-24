@@ -106,6 +106,55 @@
 {% endif %}
 <script>
   const carrierCsrfToken = {{ csrf_token|tojson }};
+  window.carrierAnalytics = {
+    track(eventName, parameters = {}) {
+      if (typeof window.gtag !== 'function') return;
+      window.gtag('event', eventName, {
+        page_path: window.location.pathname,
+        ...parameters
+      });
+    },
+    trackOnce(eventName, parameters = {}) {
+      const key = `carrieros_analytics_${eventName}_${window.location.pathname}_${window.location.search}`;
+      try {
+        if (window.sessionStorage.getItem(key)) return;
+        window.sessionStorage.setItem(key, '1');
+      } catch (_) {
+        // Analytics still works when private browsing blocks sessionStorage.
+      }
+      this.track(eventName, parameters);
+    }
+  };
+  {% if public_page %}
+  document.addEventListener('click', (event) => {
+    const link = event.target.closest('a[href]');
+    if (!link) return;
+    const href = link.getAttribute('href') || '';
+    if (href.startsWith('mailto:')) {
+      window.carrierAnalytics.track('generate_lead', {lead_source: 'email'});
+      return;
+    }
+    if (href.startsWith('/demo')) {
+      window.carrierAnalytics.track('view_demo');
+      return;
+    }
+    if (href.startsWith('/signup')) {
+      const destination = new URL(href, window.location.origin);
+      window.carrierAnalytics.track('begin_signup', {
+        plan: destination.searchParams.get('plan') || 'unspecified'
+      });
+      return;
+    }
+    if (href.startsWith('/checkout')) {
+      window.carrierAnalytics.track('view_pricing');
+    }
+  });
+  {% endif %}
+  document.querySelectorAll('[data-analytics-event]').forEach((marker) => {
+    window.carrierAnalytics.trackOnce(marker.dataset.analyticsEvent, {
+      plan: marker.dataset.analyticsPlan || 'unspecified'
+    });
+  });
   document.querySelectorAll('form[method="post"]').forEach((form) => {
     if (form.querySelector('input[name="_csrf"]')) return;
     const field = document.createElement('input');
@@ -116,6 +165,9 @@
   });
   document.querySelectorAll('form[data-checkout-form]').forEach((form) => {
     form.addEventListener('submit', () => {
+      window.carrierAnalytics.track('begin_checkout', {
+        plan: form.querySelector('[name="plan"]')?.value || 'unspecified'
+      });
       const button = form.querySelector('button[type="submit"], button:not([type])');
       if (!button) return;
       button.disabled = true;
@@ -142,6 +194,9 @@
   });
   document.querySelectorAll('form[data-signup-form]').forEach((form) => {
     form.addEventListener('submit', () => {
+      window.carrierAnalytics.track('signup_submit', {
+        plan: form.querySelector('[name="plan"]')?.value || 'unspecified'
+      });
       const button = form.querySelector('button[type="submit"], button:not([type])');
       if (!button) return;
       button.disabled = true;
