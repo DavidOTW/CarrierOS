@@ -1,0 +1,24 @@
+{% extends "base.html" %}{% block title %}Referral Program Terms &middot; CarrierOS{% endblock %}
+{% block content %}
+<div class="login-page">
+  <section class="login-hero">
+    <div class="brand" style="border:0;padding:0;margin-bottom:32px"><div class="brand-mark">50</div><div><strong>CarrierOS</strong><small style="color:#cae0eb">Referral Program</small></div></div>
+    <h1>{{ commission_rate_pct }}% recurring referral commissions.</h1>
+    <p>A practical program for drivers who introduce paying carrier customers to CarrierOS.</p>
+    <div class="login-bullets">{% for item in terms_summary[:4] %}<span>&check; {{ item }}</span>{% endfor %}</div>
+  </section>
+  <section class="login-panel"><div class="login-card" style="max-width:820px">
+    <h2>CarrierOS Referral Program Terms</h2><p class="muted">Version {{ terms_version }}</p>
+    <h3>Commission</h3><p>Approved referral partners earn {{ commission_rate_pct }}% of eligible CarrierOS subscription revenue actually collected from an attributed customer. Recurring commissions continue for later successful subscription payments while that customer remains paid and active.</p>
+    <h3>Eligible payment basis</h3><p>The commission basis excludes separately stated taxes, refunds, credits, discounts, chargebacks, disputed payments, non-subscription pass-through charges, and amounts CarrierOS does not successfully collect. Trial and zero-dollar invoices do not create commissions.</p>
+    <h3>Attribution</h3><p>The customer must use the partner's unique referral link before creating the CarrierOS workspace. The first valid referral attribution recorded for a workspace controls. Self-referrals, duplicate accounts, recycled accounts, and retroactive attribution are not eligible.</p>
+    <h3>Timing and payout</h3><p>Each commission becomes eligible {{ hold_days }} days after the successful payment. CarrierOS records a payout ledger but may pay by payroll, ACH, check, or another documented method. Refunds, disputes, or chargebacks may reverse an unpaid commission or be offset against later earnings when the commission was already paid.</p>
+    <h3>Truthful promotion and disclosure</h3><p>Partners may describe CarrierOS truthfully and must place a clear disclosure next to each referral link or recommendation: <strong>“I earn a recurring commission when someone subscribes to CarrierOS through my link.”</strong> Spam, purchased lists, impersonation, misleading earnings claims, false product claims, and paid or incentivized reviews are prohibited.</p>
+    <h3>Taxes and classification</h3><p>Referral earnings may be taxable. Payouts may be handled differently for employees and nonemployees. Partners must provide legally required tax documentation through the approved secure process before payment when applicable. CarrierOS does not provide tax, payroll, or legal advice.</p>
+    <h3>Suspension and termination</h3><p>CarrierOS may pause or terminate a partner for fraud, abuse, noncompliance, payment disputes, misleading promotion, or risk to the service. Valid eligible commissions earned before termination remain payable after adjustments unless they resulted from prohibited conduct.</p>
+    <h3>No guaranteed earnings</h3><p>Participation does not guarantee referrals, subscription payments, continued customer retention, or any amount of commission income. CarrierOS may update prospective program terms with notice; a change will not retroactively reduce an already earned eligible commission.</p>
+    <div class="notice"><strong>Questions or payout documentation:</strong> <a href="mailto:{{ support_email }}?subject=CarrierOS%20Referral%20Program">{{ support_email }}</a></div>
+    <p class="small muted">These operational terms should receive qualified legal, payroll, and tax review before the first payout.</p>
+  </div></section>
+</div>
+{% endblock %}

@@ -10,8 +10,10 @@
   <section class="login-panel"><div class="login-card">
     <h2>Start your trial</h2><p class="muted">Create the owner account for your company.</p>
     {% if error %}<div class="notice bad">{{ error }}</div>{% endif %}
+    {% if referral_partner %}<div class="notice good"><strong>Referral applied.</strong> Your account was referred by {{ referral_partner.display_name }}. Their recurring referral credit does not increase your subscription price.</div>{% endif %}
     {% set values = values or {} %}
     <form method="post" action="/signup" data-signup-form>
+      {% if referral_code %}<input type="hidden" name="referral_code" value="{{ referral_code }}">{% endif %}
       <div class="field"><label>Your name</label><input name="full_name" value="{{ values.full_name or '' }}" autocomplete="name" required></div>
       <div class="field"><label>Company name</label><input name="company_name" value="{{ values.company_name or '' }}" autocomplete="organization" required></div>
       <div class="field"><label>Business email</label><input type="email" name="email" value="{{ values.email or '' }}" autocomplete="email" required></div>

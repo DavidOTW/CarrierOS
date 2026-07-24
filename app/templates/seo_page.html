@@ -6,12 +6,13 @@
 <main class="public-marketing seo-landing" id="top">
   <header class="public-nav">
     <a class="public-brand" href="/"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a>
-    <nav aria-label="Primary navigation"><a href="/#platform">Platform</a><a href="/#pay">Driver pay</a><a href="/#pricing">Pricing</a><a href="/demo">Live demo</a></nav>
+    <nav aria-label="Primary navigation"><a href="/#platform">Platform</a><a href="/solutions">Solutions</a><a href="/help">Help center</a><a href="/#pricing">Pricing</a><a href="/demo">Live demo</a></nav>
     <div class="public-nav-actions"><a class="public-signin" href="/login">Log in</a><a class="public-btn public-btn-dark" href="{{ page_signup_href }}">{{ page_signup_cta }} <span aria-hidden="true">&rarr;</span></a></div>
   </header>
 
   <section class="seo-hero">
     <div>
+      <nav class="seo-breadcrumb" aria-label="Breadcrumb"><a href="/">Home</a><span>/</span><a href="/solutions">Solutions</a><span>/</span><span>{{ page.eyebrow }}</span></nav>
       <span class="public-eyebrow">{{ page.eyebrow }}</span>
       <h1>{{ page.heading }}</h1>
       <p class="seo-lead">{{ page.lead }}</p>
@@ -44,13 +45,21 @@
     <ol>{% for title, copy in page.workflow %}<li><span>0{{ loop.index }}</span><div><h3>{{ title }}</h3><p>{{ copy }}</p></div></li>{% endfor %}</ol>
   </section>
 
+  {% if page.deep_dives %}
+  <section class="public-section seo-depth">
+    <div class="public-section-intro"><span class="public-eyebrow">A closer look</span><h2>What this workflow means in practice.</h2><p>Use CarrierOS for the operating record and review, while keeping authoritative safety, financial, legal, and regulatory systems in their proper roles.</p></div>
+    <div class="seo-depth-grid">
+      {% for title, copy, points in page.deep_dives %}
+      <article><span>0{{ loop.index }}</span><h3>{{ title }}</h3><p>{{ copy }}</p><ul>{% for point in points %}<li>{{ point }}</li>{% endfor %}</ul></article>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
   <section class="public-section seo-related">
-    <div class="public-section-intro"><span class="public-eyebrow">Explore related tools</span><h2>One small-fleet operating picture.</h2></div>
+    <div class="public-section-intro"><span class="public-eyebrow">Explore related solutions</span><h2>Continue through the small-carrier workflow.</h2><p><a class="seo-all-solutions" href="/solutions">View every CarrierOS solution <span aria-hidden="true">&rarr;</span></a></p></div>
     <div class="public-resource-grid">
-      {% if seo_slug != 'small-fleet-trucking-software' %}<a href="/small-fleet-trucking-software"><span>Fleet operations</span><h3>Small fleet trucking software</h3><p>Connect dispatch, pay, cost, receivables, and profitability.</p><b>Learn more &rarr;</b></a>{% endif %}
-      {% if seo_slug != 'driver-settlement-software' %}<a href="/driver-settlement-software"><span>Driver pay</span><h3>Driver pay tracking</h3><p>Use seven supported pay structures without separate spreadsheets.</p><b>Learn more &rarr;</b></a>{% endif %}
-      {% if seo_slug != 'load-profitability-calculator' %}<a href="/load-profitability-calculator"><span>Load economics</span><h3>Truck load profitability calculator</h3><p>Review the costs behind revenue and rate per mile.</p><b>Learn more &rarr;</b></a>{% endif %}
-      {% if seo_slug != 'carrier-startup-checklist' %}<a href="/carrier-startup-checklist"><span>Starting a carrier</span><h3>Carrier startup checklist</h3><p>Organize authority, safety, cash, equipment, and first-load readiness.</p><b>See the startup plan &rarr;</b></a>{% endif %}
+      {% for item in related_pages %}<a href="/{{ item.slug }}"><span>{{ item.eyebrow }}</span><h3>{{ item.title.split('|')[0].strip() }}</h3><p>{{ item.card_copy or item.description }}</p><b>Learn more &rarr;</b></a>{% endfor %}
     </div>
   </section>
 
@@ -60,6 +69,6 @@
   </section>
 
   <section class="public-launch"><span class="public-eyebrow">See the workflow before signing up</span><h2>Explore CarrierOS with a fictional sample fleet.</h2><p>Try dispatch, driver pay, load profitability, and pricing without creating an account.</p><div><a class="public-btn public-btn-orange" href="/demo">Open the live demo <span aria-hidden="true">&rarr;</span></a><a class="public-btn public-btn-outline" href="{{ page_signup_href }}">{{ page_signup_cta }}</a></div></section>
-  <footer class="public-footer"><a class="public-brand" href="/"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a><p>A product of <a href="https://www.outsidethewirelogistics.com/">Outside The Wire Logistics LLC</a>.</p><nav><a href="/">CarrierOS home</a><a href="/demo">Live demo</a><a href="/login">Customer login</a><a href="mailto:{{ support_email }}">Contact</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav><small>Operational estimates depend on user-entered assumptions. Review results before relying on them.</small></footer>
+  <footer class="public-footer"><a class="public-brand" href="/"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a><p>A product of <a href="https://www.outsidethewirelogistics.com/">Outside The Wire Logistics LLC</a>.</p><nav><a href="/">CarrierOS home</a><a href="/solutions">Solutions</a><a href="/help">Help center</a><a href="/demo">Live demo</a><a href="/login">Customer login</a><a href="mailto:{{ support_email }}">Contact</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav><small>Operational estimates depend on user-entered assumptions. Review results before relying on them.</small></footer>
 </main>
 {% endblock %}

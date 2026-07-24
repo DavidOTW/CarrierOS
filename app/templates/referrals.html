@@ -1,0 +1,90 @@
+{% extends "base.html" %}{% block title %}Referral program &middot; CarrierOS{% endblock %}
+{% block content %}
+<div class="page-heading"><div><h2>Driver referral program</h2><p>Give each driver a private portal and a unique CarrierOS referral link.</p></div><a class="btn btn-secondary" href="/referral-terms" target="_blank" rel="noopener">Program terms</a></div>
+
+<section class="card hero-card">
+  <div class="section-title"><div><span class="eyebrow">Recurring earnings</span><h3>Drivers earn {{ commission_rate_pct }}% while their referrals keep paying.</h3></div><span class="badge good">{{ commission_rate_pct }}% recurring</span></div>
+  <p>Each successful subscription payment creates a commission equal to {{ commission_rate_pct }}% of the eligible amount actually collected. Taxes, refunds, credits, chargebacks, and disputed amounts are excluded. Earnings become payout-eligible after a {{ hold_days }}-day confirmation period.</p>
+  <div class="grid grid-5" style="margin-top:18px">
+    {% for payment_cents, commission_cents in example_amounts %}
+    <div class="metric-pair"><span>{{ money(payment_cents/100) }} plan payment</span><strong>{{ money(commission_cents/100) }}</strong><small>driver commission</small></div>
+    {% endfor %}
+  </div>
+</section>
+
+{% if invitation %}
+<section class="card" style="margin-top:18px">
+  <div class="notice good"><strong>Copy {{ invitation.driver_name }}'s private activation link now.</strong> For security, CarrierOS stores only a one-way digest and cannot display this same private link again. You can rotate it later.</div>
+  <div class="field"><label>Private activation and earnings portal</label><input id="referral-invite-url" value="{{ invitation.url }}" readonly onclick="this.select()"></div>
+  <div class="form-actions"><button class="btn btn-primary" type="button" onclick="navigator.clipboard.writeText(document.getElementById('referral-invite-url').value).then(()=>this.textContent='Copied')">Copy private link</button></div>
+</section>
+{% endif %}
+
+<div class="grid grid-2" style="margin-top:18px">
+  <section class="card">
+    <h3>Create a driver invitation</h3>
+    <p class="small muted">The driver must accept the Referral Program Terms before the public referral link activates.</p>
+    <form method="post" action="/referrals/partners">
+      <div class="field"><label>Driver</label><select name="driver_id" required><option value="">Select driver</option>{% for driver in drivers %}<option value="{{ driver.id }}">{{ driver.name }}{% if not driver.active %} · inactive{% endif %}</option>{% endfor %}</select></div>
+      <div class="field"><label>Driver payout email</label><input type="email" name="email" required placeholder="driver@example.com"><small>Used to confirm the private invitation. Do not enter tax IDs or banking information.</small></div>
+      <div class="form-actions"><button class="btn btn-primary">Create private invitation</button></div>
+    </form>
+  </section>
+  <section class="card">
+    <h3>Required sharing disclosure</h3>
+    <p>Drivers should place this disclosure next to every referral link or recommendation:</p>
+    <div class="notice"><strong>Disclosure:</strong> I earn a recurring commission when someone subscribes to CarrierOS through my link.</div>
+    <p class="small muted">The disclosure must be clear and easy to see. “Affiliate link” by itself may not explain that the driver is paid.</p>
+  </section>
+</div>
+
+<section class="card" style="margin-top:18px">
+  <div class="section-title"><div><h3>Your referral partners</h3><p class="small muted">Referral earnings are separate from load compensation and do not change customer pricing.</p></div></div>
+  <div class="table-wrap table-cards"><table><thead><tr><th>Driver</th><th>Status</th><th>Referrals</th><th>Earned</th><th>Unpaid</th><th>Paid</th><th>Links &amp; controls</th></tr></thead><tbody>
+  {% for partner in partners %}
+    <tr>
+      <td data-label="Driver"><strong>{{ partner.display_name }}</strong><br><span class="muted">{{ partner.email }}</span></td>
+      <td data-label="Status"><span class="badge {% if partner.active %}good{% elif partner.terms_accepted_at %}warn{% else %}info{% endif %}">{% if partner.active %}Active{% elif partner.terms_accepted_at %}Paused{% else %}Awaiting terms{% endif %}</span></td>
+      <td data-label="Referrals">{{ partner.active_referral_count }} active / {{ partner.referral_count }} total</td>
+      <td data-label="Earned">{{ money((partner.earned_cents or 0)/100) }}</td>
+      <td data-label="Unpaid">{{ money((partner.unpaid_cents or 0)/100) }}</td>
+      <td data-label="Paid">{{ money((partner.paid_cents or 0)/100) }}</td>
+      <td data-label="Links & controls">
+        {% if partner.active %}<div class="field" style="min-width:270px"><input value="{{ public_base_url }}/r/{{ partner.referral_code }}" readonly onclick="this.select()"></div>{% endif %}
+        <div class="form-actions">
+          <form method="post" action="/referrals/partners/{{ partner.id }}/rotate"><button class="btn btn-secondary btn-small">Rotate private portal</button></form>
+          <form method="post" action="/referrals/partners/{{ partner.id }}/status"><input type="hidden" name="active" value="{{ 0 if partner.active else 1 }}"><button class="btn btn-secondary btn-small">{% if partner.active %}Pause future earnings{% else %}Reactivate{% endif %}</button></form>
+        </div>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7" class="empty">No driver referral partners yet.</td></tr>
+  {% endfor %}
+  </tbody></table></div>
+</section>
+
+{% if payout_admin %}
+<section class="card" style="margin-top:18px">
+  <div class="section-title"><div><span class="eyebrow">CarrierOS payout administration</span><h3>Eligible commissions due</h3><p class="small muted">CarrierOS records the ledger but does not move money. Confirm the payment outside CarrierOS, then record its reference here.</p></div></div>
+  <div class="table-wrap table-cards"><table><thead><tr><th>Partner</th><th>Source carrier</th><th>Eligible</th><th>Amount</th><th>Record payout</th></tr></thead><tbody>
+  {% for row in payouts_due %}
+    <tr>
+      <td data-label="Partner"><strong>{{ row.display_name }}</strong><br><span class="muted">{{ row.email }}</span></td>
+      <td data-label="Source carrier">{{ row.source_organization_name or 'Account removed' }}</td>
+      <td data-label="Eligible">{{ row.eligible_on }}</td>
+      <td data-label="Amount"><strong>{{ money(row.cash_due_cents/100) }} cash</strong><br><span class="muted">{{ money(row.balance_cents/100) }} earned{% if row.offset_preview_cents %} &middot; {{ money(row.offset_preview_cents/100) }} applied to prior adjustment{% endif %}</span></td>
+      <td data-label="Record payout"><form method="post" action="/referrals/commissions/{{ row.id }}/paid"><div class="field"><input name="payout_reference" maxlength="120" placeholder="ACH, payroll, check, or offset reference" required></div><button class="btn btn-primary btn-small">Record settlement</button></form></td>
+    </tr>
+  {% else %}
+    <tr><td colspan="5" class="empty">No commissions are currently eligible for payout.</td></tr>
+  {% endfor %}
+  </tbody></table></div>
+</section>
+{% endif %}
+
+<section class="card" style="margin-top:18px">
+  <h3>Program controls</h3>
+  <ul>{% for item in terms_summary %}<li>{{ item }}</li>{% endfor %}</ul>
+  <p class="small muted">Referral commissions may be taxable compensation. Employee and nonemployee reporting can differ. Collect required tax documentation and obtain professional payroll or tax advice before paying commissions.</p>
+</section>
+{% endblock %}

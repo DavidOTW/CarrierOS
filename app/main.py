@@ -65,6 +65,8 @@ from .ratecons import (
 )
 from .release_readiness import evaluate_release_readiness
 from .growth import STARTUP_STEPS, equipment_finance_audit, growth_mentor_findings
+from .help_content import HELP_GROUPS, HELP_GUIDE_LIST, HELP_GUIDES
+from .seo_content import ADDITIONAL_SEO_PAGES, SEO_PAGE_ENHANCEMENTS, SOLUTION_GROUPS
 from .db import (
     as_dict,
     create_database_backup,
@@ -112,9 +114,23 @@ from .stripe_billing import (
     stripe_live_configured,
     unix_date,
 )
+from .referrals import (
+    REFERRAL_COMMISSION_RATE,
+    REFERRAL_HOLD_DAYS,
+    REFERRAL_TERMS_VERSION,
+    new_referral_code,
+    new_referral_portal_token,
+    normalize_referral_code,
+    record_referral_commission,
+    referral_portal_totals,
+    referral_program_example_amounts,
+    referral_terms_summary,
+    referral_token_digest,
+    reverse_referral_commission,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
-VERSION = "0.16.0a7"
+VERSION = "0.16.0a10"
 ENVIRONMENT = os.getenv("CARRIEROS_ENV", "development").strip().lower()
 IS_PRODUCTION = ENVIRONMENT == "production"
 CANONICAL_BASE_URL = os.getenv(
@@ -132,6 +148,9 @@ TERMS_VERSION = "2026-07-21-audit-v2"
 SUPPORT_EMAIL = os.getenv(
     "CARRIEROS_SUPPORT_EMAIL", "david@outsidethewirelogistics.com"
 ).strip().lower()
+REFERRAL_ADMIN_EMAIL = os.getenv(
+    "CARRIEROS_REFERRAL_ADMIN_EMAIL", SUPPORT_EMAIL
+).strip().lower()
 FOUNDER_LINKEDIN_URL = "https://www.linkedin.com/in/davidbryant89"
 BACKUP_INTERVAL_SECONDS = max(
     3600, int(os.getenv("CARRIEROS_BACKUP_INTERVAL_HOURS", "24")) * 3600
@@ -140,7 +159,7 @@ logger = logging.getLogger("carrieros")
 
 
 class SensitiveAccessLogFilter(logging.Filter):
-    """Keep reset and onboarding bearer tokens out of platform request logs."""
+    """Keep reset, onboarding, and referral portal tokens out of request logs."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         if isinstance(record.args, tuple) and len(record.args) >= 3:
@@ -150,6 +169,8 @@ class SensitiveAccessLogFilter(logging.Filter):
                 values[2] = "/reset-password?[redacted]"
             elif path.startswith("/onboard/"):
                 values[2] = "/onboard/[redacted]"
+            elif path.startswith("/referral-program/portal/"):
+                values[2] = "/referral-program/portal/[redacted]"
             record.args = tuple(values)
         return True
 
@@ -290,7 +311,19 @@ SEO_PAGES = {
     },
 }
 
-INDEXABLE_PATHS = {"/", "/demo", "/checkout", *(f"/{slug}" for slug in SEO_PAGES)}
+for seo_slug, enhancements in SEO_PAGE_ENHANCEMENTS.items():
+    SEO_PAGES[seo_slug].update(enhancements)
+SEO_PAGES.update(ADDITIONAL_SEO_PAGES)
+
+INDEXABLE_PATHS = {
+    "/",
+    "/demo",
+    "/checkout",
+    "/solutions",
+    "/help",
+    *(f"/help/{slug}" for slug in HELP_GUIDES),
+    *(f"/{slug}" for slug in SEO_PAGES),
+}
 PUBLIC_CRAWL_FILES = {"/robots.txt", "/sitemap.xml"}
 LOGIN_WINDOW_SECONDS = 15 * 60
 LOGIN_MAX_ATTEMPTS = 10
@@ -349,7 +382,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Referrer-Policy"] = (
+            "no-referrer"
+            if path.startswith("/referral-program/portal/")
+            else "strict-origin-when-cross-origin"
+        )
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
         response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
@@ -882,13 +919,19 @@ def _read_dispatch_token(token: str) -> str:
 
 def render(request: Request, name: str, context: dict[str, Any] | None = None, status_code: int = 200):
     context = context or {}
+    render_user = current_user(request)
     csrf_token = request.session.get("csrf_token")
     if not csrf_token:
         csrf_token = secrets.token_urlsafe(32)
         request.session["csrf_token"] = csrf_token
     context.update({
         "request": request,
-        "user": current_user(request),
+        "user": render_user,
+        "referral_admin": bool(
+            render_user
+            and str(render_user.get("email") or "").strip().lower()
+            == REFERRAL_ADMIN_EMAIL
+        ),
         "money": money,
         "percent": percent,
         "today": date.today(),
@@ -919,8 +962,29 @@ def seo_context(
     *,
     page_type: str = "WebPage",
     faqs: list[tuple[str, str]] | None = None,
+    breadcrumbs: list[tuple[str, str]] | None = None,
 ) -> dict[str, Any]:
     canonical_url = f"{CANONICAL_BASE_URL}{path}"
+    webpage: dict[str, Any] = {
+        "@type": page_type,
+        "@id": f"{canonical_url}#webpage",
+        "url": canonical_url,
+        "name": title,
+        "description": description,
+        "inLanguage": "en-US",
+        "dateModified": "2026-07-24",
+        "isPartOf": {"@id": f"{CANONICAL_BASE_URL}/#website"},
+        "publisher": {"@id": f"{CANONICAL_BASE_URL}/#organization"},
+        "about": {"@id": f"{CANONICAL_BASE_URL}/#software"},
+    }
+    if page_type == "TechArticle":
+        webpage.update(
+            {
+                "headline": title,
+                "datePublished": "2026-07-24",
+                "author": {"@id": f"{CANONICAL_BASE_URL}/#organization"},
+            }
+        )
     graph: list[dict[str, Any]] = [
         {
             "@type": "Organization",
@@ -928,8 +992,18 @@ def seo_context(
             "name": "Outside The Wire Logistics LLC",
             "url": "https://www.outsidethewirelogistics.com/",
             "email": SUPPORT_EMAIL,
-            "brand": {"@type": "Brand", "name": "CarrierOS"},
+            "brand": {
+                "@type": "Brand",
+                "@id": f"{CANONICAL_BASE_URL}/#brand",
+                "name": "CarrierOS",
+                "url": f"{CANONICAL_BASE_URL}/",
+                "logo": f"{CANONICAL_BASE_URL}/static/icon-512.png",
+            },
             "founder": {"@id": f"{CANONICAL_BASE_URL}/#founder"},
+            "sameAs": [
+                "https://www.outsidethewirelogistics.com/",
+                FOUNDER_LINKEDIN_URL,
+            ],
         },
         {
             "@type": "Person",
@@ -940,23 +1014,16 @@ def seo_context(
             "award": "Purple Heart",
             "sameAs": [FOUNDER_LINKEDIN_URL],
         },
-        {
-            "@type": page_type,
-            "@id": f"{canonical_url}#webpage",
-            "url": canonical_url,
-            "name": title,
-            "description": description,
-            "inLanguage": "en-US",
-            "isPartOf": {"@id": f"{CANONICAL_BASE_URL}/#website"},
-            "publisher": {"@id": f"{CANONICAL_BASE_URL}/#organization"},
-        },
+        webpage,
         {
             "@type": "WebSite",
             "@id": f"{CANONICAL_BASE_URL}/#website",
             "url": f"{CANONICAL_BASE_URL}/",
             "name": "CarrierOS",
+            "alternateName": "OTW CarrierOS",
             "description": "Fleet operations and profitability software for owner-operators and small motor carriers.",
             "publisher": {"@id": f"{CANONICAL_BASE_URL}/#organization"},
+            "inLanguage": "en-US",
         },
     ]
     if path == "/":
@@ -985,6 +1052,7 @@ def seo_context(
                     "audienceType": "Owner-operators and small motor carriers with 1 to 20 power units",
                 },
                 "provider": {"@id": f"{CANONICAL_BASE_URL}/#organization"},
+                "softwareVersion": VERSION,
                 "offers": [
                     {
                         "@type": "Offer",
@@ -995,6 +1063,35 @@ def seo_context(
                         "url": f"{CANONICAL_BASE_URL}/signup?plan={code}",
                     }
                     for code, plan in PLAN_LIMITS.items()
+                ],
+            }
+        )
+    else:
+        graph.append(
+            {
+                "@type": "WebApplication",
+                "@id": f"{CANONICAL_BASE_URL}/#software",
+                "name": "CarrierOS",
+                "url": f"{CANONICAL_BASE_URL}/",
+                "applicationCategory": "BusinessApplication",
+                "operatingSystem": "Any operating system with a modern web browser",
+                "provider": {"@id": f"{CANONICAL_BASE_URL}/#organization"},
+            }
+        )
+    if breadcrumbs:
+        graph.append(
+            {
+                "@type": "BreadcrumbList",
+                "itemListElement": [
+                    {
+                        "@type": "ListItem",
+                        "position": position,
+                        "name": name,
+                        "item": f"{CANONICAL_BASE_URL}{crumb_path}",
+                    }
+                    for position, (name, crumb_path) in enumerate(
+                        breadcrumbs, start=1
+                    )
                 ],
             }
         )
@@ -1207,6 +1304,8 @@ def robots() -> Response:
         "/quotes",
         "/rate-quotes",
         "/receivables",
+        "/referral-program/portal/",
+        "/referrals",
         "/settings",
         "/stripe/",
         "/startup",
@@ -1219,8 +1318,16 @@ def robots() -> Response:
 
 @app.get("/sitemap.xml")
 def sitemap() -> Response:
-    updated = "2026-07-21"
-    paths = ["/", "/demo", "/checkout", *(f"/{slug}" for slug in SEO_PAGES)]
+    updated = "2026-07-24"
+    paths = [
+        "/",
+        "/demo",
+        "/checkout",
+        "/solutions",
+        "/help",
+        *(f"/help/{slug}" for slug in HELP_GUIDES),
+        *(f"/{slug}" for slug in SEO_PAGES),
+    ]
     urls = "".join(
         f"<url><loc>{CANONICAL_BASE_URL}{path}</loc><lastmod>{updated}</lastmod></url>"
         for path in paths
@@ -1287,15 +1394,154 @@ def demo(request: Request):
     )
 
 
+@app.get("/solutions", response_class=HTMLResponse)
+def solutions(request: Request):
+    groups = [
+        {
+            **group,
+            "pages": [
+                {"slug": slug, **SEO_PAGES[slug]}
+                for slug in group["slugs"]
+            ],
+        }
+        for group in SOLUTION_GROUPS
+    ]
+    return render(
+        request,
+        "solutions.html",
+        {
+            "public_page": True,
+            "groups": groups,
+            **seo_context(
+                "/solutions",
+                "Trucking Software Solutions for Small Carriers | CarrierOS",
+                "Explore CarrierOS solutions for small-fleet dispatch, RateCon review, documents, driver pay, profitability, receivables, compliance, box trucks, and hotshot operations.",
+                page_type="CollectionPage",
+                breadcrumbs=[("Home", "/"), ("Solutions", "/solutions")],
+            ),
+        },
+    )
+
+
+@app.get("/help", response_class=HTMLResponse)
+def help_center(request: Request):
+    workflow = (
+        {
+            "slug": "rate-quotes",
+            "title": "Check the offer",
+            "caption": "Test rate, cost, deadhead, pay, and margin.",
+        },
+        {
+            "slug": "ratecon-inbox",
+            "title": "Verify the RateCon",
+            "caption": "Compare the confirmed terms with the booking.",
+        },
+        {
+            "slug": "dispatch",
+            "title": "Assign and dispatch",
+            "caption": "Choose the driver and equipment, then approve.",
+        },
+        {
+            "slug": "loads",
+            "title": "Run the load",
+            "caption": "Keep status, documents, costs, and delivery together.",
+        },
+        {
+            "slug": "money",
+            "title": "Settle the result",
+            "caption": "Review earnings, payments, and company profit.",
+        },
+        {
+            "slug": "detention-ar",
+            "title": "Collect the revenue",
+            "caption": "Track invoices, aging, and detention support.",
+        },
+    )
+    return render(
+        request,
+        "help_center.html",
+        {
+            "public_page": True,
+            "groups": HELP_GROUPS,
+            "guides": HELP_GUIDE_LIST,
+            "workflow": workflow,
+            **seo_context(
+                "/help",
+                "CarrierOS Help Center | Small Fleet Software Guides",
+                "Learn how to use every CarrierOS tab, from rate quotes and RateCon review through dispatch, driver pay, compliance, receivables, and billing.",
+                page_type="CollectionPage",
+                breadcrumbs=[("Home", "/"), ("Help center", "/help")],
+            ),
+        },
+    )
+
+
+@app.get("/help/{guide_slug}", response_class=HTMLResponse)
+def help_guide(request: Request, guide_slug: str):
+    guide = HELP_GUIDES.get(guide_slug)
+    if not guide:
+        raise HTTPException(status_code=404, detail="Help guide not found")
+    guide_index = next(
+        index for index, item in enumerate(HELP_GUIDE_LIST) if item["slug"] == guide_slug
+    )
+    group = next(item for item in HELP_GROUPS if item["key"] == guide["group"])
+    related_guides = [
+        HELP_GUIDES[slug] for slug in guide["related"] if slug in HELP_GUIDES
+    ]
+    return render(
+        request,
+        "help_guide.html",
+        {
+            "public_page": True,
+            "groups": HELP_GROUPS,
+            "guides": HELP_GUIDE_LIST,
+            "guide": guide,
+            "guide_group": group,
+            "related_guides": related_guides,
+            "previous_guide": HELP_GUIDE_LIST[guide_index - 1] if guide_index else None,
+            "next_guide": (
+                HELP_GUIDE_LIST[guide_index + 1]
+                if guide_index + 1 < len(HELP_GUIDE_LIST)
+                else None
+            ),
+            **seo_context(
+                f"/help/{guide_slug}",
+                f"{guide['title']} Guide | CarrierOS Help Center",
+                f"Learn how to use the CarrierOS {guide['title']} tab. {guide['summary']}",
+                page_type="TechArticle",
+                breadcrumbs=[
+                    ("Home", "/"),
+                    ("Help center", "/help"),
+                    (guide["title"], f"/help/{guide_slug}"),
+                ],
+            ),
+        },
+    )
+
+
 @app.get("/small-fleet-trucking-software", response_class=HTMLResponse)
 @app.get("/driver-settlement-software", response_class=HTMLResponse)
 @app.get("/load-profitability-calculator", response_class=HTMLResponse)
 @app.get("/carrier-startup-checklist", response_class=HTMLResponse)
+@app.get("/small-fleet-tms", response_class=HTMLResponse)
+@app.get("/trucking-dispatch-software", response_class=HTMLResponse)
+@app.get("/rate-confirmation-management-software", response_class=HTMLResponse)
+@app.get("/trucking-document-management-software", response_class=HTMLResponse)
+@app.get("/trucking-accounts-receivable-software", response_class=HTMLResponse)
+@app.get("/trucking-compliance-management-software", response_class=HTMLResponse)
+@app.get("/owner-operator-business-software", response_class=HTMLResponse)
+@app.get("/box-truck-fleet-management-software", response_class=HTMLResponse)
+@app.get("/hotshot-trucking-software", response_class=HTMLResponse)
 def seo_landing_page(request: Request):
     seo_slug = request.url.path.strip("/")
     page = SEO_PAGES.get(seo_slug)
     if not page:
         raise HTTPException(status_code=404, detail="Not found")
+    related_pages = [
+        {"slug": related_slug, **SEO_PAGES[related_slug]}
+        for related_slug in page.get("related", ())
+        if related_slug in SEO_PAGES and related_slug != seo_slug
+    ]
     return render(
         request,
         "seo_page.html",
@@ -1303,11 +1549,17 @@ def seo_landing_page(request: Request):
             "public_page": True,
             "page": page,
             "seo_slug": seo_slug,
+            "related_pages": related_pages,
             **seo_context(
                 f"/{seo_slug}",
                 page["title"],
                 page["description"],
                 faqs=page["faqs"],
+                breadcrumbs=[
+                    ("Home", "/"),
+                    ("Solutions", "/solutions"),
+                    (page["heading"], f"/{seo_slug}"),
+                ],
             ),
         },
     )
@@ -1365,14 +1617,530 @@ async def login(request: Request):
     return redirect("/dashboard")
 
 
+def _referral_manager(request: Request) -> dict[str, Any]:
+    user = require_user(request)
+    if not has_permission(str(user.get("role") or "read_only"), "referrals.manage"):
+        raise HTTPException(status_code=403, detail="Owner or administrator access required")
+    if str(user.get("email") or "").strip().lower() != REFERRAL_ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="CarrierOS referral administrator access required")
+    return user
+
+
+def _referral_partner_for_code(code: Any) -> dict[str, Any] | None:
+    normalized = normalize_referral_code(code)
+    if not normalized:
+        return None
+    row = query_one(
+        """SELECT p.*, o.name AS source_organization_name, o.owner_email AS source_owner_email
+        FROM referral_partners p
+        LEFT JOIN organizations o ON o.id=p.source_organization_id
+        WHERE p.referral_code=? AND p.active=1 AND p.terms_accepted_at IS NOT NULL""",
+        (normalized,),
+    )
+    return as_dict(row)
+
+
+def _referral_partner_for_portal_token(token: str) -> dict[str, Any] | None:
+    if len(token) < 32:
+        return None
+    row = query_one(
+        """SELECT p.*, o.name AS source_organization_name
+        FROM referral_partners p
+        LEFT JOIN organizations o ON o.id=p.source_organization_id
+        WHERE p.portal_token_hash=?""",
+        (referral_token_digest(token),),
+    )
+    return as_dict(row)
+
+
+def _referral_signup_context(request: Request, code: Any = None) -> dict[str, Any] | None:
+    candidate = normalize_referral_code(code) or normalize_referral_code(
+        request.session.get("referral_code")
+    )
+    partner = _referral_partner_for_code(candidate)
+    if partner:
+        request.session["referral_code"] = partner["referral_code"]
+    elif candidate:
+        request.session.pop("referral_code", None)
+    return partner
+
+
+def _attribute_referral(
+    conn: Any,
+    *,
+    referred_organization_id: int,
+    referred_company_name: str,
+    referred_owner_email: str,
+    referral_code: Any,
+) -> int | None:
+    normalized = normalize_referral_code(referral_code)
+    if not normalized:
+        return None
+    partner = conn.execute(
+        """SELECT p.*, o.owner_email AS source_owner_email
+        FROM referral_partners p
+        LEFT JOIN organizations o ON o.id=p.source_organization_id
+        WHERE p.referral_code=? AND p.active=1 AND p.terms_accepted_at IS NOT NULL""",
+        (normalized,),
+    ).fetchone()
+    if not partner:
+        return None
+    referred_email = referred_owner_email.strip().lower()
+    blocked_emails = {
+        str(partner["email"] or "").strip().lower(),
+        str(partner["source_owner_email"] or "").strip().lower(),
+    }
+    if referred_email in blocked_emails:
+        return None
+    if int(partner["source_organization_id"] or 0) == int(referred_organization_id):
+        return None
+    cursor = conn.execute(
+        """INSERT OR IGNORE INTO referral_attributions
+        (referred_organization_id,referral_partner_id,referral_code_snapshot,
+         referred_company_snapshot)
+        VALUES (?,?,?,?)""",
+        (
+            referred_organization_id,
+            partner["id"],
+            normalized,
+            referred_company_name,
+        ),
+    )
+    return int(partner["id"]) if cursor.rowcount else None
+
+
+@app.get("/referral-terms", response_class=HTMLResponse)
+def referral_terms_page(request: Request):
+    return render(
+        request,
+        "referral_terms.html",
+        {
+            "public_page": True,
+            "robots_content": "noindex, follow",
+            "terms_version": REFERRAL_TERMS_VERSION,
+            "commission_rate_pct": int(REFERRAL_COMMISSION_RATE * 100),
+            "hold_days": REFERRAL_HOLD_DAYS,
+            "terms_summary": referral_terms_summary(),
+            "example_amounts": referral_program_example_amounts(),
+        },
+    )
+
+
+@app.get("/r/{code}")
+def referral_redirect(request: Request, code: str):
+    partner = _referral_partner_for_code(code)
+    if not partner:
+        raise HTTPException(status_code=404, detail="Referral link not found")
+    request.session["referral_code"] = partner["referral_code"]
+    return redirect(f"/signup?ref={quote(str(partner['referral_code']))}")
+
+
+@app.get("/referral-program/portal/{token}", response_class=HTMLResponse)
+def referral_partner_portal(request: Request, token: str):
+    partner = _referral_partner_for_portal_token(token)
+    if not partner:
+        raise HTTPException(status_code=404, detail="Referral portal not found")
+    totals = {"earned_cents": 0, "unpaid_cents": 0, "paid_cents": 0, "offset_cents": 0}
+    referral_count = 0
+    active_referral_count = 0
+    recent_commissions: list[dict[str, Any]] = []
+    if partner["active"]:
+        with db_session() as conn:
+            totals = referral_portal_totals(conn, int(partner["id"]))
+            referral_count = int(
+                conn.execute(
+                    "SELECT COUNT(*) AS total FROM referral_attributions WHERE referral_partner_id=?",
+                    (partner["id"],),
+                ).fetchone()["total"]
+            )
+            active_referral_count = int(
+                conn.execute(
+                    """SELECT COUNT(*) AS total FROM referral_attributions a
+                    JOIN organizations o ON o.id=a.referred_organization_id
+                    WHERE a.referral_partner_id=? AND o.subscription_status='active'""",
+                    (partner["id"],),
+                ).fetchone()["total"]
+            )
+            recent_commissions = [
+                dict(row)
+                for row in conn.execute(
+                    """SELECT earned_at,eligible_on,commission_cents,reversed_cents,
+                    paid_cents,status FROM referral_commissions
+                    WHERE referral_partner_id=? ORDER BY earned_at DESC LIMIT 12""",
+                    (partner["id"],),
+                ).fetchall()
+            ]
+    return render(
+        request,
+        "referral_portal.html",
+        {
+            "public_page": True,
+            "robots_content": "noindex, nofollow",
+            "partner": partner,
+            "portal_token": token,
+            "referral_link": f"{public_url(request)}/r/{partner['referral_code']}",
+            "commission_rate_pct": int(REFERRAL_COMMISSION_RATE * 100),
+            "hold_days": REFERRAL_HOLD_DAYS,
+            "terms_summary": referral_terms_summary(),
+            "example_amounts": referral_program_example_amounts(),
+            "totals": totals,
+            "referral_count": referral_count,
+            "active_referral_count": active_referral_count,
+            "recent_commissions": recent_commissions,
+        },
+    )
+
+
+@app.post("/referral-program/portal/{token}")
+async def activate_referral_partner(request: Request, token: str):
+    partner = _referral_partner_for_portal_token(token)
+    if not partner:
+        raise HTTPException(status_code=404, detail="Referral portal not found")
+    form = await verified_form(request)
+    email = str(form.get("email", "")).strip().lower()
+    if email != str(partner["email"] or "").strip().lower():
+        set_flash_error(request, "Enter the email address used for this referral invitation.")
+        return redirect(f"/referral-program/portal/{quote(token)}")
+    if not yes(form.get("accepted_terms")):
+        set_flash_error(request, "Accept the Referral Program Terms to activate this link.")
+        return redirect(f"/referral-program/portal/{quote(token)}")
+    execute(
+        """UPDATE referral_partners SET active=1,terms_version=?,
+        terms_accepted_at=?,deactivated_at=NULL WHERE id=?""",
+        (REFERRAL_TERMS_VERSION, utc_now_iso(), partner["id"]),
+    )
+    record_audit_event(
+        "referral.partner_activated",
+        organization_id=integer(partner.get("source_organization_id")) or None,
+        details={"partner_id": int(partner["id"]), "terms_version": REFERRAL_TERMS_VERSION},
+    )
+    set_flash(request, "Your recurring 50% referral link is active.")
+    return redirect(f"/referral-program/portal/{quote(token)}")
+
+
+@app.get("/referrals", response_class=HTMLResponse)
+def referrals_page(request: Request):
+    user = _referral_manager(request)
+    partners = [
+        dict(row)
+        for row in query_all(
+            """SELECT p.*, d.name AS driver_name,
+            (SELECT COUNT(*) FROM referral_attributions a
+             WHERE a.referral_partner_id=p.id) AS referral_count,
+            (SELECT COUNT(*) FROM referral_attributions a
+             JOIN organizations ro ON ro.id=a.referred_organization_id
+             WHERE a.referral_partner_id=p.id AND ro.subscription_status='active') AS active_referral_count,
+            (SELECT COALESCE(SUM(c.commission_cents-c.reversed_cents),0)
+             FROM referral_commissions c WHERE c.referral_partner_id=p.id) AS earned_cents,
+            (SELECT COALESCE(SUM(CASE WHEN c.paid_at IS NULL
+               THEN MAX(0,c.commission_cents-c.reversed_cents-c.paid_cents-c.offset_applied_cents)
+               ELSE 0 END),0)
+             FROM referral_commissions c WHERE c.referral_partner_id=p.id) AS unpaid_cents,
+            (SELECT COALESCE(SUM(c.paid_cents),0)
+             FROM referral_commissions c WHERE c.referral_partner_id=p.id) AS paid_cents
+            FROM referral_partners p
+            LEFT JOIN drivers d ON d.id=p.driver_id
+            WHERE p.source_organization_id=? ORDER BY p.created_at DESC""",
+            (user["organization_id"],),
+        )
+    ]
+    invitation = request.session.pop("referral_invitation", None)
+    payout_admin = str(user.get("email") or "").strip().lower() == REFERRAL_ADMIN_EMAIL
+    payouts_due: list[dict[str, Any]] = []
+    if payout_admin:
+        payout_rows = [
+            dict(row)
+            for row in query_all(
+                """SELECT c.*, p.display_name, p.email,
+                o.name AS source_organization_name
+                FROM referral_commissions c
+                JOIN referral_partners p ON p.id=c.referral_partner_id
+                LEFT JOIN organizations o ON o.id=p.source_organization_id
+                WHERE c.eligible_on<=?
+                  AND c.commission_cents-c.reversed_cents-c.paid_cents-c.offset_applied_cents>0
+                ORDER BY c.eligible_on,c.id""",
+                (date.today().isoformat(),),
+            )
+        ]
+        remaining_offsets: dict[int, int] = {}
+        for row in payout_rows:
+            partner_id = int(row["referral_partner_id"])
+            if partner_id not in remaining_offsets:
+                with db_session() as conn:
+                    remaining_offsets[partner_id] = referral_portal_totals(
+                        conn, partner_id
+                    )["offset_cents"]
+            balance_cents = max(
+                0,
+                int(row["commission_cents"])
+                - int(row["reversed_cents"])
+                - int(row["paid_cents"])
+                - int(row["offset_applied_cents"]),
+            )
+            offset_preview_cents = min(
+                balance_cents,
+                remaining_offsets[partner_id],
+            )
+            row["balance_cents"] = balance_cents
+            row["offset_preview_cents"] = offset_preview_cents
+            row["cash_due_cents"] = balance_cents - offset_preview_cents
+            remaining_offsets[partner_id] -= offset_preview_cents
+            payouts_due.append(row)
+    drivers = [
+        dict(row)
+        for row in query_all(
+            """SELECT id,name,email,active FROM drivers
+            WHERE organization_id=? ORDER BY active DESC,name""",
+            (user["organization_id"],),
+        )
+    ]
+    return render(
+        request,
+        "referrals.html",
+        {
+            "partners": partners,
+            "drivers": drivers,
+            "invitation": invitation,
+            "public_base_url": public_url(request),
+            "payout_admin": payout_admin,
+            "payouts_due": payouts_due,
+            "commission_rate_pct": int(REFERRAL_COMMISSION_RATE * 100),
+            "hold_days": REFERRAL_HOLD_DAYS,
+            "terms_summary": referral_terms_summary(),
+            "example_amounts": referral_program_example_amounts(),
+        },
+    )
+
+
+@app.post("/referrals/partners")
+async def create_referral_partner(request: Request):
+    user = _referral_manager(request)
+    form = await verified_form(request)
+    driver_id = integer(form.get("driver_id"))
+    driver = query_one(
+        "SELECT * FROM drivers WHERE id=? AND organization_id=?",
+        (driver_id, user["organization_id"]),
+    )
+    if not driver:
+        set_flash_error(request, "Choose a driver from this workspace.")
+        return redirect("/referrals")
+    existing = query_one(
+        "SELECT id FROM referral_partners WHERE source_organization_id=? AND driver_id=?",
+        (user["organization_id"], driver_id),
+    )
+    if existing:
+        set_flash_error(request, "That driver already has a referral partner record.")
+        return redirect("/referrals")
+    email = str(form.get("email") or driver["email"] or "").strip().lower()
+    if "@" not in email:
+        set_flash_error(request, "Enter the driver's valid payout email address.")
+        return redirect("/referrals")
+    code = new_referral_code()
+    while query_one("SELECT id FROM referral_partners WHERE referral_code=?", (code,)):
+        code = new_referral_code()
+    portal_token = new_referral_portal_token()
+    partner_id = execute(
+        """INSERT INTO referral_partners
+        (source_organization_id,driver_id,created_by_user_id,display_name,email,
+         referral_code,portal_token_hash)
+        VALUES (?,?,?,?,?,?,?)""",
+        (
+            user["organization_id"],
+            driver_id,
+            user["id"],
+            str(driver["name"]),
+            email,
+            code,
+            referral_token_digest(portal_token),
+        ),
+    )
+    request.session["referral_invitation"] = {
+        "partner_id": partner_id,
+        "driver_name": str(driver["name"]),
+        "url": f"{public_url(request)}/referral-program/portal/{portal_token}",
+    }
+    record_audit_event(
+        "referral.partner_invited",
+        organization_id=int(user["organization_id"]),
+        user_id=int(user["id"]),
+        details={"partner_id": partner_id, "driver_id": driver_id},
+    )
+    set_flash(request, "Referral invitation created. Copy the private activation link now.")
+    return redirect("/referrals")
+
+
+@app.post("/referrals/partners/{partner_id}/rotate")
+async def rotate_referral_portal(request: Request, partner_id: int):
+    user = _referral_manager(request)
+    await verified_form(request)
+    partner = query_one(
+        "SELECT * FROM referral_partners WHERE id=? AND source_organization_id=?",
+        (partner_id, user["organization_id"]),
+    )
+    if not partner:
+        raise HTTPException(status_code=404, detail="Referral partner not found")
+    portal_token = new_referral_portal_token()
+    execute(
+        "UPDATE referral_partners SET portal_token_hash=? WHERE id=?",
+        (referral_token_digest(portal_token), partner_id),
+    )
+    request.session["referral_invitation"] = {
+        "partner_id": partner_id,
+        "driver_name": str(partner["display_name"]),
+        "url": f"{public_url(request)}/referral-program/portal/{portal_token}",
+    }
+    record_audit_event(
+        "referral.portal_rotated",
+        organization_id=int(user["organization_id"]),
+        user_id=int(user["id"]),
+        details={"partner_id": partner_id},
+    )
+    set_flash(request, "The old private portal link was replaced. Copy the new link now.")
+    return redirect("/referrals")
+
+
+@app.post("/referrals/partners/{partner_id}/status")
+async def update_referral_partner_status(request: Request, partner_id: int):
+    user = _referral_manager(request)
+    form = await verified_form(request)
+    partner = query_one(
+        "SELECT * FROM referral_partners WHERE id=? AND source_organization_id=?",
+        (partner_id, user["organization_id"]),
+    )
+    if not partner:
+        raise HTTPException(status_code=404, detail="Referral partner not found")
+    active = yes(form.get("active"))
+    if active and not partner["terms_accepted_at"]:
+        set_flash_error(request, "The driver must accept the Referral Program Terms before activation.")
+        return redirect("/referrals")
+    execute(
+        """UPDATE referral_partners SET active=?,deactivated_at=?
+        WHERE id=?""",
+        (1 if active else 0, None if active else utc_now_iso(), partner_id),
+    )
+    record_audit_event(
+        "referral.partner_status_changed",
+        organization_id=int(user["organization_id"]),
+        user_id=int(user["id"]),
+        details={"partner_id": partner_id, "active": active},
+    )
+    set_flash(request, "Referral partner status updated.")
+    return redirect("/referrals")
+
+
+@app.post("/referrals/commissions/{commission_id}/paid")
+async def mark_referral_commission_paid(request: Request, commission_id: int):
+    user = _referral_manager(request)
+    if str(user.get("email") or "").strip().lower() != REFERRAL_ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="CarrierOS payout administrator access required")
+    form = await verified_form(request)
+    commission = query_one(
+        """SELECT c.*, p.source_organization_id FROM referral_commissions c
+        JOIN referral_partners p ON p.id=c.referral_partner_id WHERE c.id=?""",
+        (commission_id,),
+    )
+    if not commission:
+        raise HTTPException(status_code=404, detail="Referral commission not found")
+    if str(commission["eligible_on"]) > date.today().isoformat():
+        set_flash_error(request, "This commission is still inside the payment-confirmation hold.")
+        return redirect("/referrals")
+    commission_balance_cents = max(
+        0,
+        int(commission["commission_cents"])
+        - int(commission["reversed_cents"])
+        - int(commission["paid_cents"])
+        - int(commission["offset_applied_cents"]),
+    )
+    if commission_balance_cents <= 0:
+        set_flash_error(request, "This commission has no unpaid eligible balance.")
+        return redirect("/referrals")
+    payout_reference = str(form.get("payout_reference", "")).strip()[:120]
+    if not payout_reference:
+        set_flash_error(request, "Enter the ACH, payroll, or check reference before marking this payout paid.")
+        return redirect("/referrals")
+    with db_session() as conn:
+        outstanding_offset_cents = referral_portal_totals(
+            conn,
+            int(commission["referral_partner_id"]),
+        )["offset_cents"]
+    offset_applied_cents = min(
+        commission_balance_cents,
+        outstanding_offset_cents,
+    )
+    cash_paid_cents = commission_balance_cents - offset_applied_cents
+    new_paid_cents = int(commission["paid_cents"]) + cash_paid_cents
+    new_offset_cents = (
+        int(commission["offset_applied_cents"]) + offset_applied_cents
+    )
+    status = (
+        "offset"
+        if cash_paid_cents == 0
+        else "paid_with_offset"
+        if offset_applied_cents
+        else "adjusted_paid"
+        if int(commission["reversed_cents"])
+        else "paid"
+    )
+    execute(
+        """UPDATE referral_commissions SET paid_cents=?,offset_applied_cents=?,paid_at=?,
+        paid_by_user_id=?,payout_reference=?,status=? WHERE id=?""",
+        (
+            new_paid_cents,
+            new_offset_cents,
+            utc_now_iso(),
+            user["id"],
+            payout_reference,
+            status,
+            commission_id,
+        ),
+    )
+    record_audit_event(
+        "referral.commission_paid",
+        organization_id=integer(commission["source_organization_id"]) or None,
+        user_id=int(user["id"]),
+        details={
+            "cash_paid_cents": cash_paid_cents,
+            "commission_id": commission_id,
+            "offset_applied_cents": offset_applied_cents,
+        },
+    )
+    if cash_paid_cents:
+        set_flash(
+            request,
+            f"Referral settlement recorded: {money(cash_paid_cents / 100)} paid"
+            + (
+                f" and {money(offset_applied_cents / 100)} applied to a prior adjustment."
+                if offset_applied_cents
+                else "."
+            ),
+        )
+    else:
+        set_flash(
+            request,
+            f"{money(offset_applied_cents / 100)} applied to the prior refund or dispute balance; no cash payout was due.",
+        )
+    return redirect("/referrals")
+
+
 @app.get("/signup", response_class=HTMLResponse)
-def signup_page(request: Request, plan: str = "owner_operator"):
+def signup_page(request: Request, plan: str = "owner_operator", ref: str | None = None):
     if current_user(request):
         return redirect("/dashboard")
     if not customer_signups_open():
         return render(request, "launch_pending.html", {"public_page": True})
     selected_plan = plan if plan in PLAN_LIMITS else "owner_operator"
-    return render(request, "signup.html", {"plans": PLAN_LIMITS, "selected_plan": selected_plan, "public_page": True})
+    referral_partner = _referral_signup_context(request, ref)
+    return render(
+        request,
+        "signup.html",
+        {
+            "plans": PLAN_LIMITS,
+            "selected_plan": selected_plan,
+            "public_page": True,
+            "referral_partner": referral_partner,
+            "referral_code": referral_partner["referral_code"] if referral_partner else "",
+        },
+    )
 
 
 @app.post("/signup", response_class=HTMLResponse)
@@ -1393,6 +2161,10 @@ async def signup(request: Request):
     password = str(form.get("password", ""))
     accepted_terms = yes(form.get("accepted_terms"))
     plan_code = str(form.get("plan", "owner_operator"))
+    referral_code = normalize_referral_code(
+        form.get("referral_code") or request.session.get("referral_code")
+    )
+    referral_partner = _referral_signup_context(request, referral_code)
     if plan_code not in PLAN_LIMITS:
         plan_code = "owner_operator"
     plan = PLAN_LIMITS[plan_code]
@@ -1412,11 +2184,14 @@ async def signup(request: Request):
             "selected_plan": plan_code,
             "values": {"full_name": full_name, "company_name": company_name, "email": email},
             "public_page": True,
+            "referral_partner": referral_partner,
+            "referral_code": referral_partner["referral_code"] if referral_partner else "",
         }, 400)
 
     trial_ends_at = (date.today() + timedelta(days=TRIAL_DAYS)).isoformat() if BILLING_MODE == "beta" else None
     subscription_status = "trialing" if BILLING_MODE == "beta" else "incomplete"
     accepted_at = utc_now_iso()
+    referral_partner_id: int | None = None
     with db_session() as conn:
         org_id = conn.execute(
             """INSERT INTO organizations
@@ -1441,13 +2216,26 @@ async def signup(request: Request):
             "INSERT INTO overhead_items (organization_id, name, monthly_cost, sort_order) VALUES (?, 'Other overhead', 0, 1)",
             (org_id,),
         )
+        referral_partner_id = _attribute_referral(
+            conn,
+            referred_organization_id=int(org_id),
+            referred_company_name=company_name,
+            referred_owner_email=email,
+            referral_code=referral_code,
+        )
     signup_attempts.setdefault(client_key(request), []).append(time.time())
     record_audit_event(
         "organization.created",
         organization_id=int(org_id),
         user_id=int(user_id),
-        details={"billing_mode": BILLING_MODE, "plan_code": plan_code, "terms_version": TERMS_VERSION},
+        details={
+            "billing_mode": BILLING_MODE,
+            "plan_code": plan_code,
+            "terms_version": TERMS_VERSION,
+            "referral_partner_id": referral_partner_id,
+        },
     )
+    request.session.pop("referral_code", None)
     request.session.clear()
     request.session["user_id"] = user_id
     request.session["csrf_token"] = secrets.token_urlsafe(32)
@@ -1872,6 +2660,10 @@ def _organization_for_stripe_object(conn: Any, obj: Any) -> Any:
         if row:
             return row
     subscription_id = object_value(obj, "subscription") or object_value(obj, "id")
+    if not (isinstance(subscription_id, str) and subscription_id.startswith("sub_")):
+        parent = object_value(obj, "parent") or {}
+        subscription_details = object_value(parent, "subscription_details") or {}
+        subscription_id = object_value(subscription_details, "subscription") or subscription_id
     if isinstance(subscription_id, str) and subscription_id.startswith("sub_"):
         row = conn.execute(
             "SELECT * FROM organizations WHERE billing_subscription_reference=?", (subscription_id,)
@@ -1973,6 +2765,8 @@ def _apply_invoice_event(conn: Any, invoice: Any, event_type: str) -> None:
         "UPDATE organizations SET subscription_status=? WHERE id=?",
         (status, organization["id"]),
     )
+    if event_type == "invoice.paid":
+        record_referral_commission(conn, organization, invoice)
 
 
 @app.post("/stripe/webhook")
@@ -2008,6 +2802,8 @@ async def stripe_webhook(request: Request):
             _apply_subscription_event(conn, stripe_object, event_type)
         elif event_type in {"invoice.paid", "invoice.payment_failed"}:
             _apply_invoice_event(conn, stripe_object, event_type)
+        elif event_type in {"invoice.voided", "charge.refunded", "charge.dispute.created"}:
+            reverse_referral_commission(conn, stripe_object, event_type)
         conn.execute(
             "INSERT INTO processed_stripe_events (event_id, event_type) VALUES (?, ?)",
             (event_id, event_type),
