@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.16.0a14 - Public navigation and Help Center search
+
+- Added one consistent desktop and mobile navigation menu across the CarrierOS marketing, solutions, pricing, and Help Center pages.
+- Rebuilt Help Center search as an accessible, browser-safe control with live filtering, a clear action, keyboard shortcuts, and an independently cached script.
+
 ## 0.16.0a13 - Dependency updates
 
 - Updated the GitHub Actions checkout and Python setup runtimes to version 7.

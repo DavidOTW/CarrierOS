@@ -4,11 +4,10 @@
 {% set page_signup_href = '/signup?plan=carrier_startup' if seo_slug == 'carrier-startup-checklist' and signups_open else signup_href %}
 {% set page_signup_cta = 'Start the $10 startup plan' if seo_slug == 'carrier-startup-checklist' and signups_open else signup_cta %}
 <main class="public-marketing seo-landing" id="top">
-  <header class="public-nav">
-    <a class="public-brand" href="/"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a>
-    <nav aria-label="Primary navigation"><a href="/#platform">Platform</a><a href="/solutions">Solutions</a><a href="/help">Help center</a><a href="/#pricing">Pricing</a><a href="/demo">Live demo</a></nav>
-    <div class="public-nav-actions"><a class="public-signin" href="/login">Log in</a><a class="public-btn public-btn-dark" href="{{ page_signup_href }}">{{ page_signup_cta }} <span aria-hidden="true">&rarr;</span></a></div>
-  </header>
+  {% set nav_current = 'solutions' %}
+  {% set nav_primary_href = page_signup_href %}
+  {% set nav_primary_label = page_signup_cta %}
+  {% include "_public_navigation.html" %}
 
   <section class="seo-hero">
     <div>

@@ -2,11 +2,8 @@
 {% block title %}{{ seo_title }}{% endblock %}
 {% block content %}
 <main class="public-marketing solutions-site" id="top">
-  <header class="public-nav">
-    <a class="public-brand" href="/" aria-label="CarrierOS home"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a>
-    <nav aria-label="Primary navigation"><a href="/#platform">Platform</a><a href="/solutions" aria-current="page">Solutions</a><a href="/help">Help center</a><a href="/#pricing">Pricing</a><a href="/demo">Live demo</a></nav>
-    <div class="public-nav-actions"><a class="public-signin" href="/login">Log in</a><a class="public-btn public-btn-dark" href="{{ signup_href }}">{{ signup_cta }} <span aria-hidden="true">&rarr;</span></a></div>
-  </header>
+  {% set nav_current = 'solutions' %}
+  {% include "_public_navigation.html" %}
 
   <section class="solutions-hero">
     <div>

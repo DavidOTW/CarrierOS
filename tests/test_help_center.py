@@ -20,6 +20,11 @@ def test_help_center_lists_and_serves_every_workspace_guide(
         assert 'href="/help/referral-program"' in center.text
         assert 'href="/help/billing"' in center.text
         assert 'rel="canonical" href="https://otwcarrieros.com/help"' in center.text
+        assert 'id="help-search"' in center.text
+        assert 'name="q"' in center.text
+        assert 'aria-describedby="help-search-status"' in center.text
+        assert 'id="help-search-clear"' in center.text
+        assert 'src="/static/help-search.js?v=' in center.text
 
         for slug, guide in HELP_GUIDES.items():
             page = client.get(f"/help/{slug}")
@@ -31,6 +36,37 @@ def test_help_center_lists_and_serves_every_workspace_guide(
                 f'rel="canonical" href="https://otwcarrieros.com/help/{slug}"'
                 in page.text
             )
+
+
+def test_help_search_asset_and_public_navigation_regression(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "help-search.db"))
+    with TestClient(app) as client:
+        search_script = client.get("/static/help-search.js")
+        assert search_script.status_code == 200
+        assert 'input.addEventListener("input", filterGuides)' in search_script.text
+        assert 'clear?.addEventListener("click"' in search_script.text
+        assert 'event.key === "/"' in search_script.text
+
+        for path in (
+            "/",
+            "/solutions",
+            "/small-fleet-trucking-software",
+            "/help",
+            "/help/dispatch",
+            "/checkout",
+            "/privacy",
+            "/terms",
+        ):
+            response = client.get(path)
+            assert response.status_code == 200
+            assert 'class="public-nav-links"' in response.text
+            assert 'class="public-mobile-menu"' in response.text
+            assert 'aria-label="Mobile navigation"' in response.text
+            assert 'href="/solutions"' in response.text
+            assert 'href="/help"' in response.text
+            assert 'href="/demo"' in response.text
 
 
 def test_help_center_is_linked_and_indexed(
