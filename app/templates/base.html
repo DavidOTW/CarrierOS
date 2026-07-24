@@ -1,6 +1,18 @@
 <!doctype html>
 <html lang="en">
 <head>
+  {% if google_analytics_measurement_id %}
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id={{ google_analytics_measurement_id }}"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', '{{ google_analytics_measurement_id }}', {
+      page_location: window.location.origin + window.location.pathname
+    });
+  </script>
+  {% endif %}
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0f2f46">

@@ -105,6 +105,12 @@ def test_sitemap_and_internal_links_cover_the_public_search_architecture(
 
         home = client.get("/")
         assert 'href="/solutions"' in home.text
+        assert home.text.count(
+            "https://www.googletagmanager.com/gtag/js?id=G-RMCP51Y4Y7"
+        ) == 1
+        assert "gtag('config', 'G-RMCP51Y4Y7'" in home.text
+        assert "page_location: window.location.origin + window.location.pathname" in home.text
+        assert "page_location: window.location.href" not in home.text
         assert (
             'name="google-site-verification" '
             'content="p9i3Hm7KxwLc1INuRGmRfeFNVX0S-JLsm3f8oDezB0A"'
@@ -116,6 +122,11 @@ def test_sitemap_and_internal_links_cover_the_public_search_architecture(
 
         login = client.get("/login")
         assert login.headers["x-robots-tag"] == "noindex, nofollow"
+        assert "https://www.googletagmanager.com/gtag/js?id=G-RMCP51Y4Y7" in login.text
+
+        privacy = client.get("/privacy")
+        assert "Cookies and website analytics" in privacy.text
+        assert "without URL query parameters" in privacy.text
 
 
 def test_every_search_page_has_substantial_unique_operating_content() -> None:
