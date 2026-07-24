@@ -7,6 +7,21 @@
 {% if user.active_unit_limit == 0 %}<div class="notice good"><strong>Your Carrier Startup workspace is ready.</strong> Begin with the guided <a href="/startup">carrier-launch checklist</a>, then use the <a href="/growth">equipment finance mentor</a> before committing to a truck. Upgrade from Billing when you are ready to activate a power unit.</div>{% endif %}
 {% if user.active_unit_limit != 0 and (not bundle.drivers or not bundle.vehicles) %}<div class="notice workspace-start"><strong>Start your workspace:</strong> add an active power unit, then create its driver and pay profile. No shared or sample financial data is added to customer accounts.</div>{% endif %}
 
+{% if referral_admin %}
+<section class="workspace-panel" aria-labelledby="driver-referral-heading">
+  <div class="workspace-panel-heading"><div><span>Private OTW program</span><h3 id="driver-referral-heading">Driver referral program</h3></div><a href="/referrals">Manage program &rarr;</a></div>
+  <p>Create private driver invitations, review recurring referral earnings, and manage program links from your protected CarrierOS account.</p>
+</section>
+{% else %}
+<section class="workspace-panel" aria-labelledby="share-carrieros-heading">
+  <div class="workspace-panel-heading"><div><span>Spread the word</span><h3 id="share-carrieros-heading">Know another carrier that could use CarrierOS?</h3></div></div>
+  <p>Share this link with an owner-operator or small fleet that wants clearer dispatch, load, driver-pay, and financial workflows.</p>
+  <div class="field"><label for="share-carrieros-link">CarrierOS referral link</label><input id="share-carrieros-link" value="{{ share_carrieros_url }}" readonly onclick="this.select()"></div>
+  <div class="form-actions"><button class="btn btn-secondary btn-small" type="button" onclick="navigator.clipboard.writeText(document.getElementById('share-carrieros-link').value).then(()=>this.textContent='Copied')">Copy referral link</button></div>
+  <p class="small muted">This community sharing link does not create commissions, credits, discounts, or payment rights.</p>
+</section>
+{% endif %}
+
 <section class="workspace-metrics" aria-label="Fleet summary">
   <article><span>Total revenue</span><strong>{{ money(stats.total_revenue) }}</strong><small>Included loads</small></article>
   <article><span>Company profit</span><strong class="{% if stats.load_company_profit_before_owner_distribution >= 0 %}positive{% else %}negative{% endif %}">{{ money(stats.load_company_profit_before_owner_distribution) }}</strong><small>Before owner distribution</small></article>

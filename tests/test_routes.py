@@ -130,6 +130,9 @@ def test_public_marketing_home_uses_launch_pricing_and_real_app_links(
         assert "height:calc(100svh - 84px)" in stylesheet.text
         assert "align-content:start" in stylesheet.text
         assert "overflow-y:auto" in stylesheet.text
+        assert "window.carrierAnalytics" in response.text
+        assert "begin_signup" in response.text
+        assert "view_pricing" in response.text
 
 
 def test_search_pages_sitemap_and_crawl_controls(
@@ -201,6 +204,9 @@ def test_signup_requires_verified_billing_before_access(monkeypatch: pytest.Monk
     with TestClient(app) as client:
         response = signup(client, "pending@example.com", activate=False)
         assert response.headers["location"] == "/billing?new=1"
+        billing = client.get("/billing?new=1")
+        assert 'data-analytics-event="sign_up"' in billing.text
+        assert 'data-analytics-plan="owner_operator"' in billing.text
         organization = query_one("SELECT * FROM organizations")
         assert organization["subscription_status"] == "incomplete"
         assert organization["trial_ends_at"] is None
@@ -532,7 +538,11 @@ def test_security_headers_and_no_default_credentials(monkeypatch: pytest.MonkeyP
         page = client.get("/login")
         assert page.status_code == 200
         assert page.headers["x-frame-options"] == "DENY"
-        assert "frame-ancestors 'none'" in page.headers["content-security-policy"]
+        csp = page.headers["content-security-policy"]
+        assert "frame-ancestors 'none'" in csp
+        assert "https://www.googletagmanager.com" in csp
+        assert "https://www.google-analytics.com" in csp
+        assert "https://region1.google-analytics.com" in csp
         assert page.headers["cache-control"] == "no-store"
         assert page.headers["cross-origin-opener-policy"] == "same-origin"
         assert "ChangeMe" not in page.text

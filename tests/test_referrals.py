@@ -97,6 +97,10 @@ def test_referral_program_attributes_recurring_payments_and_adjusts_reversals(
         referral_page = admin_client.get("/referrals")
         assert referral_page.status_code == 200
         assert "Drivers earn 50% while their referrals keep paying." in referral_page.text
+        admin_dashboard = admin_client.get("/dashboard")
+        assert "Private OTW program" in admin_dashboard.text
+        assert 'href="/referrals"' in admin_dashboard.text
+        assert "CarrierOS referral link" not in admin_dashboard.text
 
         invite = admin_client.post(
             "/referrals/partners",
@@ -370,6 +374,10 @@ def test_referral_program_blocks_self_referrals_and_non_admin_management(
             assert forbidden.status_code == 403
             dashboard = other_client.get("/dashboard")
             assert 'href="/referrals"' not in dashboard.text
+            assert "Private OTW program" not in dashboard.text
+            assert "CarrierOS referral link" in dashboard.text
+            assert "utm_source=customer_dashboard" in dashboard.text
+            assert "does not create commissions" in dashboard.text
 
 
 def test_referral_terms_and_commission_basis_are_explicit(
