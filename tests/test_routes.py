@@ -199,6 +199,43 @@ def test_public_demo_is_sample_only_and_includes_all_pay_models(
         assert not re.search(r"<form[^>]+method=[\"']post", response.text, re.IGNORECASE)
 
 
+def test_public_demo_mirrors_current_workspace_and_referral_scope(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "expanded-demo.db"))
+    with TestClient(app) as client:
+        response = client.get("/demo")
+        assert response.status_code == 200
+        for workspace in (
+            "Dashboard",
+            "Dispatch",
+            "Rate quotes",
+            "RateCon inbox",
+            "Loads",
+            "Drivers &amp; equipment",
+            "Money",
+            "Reports",
+            "Shortcuts",
+            "Help center",
+            "Compliance",
+            "Documents",
+            "Detention &amp; A/R",
+            "Weekly fuel",
+            "Growth mentor",
+            "Document audits",
+            "Startup guide",
+            "Onboarding",
+            "Referral &amp; sharing",
+            "Settings",
+            "Billing",
+        ):
+            assert workspace in response.text
+        assert "No automatic commission" in response.text
+        assert "Private OTW account only" in response.text
+        assert "Other CarrierOS customers do not see OTW" in response.text
+        assert "No silent record changes" in response.text
+
+
 def test_signup_requires_verified_billing_before_access(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "pending.db"))
     with TestClient(app) as client:
