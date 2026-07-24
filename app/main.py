@@ -130,12 +130,15 @@ from .referrals import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
-VERSION = "0.16.0a11"
+VERSION = "0.16.0a12"
 ENVIRONMENT = os.getenv("CARRIEROS_ENV", "development").strip().lower()
 IS_PRODUCTION = ENVIRONMENT == "production"
 CANONICAL_BASE_URL = os.getenv(
     "CARRIEROS_CANONICAL_URL", "https://otwcarrieros.com"
 ).strip().rstrip("/")
+GOOGLE_ANALYTICS_MEASUREMENT_ID = os.getenv(
+    "CARRIEROS_GOOGLE_ANALYTICS_ID", "G-RMCP51Y4Y7"
+).strip()
 SESSION_SECRET = os.getenv("CARRIEROS_SECRET", "")
 if IS_PRODUCTION and len(SESSION_SECRET) < 32:
     raise RuntimeError("CARRIEROS_SECRET must be at least 32 characters in production.")
@@ -937,6 +940,7 @@ def render(request: Request, name: str, context: dict[str, Any] | None = None, s
         "today": date.today(),
         "version": VERSION,
         "support_email": SUPPORT_EMAIL,
+        "google_analytics_measurement_id": GOOGLE_ANALYTICS_MEASUREMENT_ID,
         "billing_mode": BILLING_MODE,
         "signups_open": customer_signups_open(),
         "signup_href": (

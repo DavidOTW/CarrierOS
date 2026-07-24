@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.16.0a12 - Google Analytics
+
+- Installed the `G-RMCP51Y4Y7` Google Analytics 4 tag across the CarrierOS website and application.
+- Configured analytics page locations without URL query parameters so reset tokens and other query values are not sent as page-location data.
+- Expanded the Privacy Policy with a plain-language Google Analytics disclosure and opt-out information.
+
 ## 0.16.0a11 - Google Search Console verification
 
 - Added the public Google Search Console verification tag for the canonical `https://otwcarrieros.com/` URL-prefix property.
