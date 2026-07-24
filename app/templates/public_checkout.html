@@ -2,11 +2,10 @@
 {% block title %}{{ seo_title }}{% endblock %}
 {% block content %}
 <main class="public-marketing public-checkout-page" id="top">
-  <header class="public-nav">
-    <a class="public-brand" href="/"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a>
-    <nav aria-label="Primary navigation"><a href="/">Platform</a><a href="/solutions">Solutions</a><a href="/help">Help center</a><a href="/demo">Live demo</a><a href="#plans">Plans</a></nav>
-    <div class="public-nav-actions"><a class="public-signin" href="/login">Log in</a></div>
-  </header>
+  {% set nav_current = 'pricing' %}
+  {% set nav_primary_href = '/demo' %}
+  {% set nav_primary_label = 'Open live demo' %}
+  {% include "_public_navigation.html" %}
   <section class="public-checkout-hero">
     <span class="public-release"><i></i> Secure Stripe checkout &middot; 14-day trial</span>
     <h1>Choose the workspace that fits your fleet.</h1>

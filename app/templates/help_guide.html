@@ -2,13 +2,10 @@
 {% block title %}{{ seo_title }}{% endblock %}
 {% block content %}
 <main class="help-site help-detail-site" id="top">
-  <header class="help-topbar">
-    <a class="public-brand" href="/" aria-label="CarrierOS home"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a>
-    <nav aria-label="Help center navigation"><a href="/solutions">Solutions</a><a href="/help">Help center</a><a href="/help#workflow">Workflow</a><a href="/demo">Live demo</a></nav>
-    <div class="help-topbar-actions">
-      {% if user %}<a class="public-btn public-btn-dark" href="{{ guide.route }}">Open this tab <span aria-hidden="true">&rarr;</span></a>{% else %}<a class="public-signin" href="/login">Log in</a><a class="public-btn public-btn-dark" href="/checkout">Start free trial <span aria-hidden="true">&rarr;</span></a>{% endif %}
-    </div>
-  </header>
+  {% set nav_current = 'help' %}
+  {% set nav_primary_href = guide.route if user else signup_href %}
+  {% set nav_primary_label = 'Open this tab' if user else signup_cta %}
+  {% include "_public_navigation.html" %}
 
   <div class="help-detail-shell">
     <aside class="help-toc">
