@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0f2f46">
+  <meta name="author" content="Outside The Wire Logistics LLC">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="CarrierOS">
@@ -13,12 +14,15 @@
   {% if canonical_url %}<link rel="canonical" href="{{ canonical_url }}">{% endif %}
   {% if seo_title and seo_description %}
   <meta property="og:site_name" content="CarrierOS">
+  <meta property="og:locale" content="en_US">
   <meta property="og:title" content="{{ seo_title }}">
   <meta property="og:description" content="{{ seo_description }}">
   <meta property="og:type" content="website">
   <meta property="og:url" content="{{ canonical_url }}">
   <meta property="og:image" content="{{ social_image_url }}">
   <meta property="og:image:alt" content="CarrierOS — Run the fleet. Know the profit.">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="{{ seo_title }}">
   <meta name="twitter:description" content="{{ seo_description }}">
@@ -51,6 +55,7 @@
       <div class="nav-section">Review &amp; tools</div>
       <a class="{% if request.url.path.startswith('/idle') %}active{% endif %}" href="/idle"><span class="nav-icon">RP</span>Reports</a>
       <a class="{% if request.url.path.startswith('/links') %}active{% endif %}" href="/links"><span class="nav-icon">SC</span>Shortcuts</a>
+      <a href="/help"><span class="nav-icon">HC</span>Help center</a>
       <a class="{% if request.url.path.startswith('/compliance') %}active{% endif %}" href="/compliance"><span class="nav-icon">CP</span>Compliance</a>
       <a class="{% if request.url.path.startswith('/documents') %}active{% endif %}" href="/documents"><span class="nav-icon">DC</span>Documents</a>
       <a class="{% if request.url.path.startswith('/receivables') %}active{% endif %}" href="/receivables"><span class="nav-icon">AR</span>Detention &amp; A/R</a>
@@ -60,11 +65,12 @@
       <a class="{% if request.url.path.startswith('/startup') %}active{% endif %}" href="/startup"><span class="nav-icon">SU</span>Startup guide</a>
       <div class="nav-section">Administration</div>
       <a class="{% if request.url.path.startswith('/onboarding') %}active{% endif %}" href="/onboarding"><span class="nav-icon">ON</span>Onboarding</a>
+      {% if referral_admin %}<a class="{% if request.url.path.startswith('/referrals') %}active{% endif %}" href="/referrals"><span class="nav-icon">RF</span>Referral program</a>{% endif %}
       <a class="{% if request.url.path.startswith('/settings') %}active{% endif %}" href="/settings"><span class="nav-icon">ST</span>Settings</a>
       <a class="{% if request.url.path.startswith('/billing') %}active{% endif %}" href="/billing"><span class="nav-icon">BL</span>Billing</a>
     </nav>
     {% if user %}<div class="sidebar-account"><span>{{ user.full_name[:1]|upper }}</span><div><strong>{{ user.organization_name }}</strong><small>{% if user.active_unit_limit == 0 %}Startup planning &middot; 0 units{% else %}Up to {{ user.active_unit_limit }} active power units{% endif %}</small></div></div>{% endif %}
-    <div class="sidebar-footer">Private customer workspace &middot; v{{ version }}<br><a href="/terms">Terms</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="mailto:{{ support_email }}">Support</a></div>
+    <div class="sidebar-footer">Private customer workspace &middot; v{{ version }}<br><a href="/help">Help</a> &middot; <a href="/terms">Terms</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="mailto:{{ support_email }}">Support</a></div>
   </aside>
   <main class="main">
     <header class="topbar">
@@ -74,7 +80,7 @@
         {% if user %}<div class="user-avatar">{{ user.full_name[:1]|upper }}</div><div class="user-chip"><strong>{{ user.full_name }}</strong><a href="/logout">Log out</a></div>{% endif %}
       </div>
       <details class="mobile-nav"><summary>Menu</summary><div class="mobile-menu-panel">
-        <a href="/dashboard">Dashboard</a><a href="/dispatch">Dispatch</a><a href="/rate-quotes">Rate quotes</a><a href="/ratecons">RateCon inbox</a><a href="/loads">Loads</a><a href="/drivers">Drivers &amp; equipment</a><a href="/financials">Money</a><a href="/idle">Reports</a><a href="/links">Shortcuts</a><a href="/compliance">Compliance</a><a href="/documents">Documents</a><a href="/receivables">A/R</a><a href="/fuel">Fuel</a><a href="/growth">Growth</a><a href="/audits">Audits</a><a href="/startup">Startup</a><a href="/onboarding">Onboarding</a><a href="/settings">Settings</a><a href="/billing">Billing</a><a href="/logout">Log out</a>
+        <a href="/dashboard">Dashboard</a><a href="/dispatch">Dispatch</a><a href="/rate-quotes">Rate quotes</a><a href="/ratecons">RateCon inbox</a><a href="/loads">Loads</a><a href="/drivers">Drivers &amp; equipment</a><a href="/financials">Money</a><a href="/idle">Reports</a><a href="/links">Shortcuts</a><a href="/help">Help center</a><a href="/compliance">Compliance</a><a href="/documents">Documents</a><a href="/receivables">A/R</a><a href="/fuel">Fuel</a><a href="/growth">Growth</a><a href="/audits">Audits</a><a href="/startup">Startup</a><a href="/onboarding">Onboarding</a>{% if referral_admin %}<a href="/referrals">Referral program</a>{% endif %}<a href="/settings">Settings</a><a href="/billing">Billing</a><a href="/logout">Log out</a>
       </div></details>
     </header>
     <div class="content">{% if flash %}<div class="notice {{ flash_kind or 'good' }}">{{ flash }}</div>{% endif %}

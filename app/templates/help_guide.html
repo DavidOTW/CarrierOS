@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}{{ seo_title }}{% endblock %}
+{% block content %}
+<main class="help-site help-detail-site" id="top">
+  <header class="help-topbar">
+    <a class="public-brand" href="/" aria-label="CarrierOS home"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a>
+    <nav aria-label="Help center navigation"><a href="/solutions">Solutions</a><a href="/help">Help center</a><a href="/help#workflow">Workflow</a><a href="/demo">Live demo</a></nav>
+    <div class="help-topbar-actions">
+      {% if user %}<a class="public-btn public-btn-dark" href="{{ guide.route }}">Open this tab <span aria-hidden="true">&rarr;</span></a>{% else %}<a class="public-signin" href="/login">Log in</a><a class="public-btn public-btn-dark" href="/checkout">Start free trial <span aria-hidden="true">&rarr;</span></a>{% endif %}
+    </div>
+  </header>
+
+  <div class="help-detail-shell">
+    <aside class="help-toc">
+      <a class="help-back" href="/help"><span aria-hidden="true">&larr;</span> All guides</a>
+      {% for group in groups %}
+      <section><h2>{{ group.title }}</h2>
+        {% for item in guides if item.group == group.key %}
+        <a class="{% if item.slug == guide.slug %}active{% endif %}" href="/help/{{ item.slug }}"><span>{{ item.icon }}</span>{{ item.title }}</a>
+        {% endfor %}
+      </section>
+      {% endfor %}
+    </aside>
+
+    <article class="help-article">
+      <nav class="help-breadcrumb" aria-label="Breadcrumb"><a href="/help">Help center</a><span>/</span><span>{{ guide.title }}</span></nav>
+      <header class="help-article-header">
+        <span class="help-article-icon">{{ guide.icon }}</span>
+        <span class="public-eyebrow">{{ guide_group.title }}</span>
+        <h1>{{ guide.title }}</h1>
+        <p>{{ guide.summary }}</p>
+        <div class="help-article-actions">{% if user %}<a class="public-btn public-btn-orange" href="{{ guide.route }}">Open {{ guide.title }} <span aria-hidden="true">&rarr;</span></a>{% else %}<a class="public-btn public-btn-orange" href="/signup">Start free trial <span aria-hidden="true">&rarr;</span></a><a class="public-btn public-btn-light" href="/demo">Explore the demo</a>{% endif %}</div>
+      </header>
+
+      <section class="help-article-section">
+        <span class="help-section-number">01</span><div><h2>What this tab is for</h2><p>{{ guide.purpose }}</p></div>
+      </section>
+
+      <section class="help-article-section">
+        <span class="help-section-number">02</span><div><h2>How to use it</h2><ol class="help-steps">{% for step in guide.steps %}<li><span>{{ loop.index }}</span><p>{{ step }}</p></li>{% endfor %}</ol></div>
+      </section>
+
+      <section class="help-article-section">
+        <span class="help-section-number">03</span><div><h2>What to understand</h2><dl class="help-key-points">{% for title, detail in guide.key_points %}<div><dt>{{ title }}</dt><dd>{{ detail }}</dd></div>{% endfor %}</dl></div>
+      </section>
+
+      <section class="help-article-section">
+        <span class="help-section-number">04</span><div><h2>Good operating habits</h2><ul class="help-tips">{% for tip in guide.tips %}<li>{{ tip }}</li>{% endfor %}</ul></div>
+      </section>
+
+      {% if related_guides %}<section class="help-related"><span class="public-eyebrow">Continue the workflow</span><h2>Related guides</h2><div>{% for item in related_guides %}<a href="/help/{{ item.slug }}"><span>{{ item.icon }}</span><strong>{{ item.title }}</strong><small>{{ item.summary }}</small><b aria-hidden="true">&rarr;</b></a>{% endfor %}</div></section>{% endif %}
+
+      <aside class="help-disclaimer"><strong>Important operating boundary</strong><p>CarrierOS provides records, calculations, workflow controls, and decision support from the information entered by the company. It does not replace dispatcher safety judgment, written contracts, payroll processing, accounting reconciliation, legal advice, insurance advice, tax advice, or regulatory verification.</p></aside>
+
+      <nav class="help-next" aria-label="Guide pagination">
+        {% if previous_guide %}<a href="/help/{{ previous_guide.slug }}"><span>Previous guide</span><strong><i aria-hidden="true">&larr;</i> {{ previous_guide.title }}</strong></a>{% endif %}
+        {% if next_guide %}<a href="/help/{{ next_guide.slug }}"><span>Next guide</span><strong>{{ next_guide.title }} <i aria-hidden="true">&rarr;</i></strong></a>{% endif %}
+      </nav>
+    </article>
+  </div>
+</main>
+{% endblock %}

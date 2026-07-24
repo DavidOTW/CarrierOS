@@ -166,6 +166,74 @@ CREATE TABLE IF NOT EXISTS drivers (
     FOREIGN KEY (vehicle_id) REFERENCES vehicles(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS referral_partners (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_organization_id INTEGER,
+    driver_id INTEGER,
+    created_by_user_id INTEGER,
+    display_name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    referral_code TEXT NOT NULL UNIQUE,
+    portal_token_hash TEXT NOT NULL UNIQUE,
+    active INTEGER NOT NULL DEFAULT 0,
+    terms_version TEXT,
+    terms_accepted_at TEXT,
+    deactivated_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (source_organization_id, driver_id),
+    FOREIGN KEY (source_organization_id) REFERENCES organizations(id) ON DELETE SET NULL,
+    FOREIGN KEY (driver_id) REFERENCES drivers(id) ON DELETE SET NULL,
+    FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS referral_attributions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    referred_organization_id INTEGER UNIQUE,
+    referral_partner_id INTEGER NOT NULL,
+    referral_code_snapshot TEXT NOT NULL,
+    referred_company_snapshot TEXT NOT NULL,
+    attributed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (referred_organization_id) REFERENCES organizations(id) ON DELETE SET NULL,
+    FOREIGN KEY (referral_partner_id) REFERENCES referral_partners(id)
+);
+
+CREATE TABLE IF NOT EXISTS referral_commissions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    referral_partner_id INTEGER NOT NULL,
+    referred_organization_id INTEGER,
+    stripe_invoice_id TEXT NOT NULL UNIQUE,
+    stripe_charge_id TEXT,
+    referred_company_snapshot TEXT NOT NULL,
+    subscription_payment_cents INTEGER NOT NULL,
+    eligible_basis_cents INTEGER NOT NULL,
+    commission_rate_bps INTEGER NOT NULL DEFAULT 5000,
+    commission_cents INTEGER NOT NULL,
+    reversed_cents INTEGER NOT NULL DEFAULT 0,
+    paid_cents INTEGER NOT NULL DEFAULT 0,
+    offset_applied_cents INTEGER NOT NULL DEFAULT 0,
+    eligible_on TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    earned_at TEXT NOT NULL,
+    paid_at TEXT,
+    paid_by_user_id INTEGER,
+    payout_reference TEXT,
+    reversed_at TEXT,
+    reversal_event_type TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (referral_partner_id) REFERENCES referral_partners(id),
+    FOREIGN KEY (referred_organization_id) REFERENCES organizations(id) ON DELETE SET NULL,
+    FOREIGN KEY (paid_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_referral_partners_source_org
+ON referral_partners(source_organization_id, active);
+
+CREATE INDEX IF NOT EXISTS idx_referral_attributions_partner
+ON referral_attributions(referral_partner_id);
+
+CREATE INDEX IF NOT EXISTS idx_referral_commissions_partner_status
+ON referral_commissions(referral_partner_id, status, eligible_on);
+
 CREATE TABLE IF NOT EXISTS weekly_fuel (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     organization_id INTEGER NOT NULL,
@@ -595,6 +663,14 @@ LOAD_MIGRATIONS = (
     ("ratecon_received_at", "ALTER TABLE loads ADD COLUMN ratecon_received_at TEXT"),
 )
 
+REFERRAL_COMMISSION_MIGRATIONS = (
+    ("stripe_charge_id", "ALTER TABLE referral_commissions ADD COLUMN stripe_charge_id TEXT"),
+    (
+        "offset_applied_cents",
+        "ALTER TABLE referral_commissions ADD COLUMN offset_applied_cents INTEGER NOT NULL DEFAULT 0",
+    ),
+)
+
 
 def get_db_path() -> Path:
     return Path(os.getenv("CARRIEROS_DB", str(DEFAULT_DB_PATH)))
@@ -777,6 +853,16 @@ def init_db(seed: bool = False) -> None:
         for column, statement in LOAD_MIGRATIONS:
             if column not in load_columns:
                 conn.execute(statement)
+        referral_commission_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(referral_commissions)")
+        }
+        for column, statement in REFERRAL_COMMISSION_MIGRATIONS:
+            if column not in referral_commission_columns:
+                conn.execute(statement)
+        conn.execute(
+            """CREATE INDEX IF NOT EXISTS idx_referral_commissions_charge
+            ON referral_commissions(stripe_charge_id)"""
+        )
         conn.execute(
             """CREATE UNIQUE INDEX IF NOT EXISTS idx_loads_opportunity_unique
             ON loads(opportunity_id) WHERE opportunity_id IS NOT NULL"""
@@ -1045,10 +1131,34 @@ def export_organization_data(organization_id: int) -> dict[str, Any]:
                 (organization_id,),
             ).fetchall()
             payload[table] = [dict(row) for row in rows]
+        referral_partners = conn.execute(
+            """SELECT * FROM referral_partners
+            WHERE source_organization_id=? ORDER BY id""",
+            (organization_id,),
+        ).fetchall()
+        partner_ids = [int(row["id"]) for row in referral_partners]
+        payload["referral_partners"] = [dict(row) for row in referral_partners]
+        if partner_ids:
+            placeholders = ",".join("?" for _ in partner_ids)
+            for table in ("referral_attributions", "referral_commissions"):
+                rows = conn.execute(
+                    f"""SELECT * FROM {table}
+                    WHERE referral_partner_id IN ({placeholders}) ORDER BY id""",
+                    partner_ids,
+                ).fetchall()
+                payload[table] = [dict(row) for row in rows]
+        else:
+            payload["referral_attributions"] = []
+            payload["referral_commissions"] = []
         return payload
 
 
 _ORGANIZATION_DELETE_GUARDS = {
+    "audit_events_no_update": """CREATE TRIGGER IF NOT EXISTS audit_events_no_update
+BEFORE UPDATE ON audit_events
+BEGIN
+    SELECT RAISE(ABORT, 'audit events are immutable');
+END;""",
     "opportunity_snapshots_no_delete": """CREATE TRIGGER IF NOT EXISTS opportunity_snapshots_no_delete
 BEFORE DELETE ON opportunity_snapshots
 BEGIN

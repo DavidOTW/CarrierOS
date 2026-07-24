@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}{{ seo_title }}{% endblock %}
+{% block content %}
+<main class="public-marketing solutions-site" id="top">
+  <header class="public-nav">
+    <a class="public-brand" href="/" aria-label="CarrierOS home"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a>
+    <nav aria-label="Primary navigation"><a href="/#platform">Platform</a><a href="/solutions" aria-current="page">Solutions</a><a href="/help">Help center</a><a href="/#pricing">Pricing</a><a href="/demo">Live demo</a></nav>
+    <div class="public-nav-actions"><a class="public-signin" href="/login">Log in</a><a class="public-btn public-btn-dark" href="{{ signup_href }}">{{ signup_cta }} <span aria-hidden="true">&rarr;</span></a></div>
+  </header>
+
+  <section class="solutions-hero">
+    <div>
+      <nav class="seo-breadcrumb" aria-label="Breadcrumb"><a href="/">Home</a><span>/</span><span>Solutions</span></nav>
+      <span class="public-eyebrow">CarrierOS solutions</span>
+      <h1>Small-carrier software built around the work between an offer and the cash.</h1>
+      <p>Explore the operating problems CarrierOS is designed to organize: rate decisions, dispatch, documents, driver pay, load profit, receivables, compliance attention, and the workflows used by owner-operators, box-truck fleets, and hotshot carriers.</p>
+      <div class="public-hero-actions"><a class="public-btn public-btn-orange" href="/demo">Explore the live demo <span aria-hidden="true">&rarr;</span></a><a class="public-btn public-btn-light" href="{{ signup_href }}">{{ signup_cta }}</a></div>
+    </div>
+    <aside>
+      <span>PRODUCT BOUNDARY</span>
+      <strong>One operating picture.<br>Clear system roles.</strong>
+      <p>CarrierOS connects carrier records and operational estimates. It does not replace an ELD, GPS service, load board, payroll processor, accounting ledger, or professional legal, tax, insurance, safety, and regulatory guidance.</p>
+      <a href="/help">Read the product guides <span aria-hidden="true">&rarr;</span></a>
+    </aside>
+  </section>
+
+  <section class="solutions-map" aria-label="CarrierOS workflow">
+    <span>Evaluate the offer</span><i aria-hidden="true">&rarr;</i><span>Review the terms</span><i aria-hidden="true">&rarr;</i><span>Dispatch the load</span><i aria-hidden="true">&rarr;</i><span>Document delivery</span><i aria-hidden="true">&rarr;</i><span>Settle and collect</span>
+  </section>
+
+  {% for group in groups %}
+  <section class="public-section solution-group">
+    <div class="solution-group-intro">
+      <span class="public-eyebrow">{{ group.eyebrow }}</span>
+      <h2>{{ group.title }}</h2>
+      <p>{{ group["copy"] }}</p>
+    </div>
+    <div class="solution-card-grid">
+      {% for page in group.pages %}
+      <a href="/{{ page.slug }}">
+        <span>0{{ loop.index }}</span>
+        <h3>{{ page.eyebrow }}</h3>
+        <p>{{ page.card_copy or page.description }}</p>
+        <b>Explore this solution <i aria-hidden="true">&rarr;</i></b>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+
+  <section class="solutions-proof">
+    <div><span class="public-eyebrow">Built by a carrier</span><h2>Operational software shaped by logistics experience.</h2></div>
+    <p>CarrierOS was founded by David Bryant, a U.S. Marine Corps combat veteran, Purple Heart recipient, carrier owner, and logistics leader with 20 years of experience. The product is designed around the practical records and review habits a small carrier needs to operate with clearer context.</p>
+  </section>
+
+  <section class="public-launch"><span class="public-eyebrow">See the workflow before signing up</span><h2>Use the sample fleet to explore CarrierOS.</h2><p>The live demo uses fictional data and does not save changes.</p><div><a class="public-btn public-btn-orange" href="/demo">Open the live demo <span aria-hidden="true">&rarr;</span></a><a class="public-btn public-btn-outline" href="{{ signup_href }}">{{ signup_cta }}</a></div></section>
+
+  <footer class="public-footer"><a class="public-brand" href="/"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a><p>A product of <a href="https://www.outsidethewirelogistics.com/">Outside The Wire Logistics LLC</a>.</p><nav><a href="/solutions">Solutions</a><a href="/help">Help center</a><a href="/demo">Live demo</a><a href="/checkout">Plans</a><a href="/login">Customer login</a><a href="mailto:{{ support_email }}">Contact</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav><small>CarrierOS provides operating records and estimates from user-entered information. Verify results before relying on them.</small></footer>
+</main>
+{% endblock %}

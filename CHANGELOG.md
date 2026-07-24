@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.16.0a10 - CarrierOS search architecture
+
+- Added a crawlable CarrierOS Solutions hub and nine people-first pages for small-fleet TMS, dispatch, RateCon review, document management, receivables, compliance, owner-operators, box-truck fleets, and hotshot carriers.
+- Expanded the four existing search landing pages with practical operating detail, product boundaries, FAQs, and contextual internal links.
+- Corrected the server-level `noindex` conflict on the public Help Center and its 20 product guides.
+- Added breadcrumb, website, organization, founder, software, FAQ, and help-article structured data with unique canonical titles and descriptions.
+- Expanded homepage, demo, checkout, help, footer, robots, and sitemap connections so crawlers and people can reach the full public content architecture.
+
+## 0.16.0a9 - CarrierOS help center
+
+- Added a public, searchable help center with step-by-step operating guides for every workspace tab.
+- Added a guided offer-to-cash workflow, related-guide navigation, product boundaries, operating tips, and responsive mobile layouts.
+- Linked the help center from the customer workspace, mobile menu, marketing resources, public footer, and XML sitemap.
+- Added route, content, canonical-link, navigation, and sitemap coverage for the complete guide library.
+
+## 0.16.0a8 - Driver referral program draft
+
+- Added OTW-administered private driver invitations, secure activation and earnings portals, versioned referral terms acceptance, and unique public referral links.
+- Added first-touch signup attribution and a recurring 50% commission ledger for successful CarrierOS subscription invoices, with a 30-day confirmation hold and idempotent Stripe processing.
+- Added refund, void, and dispute adjustments; private driver earnings portals; and an administrator-controlled manual payout ledger.
+- Added self-referral blocking, required promotional-disclosure copy, noindex controls, token-path log redaction, and referral privacy and operations documentation.
+
 ## 0.16.0a4 - Phase 4 draft
 
 - Added a non-mutating production release-readiness gate for live billing, secure document storage, managed malware scanning, database integrity, schema version, and verified backup evidence.
