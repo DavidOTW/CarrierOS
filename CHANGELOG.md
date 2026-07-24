@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.16.0a15 - Account-scoped referral dashboards
+
+- Kept the paid OTW driver referral program and its management navigation limited to the configured CarrierOS referral-administrator account.
+- Added a non-commissionable CarrierOS sharing link to every other customer dashboard so carriers can spread the word without seeing OTW's private driver-pay controls.
+- Added route coverage proving the two dashboard experiences remain separated.
+
 ## 0.16.0a14 - Public navigation and Help Center search
 
 - Added one consistent desktop and mobile navigation menu across the CarrierOS marketing, solutions, pricing, and Help Center pages.

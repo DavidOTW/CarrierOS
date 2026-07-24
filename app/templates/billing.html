@@ -1,5 +1,7 @@
 {% extends "base.html" %}{% block title %}Billing &middot; CarrierOS{% endblock %}
 {% block content %}
+{% if new_account %}<span hidden data-analytics-event="sign_up" data-analytics-plan="{{ user.plan_code }}"></span>{% endif %}
+{% if checkout_result == 'success' %}<span hidden data-analytics-event="trial_started" data-analytics-plan="{{ user.plan_code }}"></span>{% endif %}
 <div class="page-heading"><div><h2>Billing</h2><p>Manage the plan that controls your active power-unit capacity.</p></div></div>
 {% if billing_mode == 'beta' and has_access %}<div class="notice good">Your founding-beta access is active. No payment method is required and no subscription charge will be made during this beta period.</div>{% elif billing_mode == 'beta' %}<div class="notice">Your founding-beta trial has ended. Email <a href="mailto:{{ support_email }}?subject=CarrierOS%20beta%20access">{{ support_email }}</a> to discuss continued access. No charge has been made.</div>{% elif checkout_result == 'success' %}<div class="notice">Stripe received your trial setup. CarrierOS will activate your workspace as soon as the signed billing confirmation arrives.</div>{% elif checkout_result == 'cancelled' %}<div class="notice">Checkout was cancelled. Your workspace has not been charged or activated.</div>{% elif new_account %}<div class="notice">Your private workspace is ready. Choose a plan below and complete Stripe checkout to begin the 14-day trial.</div>{% endif %}
 <div class="grid-2">
