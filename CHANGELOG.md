@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.16.0a11 - Google Search Console verification
+
+- Added the public Google Search Console verification tag for the canonical `https://otwcarrieros.com/` URL-prefix property.
+- Preserved the verification tag across every public template so Google can continue validating ownership after deployment.
+
 ## 0.16.0a10 - CarrierOS search architecture
 
 - Added a crawlable CarrierOS Solutions hub and nine people-first pages for small-fleet TMS, dispatch, RateCon review, document management, receivables, compliance, owner-operators, box-truck fleets, and hotshot carriers.
