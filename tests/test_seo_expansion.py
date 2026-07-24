@@ -105,6 +105,11 @@ def test_sitemap_and_internal_links_cover_the_public_search_architecture(
 
         home = client.get("/")
         assert 'href="/solutions"' in home.text
+        assert (
+            'name="google-site-verification" '
+            'content="p9i3Hm7KxwLc1INuRGmRfeFNVX0S-JLsm3f8oDezB0A"'
+            in home.text
+        )
         assert 'href="/owner-operator-business-software"' in home.text
         assert 'href="/box-truck-fleet-management-software"' in home.text
         assert 'href="/hotshot-trucking-software"' in home.text
