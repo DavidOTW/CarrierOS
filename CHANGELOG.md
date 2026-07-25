@@ -72,3 +72,15 @@
 - Added editable/cancelable loads and editable/voidable payments.
 - Added Excel-style load filtering, sorting, reporting, and export.
 - Corrected owner-pay and driver-balance workflows.
+# Next release
+
+- Added an authenticated Getting Started checklist that guides a carrier through
+  assumptions, equipment, driver pay, a first quote, a first load, and a safe
+  spreadsheet transition.
+- Added public Switching and Data & Security pages, plus a downloadable load
+  mapping CSV template to make the product easier to evaluate before signup.
+- Reordered the authenticated navigation around the daily dispatch workflow,
+  renamed Today to Dashboard, added a Dispatch shortcut, and made the mobile
+  menu independently scrollable so Log out remains reachable.
+- Added public marketing copy that explains a reversible, carrier-assisted
+  switch without inventing customer results or overstating security controls.

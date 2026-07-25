@@ -165,6 +165,28 @@ def test_public_demo_is_sample_only_and_includes_all_pay_models(
         assert not re.search(r"<form[^>]+method=[\"']post", response.text, re.IGNORECASE)
 
 
+def test_public_switching_and_security_pages_are_clear_about_migration_and_controls(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "public-trust.db"))
+    with TestClient(app) as client:
+        switching = client.get("/switching")
+        assert switching.status_code == 200
+        assert "spreadsheet archaeology" in switching.text
+        assert "Download template" in switching.text
+        assert '<link rel="canonical" href="https://otwcarrieros.com/switching">' in switching.text
+
+        security = client.get("/security")
+        assert security.status_code == 200
+        assert "Workspace isolation" in security.text
+        assert "independent security review" in security.text
+        assert '<link rel="canonical" href="https://otwcarrieros.com/security">' in security.text
+
+        template = client.get("/switching/template.csv")
+        assert template.status_code == 200
+        assert "Load number,Pickup date,Delivery date" in template.text
+
+
 def test_signup_requires_verified_billing_before_access(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "pending.db"))
     with TestClient(app) as client:
@@ -236,11 +258,14 @@ def test_signup_empty_workspace_and_authenticated_pages(monkeypatch: pytest.Monk
             "/dashboard", "/loads", "/loads/new", "/vehicles", "/drivers", "/fuel",
             "/payments", "/quotes", "/rate-quotes", "/rate-quotes/new", "/financials", "/idle", "/settings",
             "/compliance", "/onboarding", "/documents", "/receivables", "/links", "/billing",
-            "/audits", "/growth", "/startup",
+            "/audits", "/growth", "/startup", "/getting-started",
             "/manifest.webmanifest", "/service-worker.js",
         ):
             response = client.get(page)
             assert response.status_code == 200, f"{page}: {response.text[:500]}"
+        template = client.get("/switching/template.csv")
+        assert template.status_code == 200
+        assert "Load number,Pickup date,Delivery date" in template.text
         assert query_one("SELECT COUNT(*) AS total FROM loads")["total"] == 0
 
     with TestClient(app) as public_client:

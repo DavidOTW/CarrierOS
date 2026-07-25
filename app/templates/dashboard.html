@@ -6,6 +6,7 @@
 </div>
 {% if user.active_unit_limit == 0 %}<div class="notice good"><strong>Your Carrier Startup workspace is ready.</strong> Begin with the guided <a href="/startup">carrier-launch checklist</a>, then use the <a href="/growth">equipment finance mentor</a> before committing to a truck. Upgrade from Billing when you are ready to activate a power unit.</div>{% endif %}
 {% if user.active_unit_limit != 0 and (not bundle.drivers or not bundle.vehicles) %}<div class="notice workspace-start"><strong>Start your workspace:</strong> add an active power unit, then create its driver and pay profile. No shared or sample financial data is added to customer accounts.</div>{% endif %}
+{% if setup.completed < setup.total %}<section class="setup-dashboard-card"><div><span>FIRST 20 MINUTES</span><h3>Finish your CarrierOS setup</h3><p>{{ setup.completed }} of {{ setup.total }} steps complete. Start with assumptions, equipment, and a driver pay profile before relying on a load result.</p></div><div class="setup-dashboard-progress"><strong>{{ setup.percent }}%</strong><div class="progress"><span style="width:{{ setup.percent }}%"></span></div><a href="/getting-started">Open getting started &rarr;</a></div></section>{% endif %}
 
 <section class="workspace-metrics" aria-label="Fleet summary">
   <article><span>Total revenue</span><strong>{{ money(stats.total_revenue) }}</strong><small>Included loads</small></article>
@@ -42,7 +43,7 @@
   </aside>
 </div>
 
-<section class="workspace-panel availability-panel">
+<section id="availability" class="workspace-panel availability-panel">
   <div class="workspace-panel-heading"><div><span>Dispatch planning</span><h3>Driver &amp; unit availability</h3></div><div class="availability-heading-actions"><a href="/links">Open load boards</a><a href="/drivers">Manage contacts</a></div></div>
   <p class="availability-note">Plan the next load from each driver&rsquo;s latest scheduled delivery. Dates are based on CarrierOS load records, not live GPS or ELD data.</p>
   <div class="availability-grid">{% for item in driver_availability %}<article class="availability-card">

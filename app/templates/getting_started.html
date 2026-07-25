@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% block title %}Getting Started &middot; CarrierOS{% endblock %}
+{% block content %}
+<div class="page-title"><div><span class="workspace-kicker">First 20 minutes</span><h2>Get your carrier workspace ready</h2><p>Follow the same sequence a dispatcher uses every day. You can stop at any point and return here.</p></div><div class="actions"><a class="btn btn-primary" href="/rate-quotes/new">Run a profit check</a><a class="btn btn-secondary" href="/demo">View product demo</a></div></div>
+
+<section class="setup-hero card">
+  <div><span class="setup-kicker">ACTIVATION CHECKLIST</span><h3>{{ setup.completed }} of {{ setup.total }} steps complete</h3><p>CarrierOS becomes useful fastest when your assumptions, equipment, and pay agreements are entered before the first load.</p></div>
+  <div class="setup-progress" aria-label="{{ setup.percent }} percent complete"><strong>{{ setup.percent }}%</strong><div class="progress"><span style="width:{{ setup.percent }}%"></span></div><small>workspace setup</small></div>
+</section>
+
+<section class="setup-grid" aria-label="CarrierOS getting started checklist">
+{% for step in setup.steps %}<article class="setup-step {% if step.complete %}is-complete{% endif %}">
+  <div class="setup-step-number">{% if step.complete %}&check;{% else %}{{ '%02d'|format(loop.index) }}{% endif %}</div>
+  <div class="setup-step-copy"><span>{% if step.complete %}COMPLETE{% else %}NEXT STEP{% endif %}</span><h3>{{ step.label }}</h3><p>{{ step.detail }}</p><a class="btn {% if step.complete %}btn-secondary{% else %}btn-primary{% endif %} btn-small" href="{{ step.href }}">{{ step.action }} &rarr;</a></div>
+</article>{% endfor %}
+</section>
+
+<div class="grid grid-2 setup-lower">
+  <section class="card"><div class="section-title"><div><h3>Switch from your spreadsheet</h3><p>Keep your existing workbook as the source of truth while you map one clean history export into CarrierOS.</p></div></div><ol class="setup-list"><li>Download the CSV template and compare its columns with your workbook.</li><li>Prepare a small test set first, then reconcile revenue, miles, and driver pay with founder-assisted setup if needed.</li><li>Keep an export of your CarrierOS records before changing your daily process.</li></ol><div class="actions"><a class="btn btn-primary" href="/switching">Open switching plan</a><a class="btn btn-secondary" href="/switching/template.csv">Download CSV template</a></div></section>
+  <section class="card"><div class="section-title"><div><h3>Need a second set of eyes?</h3><p>Bring one load, one pay agreement, and your current overhead list to a short setup conversation.</p></div></div><div class="setup-support"><strong>Founder-assisted setup</strong><span>David can help you validate the first result before you rely on it operationally.</span><a href="mailto:{{ support_email }}?subject=CarrierOS%20setup%20walkthrough">Email {{ support_email }}</a></div><div class="notice warn" style="margin-top:14px">CarrierOS provides operational estimates and records. Review tax, legal, payroll, accounting, insurance, and compliance decisions with the appropriate professional.</div></section>
+</div>
+{% endblock %}

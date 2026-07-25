@@ -260,7 +260,7 @@ SEO_PAGES = {
     },
 }
 
-INDEXABLE_PATHS = {"/", "/demo", *(f"/{slug}" for slug in SEO_PAGES)}
+INDEXABLE_PATHS = {"/", "/demo", "/switching", "/security", *(f"/{slug}" for slug in SEO_PAGES)}
 PUBLIC_CRAWL_FILES = {"/robots.txt", "/sitemap.xml"}
 LOGIN_WINDOW_SECONDS = 15 * 60
 LOGIN_MAX_ATTEMPTS = 10
@@ -671,6 +671,51 @@ WORKFLOW_LABELS = {
     LoadState.DISPATCHED_AWAITING_ACK: "Dispatched — Awaiting Driver Acknowledgment",
     LoadState.DISPATCH_ACKNOWLEDGED: "Dispatch Acknowledged",
 }
+
+SETUP_STEP_DEFINITIONS = (
+    {
+        "key": "company",
+        "label": "Confirm company assumptions",
+        "detail": "Set your owner details, fuel price, overhead, targets, and owner distribution before trusting the math.",
+        "href": "/settings",
+        "action": "Review assumptions",
+    },
+    {
+        "key": "equipment",
+        "label": "Add your first power unit",
+        "detail": "Create the truck or equipment record that carries your first live load.",
+        "href": "/vehicles",
+        "action": "Add equipment",
+    },
+    {
+        "key": "driver",
+        "label": "Create a driver pay profile",
+        "detail": "Choose the pay structure and rates that match your written agreement.",
+        "href": "/drivers",
+        "action": "Add driver",
+    },
+    {
+        "key": "first_quote",
+        "label": "Run a pre-book profit check",
+        "detail": "Compare a broker offer with miles, fuel, pay, direct costs, and your margin target.",
+        "href": "/rate-quotes/new",
+        "action": "Quote a lane",
+    },
+    {
+        "key": "first_load",
+        "label": "Complete one load record",
+        "detail": "Take one load from booked through delivery, POD, driver pay, and company result.",
+        "href": "/loads/new",
+        "action": "Add a load",
+    },
+    {
+        "key": "migration",
+        "label": "Plan your spreadsheet switch",
+        "detail": "Download the import template, map your history, and keep an export of your current records.",
+        "href": "/switching",
+        "action": "View switching plan",
+    },
+)
 
 
 def _transition_workflow(
@@ -1174,7 +1219,7 @@ def robots() -> Response:
 @app.get("/sitemap.xml")
 def sitemap() -> Response:
     updated = "2026-07-21"
-    paths = ["/", "/demo", *(f"/{slug}" for slug in SEO_PAGES)]
+    paths = ["/", "/demo", "/switching", "/security", *(f"/{slug}" for slug in SEO_PAGES)]
     urls = "".join(
         f"<url><loc>{CANONICAL_BASE_URL}{path}</loc><lastmod>{updated}</lastmod></url>"
         for path in paths
@@ -1239,6 +1284,38 @@ def seo_landing_page(request: Request):
                 page["title"],
                 page["description"],
                 faqs=page["faqs"],
+            ),
+        },
+    )
+
+
+@app.get("/switching", response_class=HTMLResponse)
+def switching_page(request: Request):
+    return render(
+        request,
+        "switching.html",
+        {
+            "public_page": True,
+            **seo_context(
+                "/switching",
+                "Switch to CarrierOS | Carrier-Built Fleet Software",
+                "Move from spreadsheets to CarrierOS with a practical, carrier-assisted setup plan for loads, driver pay, dispatch, documents, and profit.",
+            ),
+        },
+    )
+
+
+@app.get("/security", response_class=HTMLResponse)
+def security_page(request: Request):
+    return render(
+        request,
+        "security.html",
+        {
+            "public_page": True,
+            **seo_context(
+                "/security",
+                "CarrierOS Data & Security | Carrier-Built Fleet Software",
+                "Understand CarrierOS workspace isolation, Stripe-hosted billing, data export, backups, document handling, and production configuration responsibilities.",
             ),
         },
     )
@@ -1808,7 +1885,89 @@ def dashboard(request: Request, month: str | None = None):
         "quick_links": [as_dict(row) for row in quick_link_rows],
         "open_exceptions": open_exceptions,
         "driver_availability": driver_availability(int(user["organization_id"])),
+        "setup": getting_started_context(int(user["organization_id"])),
     })
+
+
+def getting_started_context(organization_id: int) -> dict[str, Any]:
+    """Build a small, honest activation checklist for a new carrier workspace."""
+
+    settings = query_one(
+        "SELECT name,owner_name,source_filename FROM organizations WHERE id=?",
+        (organization_id,),
+    )
+    vehicles = query_one(
+        "SELECT COUNT(*) AS total FROM vehicles WHERE organization_id=? AND active=1",
+        (organization_id,),
+    )
+    drivers = query_one(
+        "SELECT COUNT(*) AS total FROM drivers WHERE organization_id=? AND active=1",
+        (organization_id,),
+    )
+    quotes = query_one(
+        "SELECT COUNT(*) AS total FROM load_opportunities WHERE organization_id=?",
+        (organization_id,),
+    )
+    loads = query_one(
+        "SELECT COUNT(*) AS total FROM loads WHERE organization_id=?",
+        (organization_id,),
+    )
+    values = {
+        "company": bool(settings and settings["name"] and settings["owner_name"]),
+        "equipment": bool(vehicles and int(vehicles["total"] or 0)),
+        "driver": bool(drivers and int(drivers["total"] or 0)),
+        "first_quote": bool(quotes and int(quotes["total"] or 0)),
+        "first_load": bool(loads and int(loads["total"] or 0)),
+        "migration": bool(settings and settings["source_filename"]),
+    }
+    steps = []
+    for definition in SETUP_STEP_DEFINITIONS:
+        step = dict(definition)
+        step["complete"] = values[definition["key"]]
+        steps.append(step)
+    completed = sum(1 for step in steps if step["complete"])
+    return {
+        "steps": steps,
+        "completed": completed,
+        "total": len(steps),
+        "percent": round((completed / len(steps)) * 100) if steps else 100,
+    }
+
+
+@app.get("/getting-started", response_class=HTMLResponse)
+def getting_started_page(request: Request):
+    user = require_user(request)
+    return render(
+        request,
+        "getting_started.html",
+        {"setup": getting_started_context(int(user["organization_id"]))},
+    )
+
+
+@app.get("/switching/template.csv")
+def switching_template(request: Request):
+    """Provide a conservative CSV map carriers can use before importing history."""
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(
+        [
+            "Load number", "Pickup date", "Delivery date", "Status", "Driver", "Unit",
+            "Broker", "Origin", "Destination", "Revenue", "Loaded miles", "Deadhead miles",
+            "Fuel override", "Tolls / misc", "Other direct costs", "Notes",
+        ]
+    )
+    writer.writerow(
+        [
+            "LOAD-0001", date.today().isoformat(), date.today().isoformat(), "Booked",
+            "Driver name", "Truck 1", "Broker name", "City, ST", "City, ST", "0.00",
+            "0", "0", "", "0", "0", "Map your existing row here",
+        ]
+    )
+    return Response(
+        content="\ufeff" + output.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="carrieros-load-import-template.csv"'},
+    )
 
 
 def quick_links_context(
