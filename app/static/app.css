@@ -312,7 +312,6 @@ label{font-size:12px;font-weight:750;color:#34414d}input,select,textarea{width:1
   .demo-copy-row{display:grid}
   .demo-copy-row button{min-height:38px}
 }
-
 /* Conversion-focused trial signup */
 .signup-hero{justify-content:flex-start;padding-top:clamp(48px,7vw,90px)}
 .signup-no-charge{align-self:flex-start;margin:4px 0 22px;border:1px solid rgba(255,255,255,.24);border-radius:999px;padding:7px 11px;background:rgba(255,255,255,.08);color:#fff;font-size:10px;font-weight:850;letter-spacing:.06em;text-transform:uppercase}
