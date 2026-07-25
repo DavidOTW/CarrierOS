@@ -130,7 +130,7 @@ from .referrals import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
-VERSION = "0.16.0a15"
+VERSION = "0.16.0a16"
 ENVIRONMENT = os.getenv("CARRIEROS_ENV", "development").strip().lower()
 IS_PRODUCTION = ENVIRONMENT == "production"
 CANONICAL_BASE_URL = os.getenv(
@@ -2151,6 +2151,13 @@ def signup_page(request: Request, plan: str = "owner_operator", ref: str | None 
     )
 
 
+def _acquisition_value(form: Any, name: str, *, limit: int = 200) -> str | None:
+    value = str(form.get(name, "") or "").strip()
+    if not value:
+        return None
+    return value[:limit]
+
+
 @app.post("/signup", response_class=HTMLResponse)
 async def signup(request: Request):
     if not customer_signups_open():
@@ -2173,6 +2180,16 @@ async def signup(request: Request):
         form.get("referral_code") or request.session.get("referral_code")
     )
     referral_partner = _referral_signup_context(request, referral_code)
+    acquisition = {
+        "source": _acquisition_value(form, "acquisition_source", limit=100),
+        "medium": _acquisition_value(form, "acquisition_medium", limit=100),
+        "campaign": _acquisition_value(form, "acquisition_campaign"),
+        "term": _acquisition_value(form, "acquisition_term"),
+        "content": _acquisition_value(form, "acquisition_content"),
+        "landing_page": _acquisition_value(form, "acquisition_landing_page", limit=500),
+        "referrer_host": _acquisition_value(form, "acquisition_referrer_host", limit=255),
+        "click_id": _acquisition_value(form, "acquisition_click_id", limit=255),
+    }
     if plan_code not in PLAN_LIMITS:
         plan_code = "owner_operator"
     plan = PLAN_LIMITS[plan_code]
@@ -2205,13 +2222,18 @@ async def signup(request: Request):
             """INSERT INTO organizations
             (name, owner_name, owner_email, plan_code, active_unit_limit,
              subscription_status, trial_ends_at, reporting_start_month, default_report_month,
-             terms_accepted_at, terms_version)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+             terms_accepted_at, terms_version, acquisition_source, acquisition_medium,
+             acquisition_campaign, acquisition_term, acquisition_content,
+             acquisition_landing_page, acquisition_referrer_host, acquisition_click_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 company_name, full_name, email, plan_code, int(plan["units"]),
                 subscription_status, trial_ends_at,
                 date.today().replace(day=1).isoformat(), date.today().replace(day=1).isoformat(),
                 accepted_at, TERMS_VERSION,
+                acquisition["source"], acquisition["medium"], acquisition["campaign"],
+                acquisition["term"], acquisition["content"], acquisition["landing_page"],
+                acquisition["referrer_host"], acquisition["click_id"],
             ),
         ).lastrowid
         user_id = conn.execute(
@@ -2241,6 +2263,9 @@ async def signup(request: Request):
             "plan_code": plan_code,
             "terms_version": TERMS_VERSION,
             "referral_partner_id": referral_partner_id,
+            "acquisition_source": acquisition["source"],
+            "acquisition_medium": acquisition["medium"],
+            "acquisition_campaign": acquisition["campaign"],
         },
     )
     request.session.pop("referral_code", None)
@@ -2375,6 +2400,21 @@ def billing(request: Request, checkout: str | None = None, new: int = 0):
         "checkout_result": checkout,
         "new_account": bool(new),
     })
+
+
+@app.get("/billing/status")
+def billing_status(request: Request) -> JSONResponse:
+    user = current_user(request)
+    if not user:
+        return JSONResponse({"detail": "Authentication required"}, status_code=401)
+    return JSONResponse(
+        {
+            "plan": str(user.get("plan_code") or "unspecified"),
+            "subscription_status": str(user.get("subscription_status") or "unknown"),
+            "trial_ends_at": user.get("trial_ends_at"),
+            "current_period_end": user.get("subscription_current_period_end"),
+        }
+    )
 
 
 @app.post("/billing/checkout")

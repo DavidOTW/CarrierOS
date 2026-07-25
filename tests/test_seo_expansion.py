@@ -109,7 +109,8 @@ def test_sitemap_and_internal_links_cover_the_public_search_architecture(
             "https://www.googletagmanager.com/gtag/js?id=G-RMCP51Y4Y7"
         ) == 1
         assert "gtag('config', 'G-RMCP51Y4Y7'" in home.text
-        assert "page_location: window.location.origin + window.location.pathname" in home.text
+        assert "page_location: carrierSafeLocation.href" in home.text
+        assert "carrierSafeCampaignKeys" in home.text
         assert "page_location: window.location.href" not in home.text
         assert (
             'name="google-site-verification" '

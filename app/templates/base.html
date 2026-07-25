@@ -7,9 +7,34 @@
   <script>
     window.dataLayer = window.dataLayer || [];
     function gtag(){dataLayer.push(arguments);}
+    const carrierSafeCampaignKeys = [
+      'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+      'gclid', 'gbraid', 'wbraid'
+    ];
+    const carrierQuery = new URLSearchParams(window.location.search);
+    try {
+      if (carrierQuery.get('internal_test') === '1') {
+        window.localStorage.setItem('carrieros_internal_traffic', '1');
+      } else if (carrierQuery.get('internal_test') === '0') {
+        window.localStorage.removeItem('carrieros_internal_traffic');
+      }
+    } catch (_) {
+      // Analytics remains available when browser storage is restricted.
+    }
+    let carrierInternalTraffic = false;
+    try {
+      carrierInternalTraffic = window.localStorage.getItem('carrieros_internal_traffic') === '1';
+    } catch (_) {}
+    const carrierSafeLocation = new URL(window.location.origin + window.location.pathname);
+    carrierSafeCampaignKeys.forEach((key) => {
+      const value = carrierQuery.get(key);
+      if (value) carrierSafeLocation.searchParams.set(key, value);
+    });
     gtag('js', new Date());
     gtag('config', '{{ google_analytics_measurement_id }}', {
-      page_location: window.location.origin + window.location.pathname
+      page_location: carrierSafeLocation.href,
+      {% if user %}user_id: 'carrieros-user-{{ user.id }}',{% endif %}
+      traffic_type: carrierInternalTraffic ? 'internal' : 'external'
     });
   </script>
   {% endif %}
@@ -106,11 +131,66 @@
 {% endif %}
 <script>
   const carrierCsrfToken = {{ csrf_token|tojson }};
+  const carrierAttributionStorageKey = 'carrieros_first_touch_v1';
+  const carrierAttributionFieldMap = {
+    utm_source: 'source',
+    utm_medium: 'medium',
+    utm_campaign: 'campaign',
+    utm_term: 'term',
+    utm_content: 'content'
+  };
+  const readCarrierAttribution = () => {
+    try {
+      return JSON.parse(window.localStorage.getItem(carrierAttributionStorageKey) || 'null');
+    } catch (_) {
+      return null;
+    }
+  };
+  const captureCarrierAttribution = () => {
+    const existing = readCarrierAttribution();
+    if (existing) return existing;
+    const params = new URLSearchParams(window.location.search);
+    const attribution = {
+      source: '',
+      medium: '',
+      campaign: '',
+      term: '',
+      content: '',
+      landing_page: window.location.pathname,
+      referrer_host: '',
+      click_id: ''
+    };
+    Object.entries(carrierAttributionFieldMap).forEach(([queryKey, field]) => {
+      attribution[field] = (params.get(queryKey) || '').slice(0, 200);
+    });
+    attribution.click_id = (
+      params.get('gclid') || params.get('gbraid') || params.get('wbraid') || ''
+    ).slice(0, 255);
+    try {
+      attribution.referrer_host = document.referrer
+        ? new URL(document.referrer).hostname.slice(0, 255)
+        : '';
+    } catch (_) {}
+    const hasCampaign = Object.values(carrierAttributionFieldMap)
+      .some((field) => attribution[field]);
+    if (!hasCampaign && !attribution.click_id) {
+      attribution.source = attribution.referrer_host || 'direct';
+      attribution.medium = attribution.referrer_host ? 'referral' : 'none';
+    }
+    try {
+      window.localStorage.setItem(carrierAttributionStorageKey, JSON.stringify(attribution));
+    } catch (_) {}
+    return attribution;
+  };
+  const carrierAttribution = captureCarrierAttribution();
   window.carrierAnalytics = {
     track(eventName, parameters = {}) {
       if (typeof window.gtag !== 'function') return;
       window.gtag('event', eventName, {
         page_path: window.location.pathname,
+        campaign_source: carrierAttribution?.source || 'unknown',
+        campaign_medium: carrierAttribution?.medium || 'unknown',
+        campaign_name: carrierAttribution?.campaign || 'unknown',
         ...parameters
       });
     },
@@ -121,6 +201,21 @@
         window.sessionStorage.setItem(key, '1');
       } catch (_) {
         // Analytics still works when private browsing blocks sessionStorage.
+      }
+      this.track(eventName, parameters);
+    },
+    trackConversionOnce(eventName, parameters = {}) {
+      const suffix = [
+        eventName,
+        parameters.plan || 'unspecified',
+        parameters.trial_end || parameters.period_end || 'current'
+      ].join('_');
+      const key = `carrieros_conversion_${suffix}`;
+      try {
+        if (window.localStorage.getItem(key)) return;
+        window.localStorage.setItem(key, '1');
+      } catch (_) {
+        return this.trackOnce(eventName, parameters);
       }
       this.track(eventName, parameters);
     }
@@ -135,25 +230,48 @@
       return;
     }
     if (href.startsWith('/demo')) {
-      window.carrierAnalytics.track('view_demo');
+      window.carrierAnalytics.track('demo_cta_click', {
+        cta_location: link.dataset.analyticsLocation || 'public_page'
+      });
       return;
     }
     if (href.startsWith('/signup')) {
       const destination = new URL(href, window.location.origin);
-      window.carrierAnalytics.track('begin_signup', {
-        plan: destination.searchParams.get('plan') || 'unspecified'
+      window.carrierAnalytics.track('signup_cta_click', {
+        plan: destination.searchParams.get('plan') || 'unspecified',
+        cta_location: link.dataset.analyticsLocation || 'public_page'
       });
       return;
     }
     if (href.startsWith('/checkout')) {
-      window.carrierAnalytics.track('view_pricing');
+      window.carrierAnalytics.track('pricing_cta_click', {
+        cta_location: link.dataset.analyticsLocation || 'public_page'
+      });
     }
   });
   {% endif %}
   document.querySelectorAll('[data-analytics-event]').forEach((marker) => {
-    window.carrierAnalytics.trackOnce(marker.dataset.analyticsEvent, {
-      plan: marker.dataset.analyticsPlan || 'unspecified'
-    });
+    const parameters = {
+      plan: marker.dataset.analyticsPlan || 'unspecified',
+      trial_end: marker.dataset.analyticsTrialEnd || '',
+      period_end: marker.dataset.analyticsPeriodEnd || ''
+    };
+    if (marker.dataset.analyticsPersistent === 'true') {
+      window.carrierAnalytics.trackConversionOnce(marker.dataset.analyticsEvent, parameters);
+    } else {
+      window.carrierAnalytics.trackOnce(marker.dataset.analyticsEvent, parameters);
+    }
+  });
+  document.querySelectorAll('[data-analytics-view]').forEach((section) => {
+    if (!('IntersectionObserver' in window)) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      window.carrierAnalytics.trackOnce(section.dataset.analyticsView, {
+        section: section.id || 'unnamed'
+      });
+      observer.disconnect();
+    }, {threshold: 0.35});
+    observer.observe(section);
   });
   document.querySelectorAll('form[method="post"]').forEach((form) => {
     if (form.querySelector('input[name="_csrf"]')) return;
@@ -193,7 +311,36 @@
     });
   });
   document.querySelectorAll('form[data-signup-form]').forEach((form) => {
+    const attributionNames = {
+      source: 'acquisition_source',
+      medium: 'acquisition_medium',
+      campaign: 'acquisition_campaign',
+      term: 'acquisition_term',
+      content: 'acquisition_content',
+      landing_page: 'acquisition_landing_page',
+      referrer_host: 'acquisition_referrer_host',
+      click_id: 'acquisition_click_id'
+    };
+    Object.entries(attributionNames).forEach(([key, fieldName]) => {
+      const hidden = document.createElement('input');
+      hidden.type = 'hidden';
+      hidden.name = fieldName;
+      hidden.value = carrierAttribution?.[key] || '';
+      form.appendChild(hidden);
+    });
+    let signupStarted = false;
+    const beginSignup = () => {
+      if (signupStarted) return;
+      signupStarted = true;
+      window.carrierAnalytics.trackOnce('begin_signup', {
+        plan: form.querySelector('[name="plan"]')?.value || 'unspecified'
+      });
+    };
+    form.addEventListener('focusin', (event) => {
+      if (event.target.matches('input, select')) beginSignup();
+    });
     form.addEventListener('submit', () => {
+      beginSignup();
       window.carrierAnalytics.track('signup_submit', {
         plan: form.querySelector('[name="plan"]')?.value || 'unspecified'
       });
@@ -201,7 +348,7 @@
       if (!button) return;
       button.disabled = true;
       button.dataset.originalLabel = button.textContent;
-      button.textContent = 'Creating your workspace…';
+      button.textContent = 'Creating your workspace...';
     });
   });
   // Make monetary and percentage number fields unambiguous while keeping the
