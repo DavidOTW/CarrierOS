@@ -1398,7 +1398,8 @@ def robots() -> Response:
 
 @app.get("/sitemap.xml")
 def sitemap() -> Response:
-    updated = "2026-07-24"
+    # Keep lastmod tied to the current public release, not to request time.
+    updated = "2026-07-25"
     paths = [
         "/",
         "/demo",
@@ -1420,7 +1421,7 @@ def sitemap() -> Response:
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
-    description = "Small fleet trucking software for owner-operators and carriers with 1–20 trucks. Manage dispatch, seven driver pay models, payments, and estimated profit per load."
+    description = "Small fleet trucking software for owner-operators and carriers with 1–20 trucks. Connect dispatch, driver pay, delivery documents, receivables, and estimated profit per load."
     return render(
         request,
         "marketing.html",
