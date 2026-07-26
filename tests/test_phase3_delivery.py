@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import io
+import uuid
 from pathlib import Path
 
 import pytest
@@ -141,3 +143,91 @@ def test_driver_delivery_status_and_documents_are_retry_safe_and_private(
         document = query_one("SELECT * FROM operational_documents WHERE id=?", (link["document_id"],))
         assert document["malware_status"] == "CLEAN"
         assert storage.get(document["storage_key"]) == bol_payload
+
+
+def test_office_pod_upload_is_attached_to_ratecon_and_tenant_scoped(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "ratecon-pod.db"))
+    storage = InMemoryObjectStorageProvider()
+    monkeypatch.setattr(main_module, "configured_storage_provider", lambda: storage)
+    monkeypatch.setattr(
+        main_module,
+        "configured_malware_scan_provider",
+        lambda: MockMalwareScanProvider(),
+    )
+    with TestClient(app) as alpha, TestClient(app) as beta:
+        alpha_org = _signup(alpha, "ratecon-pod-alpha@example.com", "RateCon POD Alpha")
+        load = _book_load(alpha, alpha_org)
+        ratecon_payload = _pdf()
+        ratecon_uuid = str(uuid.uuid4())
+        ratecon_key = f"organizations/{alpha_org}/ratecons/{ratecon_uuid}.pdf"
+        storage.put(ratecon_key, ratecon_payload, content_type="application/pdf")
+        with db_session() as conn:
+            ratecon_id = int(
+                conn.execute(
+                    """INSERT INTO operational_documents
+                    (public_uuid,organization_id,load_id,document_type,storage_key,storage_provider,
+                     original_filename,content_type,size_bytes,page_count,sha256,malware_status,
+                     processing_status,retention_date,created_by)
+                    VALUES (?,?,?,'RATECON',?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        ratecon_uuid,
+                        alpha_org,
+                        load["id"],
+                        ratecon_key,
+                        storage.name,
+                        "signed-ratecon.pdf",
+                        "application/pdf",
+                        len(ratecon_payload),
+                        1,
+                        hashlib.sha256(ratecon_payload).hexdigest(),
+                        "CLEAN",
+                        "REVIEWED",
+                        main_module.default_retention_date(),
+                        query_one("SELECT id FROM users WHERE organization_id=?", (alpha_org,))["id"],
+                    ),
+                ).lastrowid
+            )
+        assert ratecon_id
+        detail = alpha.get(f"/ratecons/{ratecon_uuid}")
+        assert detail.status_code == 200
+        assert "Proof of delivery" in detail.text
+        assert "No proof of delivery has been attached yet" in detail.text
+
+        pod_payload = _pdf()
+        uploaded = alpha.post(
+            f"/ratecons/{ratecon_uuid}/pod",
+            data={"notes": "Signed by consignee"},
+            files={"pod": ("signed-pod.pdf", pod_payload, "application/pdf")},
+            follow_redirects=False,
+        )
+        assert uploaded.status_code == 303
+        assert uploaded.headers["location"] == f"/ratecons/{ratecon_uuid}"
+        link = query_one(
+            "SELECT * FROM delivery_document_links WHERE organization_id=? AND load_id=? AND document_kind='POD'",
+            (alpha_org, load["id"]),
+        )
+        assert link["source"] == "office"
+        assert link["notes"] == "Signed by consignee"
+        pod = query_one("SELECT * FROM operational_documents WHERE id=?", (link["document_id"],))
+        assert pod["document_type"] == "POD"
+        assert pod["malware_status"] == "CLEAN"
+        assert storage.get(pod["storage_key"]) == pod_payload
+
+        refreshed = alpha.get(f"/ratecons/{ratecon_uuid}")
+        assert "signed-pod.pdf" in refreshed.text
+        assert "Download POD" in refreshed.text
+        downloaded = alpha.get(f"/documents/{pod['public_uuid']}/download")
+        assert downloaded.status_code == 200
+        assert downloaded.content == pod_payload
+        assert downloaded.headers["content-disposition"].endswith("signed-pod.pdf")
+
+        beta_org = _signup(beta, "ratecon-pod-beta@example.com", "RateCon POD Beta")
+        assert beta_org != alpha_org
+        assert beta.get(f"/ratecons/{ratecon_uuid}").status_code == 404
+        assert beta.post(
+            f"/ratecons/{ratecon_uuid}/pod",
+            files={"pod": ("cross-tenant.pdf", pod_payload, "application/pdf")},
+        ).status_code == 404
+        assert beta.get(f"/documents/{pod['public_uuid']}/download").status_code == 404

@@ -1,17 +1,94 @@
 {% extends "base.html" %}{% block title %}Billing &middot; CarrierOS{% endblock %}
 {% block content %}
+{% if new_account %}<span hidden data-analytics-event="sign_up" data-analytics-plan="{{ user.plan_code }}" data-analytics-persistent="true"></span>{% endif %}
+{% if user.subscription_status == 'trialing' %}<span hidden data-analytics-event="trial_started" data-analytics-plan="{{ user.plan_code }}" data-analytics-trial-end="{{ user.trial_ends_at or '' }}" data-analytics-persistent="true"></span>{% endif %}
+{% if user.subscription_status == 'active' %}<span hidden data-analytics-event="subscription_started" data-analytics-plan="{{ user.plan_code }}" data-analytics-period-end="{{ user.subscription_current_period_end or '' }}" data-analytics-persistent="true"></span>{% endif %}
 <div class="page-heading"><div><h2>Billing</h2><p>Manage the plan that controls your active power-unit capacity.</p></div></div>
 {% if billing_mode == 'beta' and has_access %}<div class="notice good">Your founding-beta access is active. No payment method is required and no subscription charge will be made during this beta period.</div>{% elif billing_mode == 'beta' %}<div class="notice">Your founding-beta trial has ended. Email <a href="mailto:{{ support_email }}?subject=CarrierOS%20beta%20access">{{ support_email }}</a> to discuss continued access. No charge has been made.</div>{% elif checkout_result == 'success' %}<div class="notice">Stripe received your trial setup. CarrierOS will activate your workspace as soon as the signed billing confirmation arrives.</div>{% elif checkout_result == 'cancelled' %}<div class="notice">Checkout was cancelled. Your workspace has not been charged or activated.</div>{% elif new_account %}<div class="notice">Your private workspace is ready. Choose a plan below and complete Stripe checkout to begin the 14-day trial.</div>{% endif %}
 <div class="grid-2">
-  <section class="card"><h3>{{ plan.name }}</h3><div class="metric-value">${{ plan.price }}<span class="muted"> / month</span></div><p>{% if plan.units == 0 %}Includes the startup checklist, official-source tutorials, document audit center, and equipment finance mentor with no active power units.{% else %}Includes up to {{ plan.units }} active power units, unlimited driver records, and unlimited office users.{% endif %}</p><p><strong>Status:</strong> {{ user.subscription_status|replace('_', ' ')|title }}</p>{% if user.trial_ends_at %}<p><strong>Trial ends:</strong> {{ user.trial_ends_at }}</p>{% endif %}{% if user.subscription_current_period_end %}<p><strong>Current period ends:</strong> {{ user.subscription_current_period_end }}</p>{% endif %}{% if user.subscription_cancel_at_period_end %}<p class="notice">Cancellation is scheduled for the end of the current billing period.</p>{% endif %}</section>
+  <section class="card"><h3>{{ plan.name }}</h3><div class="metric-value">{{ money(plan.price) }}<span class="muted"> / month</span></div><p>{% if plan.units == 0 %}Includes the startup checklist, official-source tutorials, document audit center, and equipment finance mentor with no active power units.{% else %}Includes up to {{ plan.units }} active power units, unlimited driver records, and unlimited office users.{% endif %}</p><p><strong>Status:</strong> {{ user.subscription_status|replace('_', ' ')|title }}</p>{% if user.trial_ends_at %}<p><strong>Trial ends:</strong> {{ user.trial_ends_at }}</p>{% endif %}{% if user.subscription_current_period_end %}<p><strong>Current period ends:</strong> {{ user.subscription_current_period_end }}</p>{% endif %}{% if user.subscription_cancel_at_period_end %}<p class="notice">Cancellation is scheduled for the end of the current billing period.</p>{% endif %}</section>
   <section class="card"><h3>{% if has_access %}Your workspace is active{% else %}Subscription required{% endif %}</h3>{% if billing_mode == 'beta' %}<p>CarrierOS is currently offered as a no-charge founding beta. The selected plan records your power-unit capacity; paid billing will be introduced only with advance notice.</p><p>For help, email <a href="mailto:{{ support_email }}?subject=CarrierOS%20beta%20support">{{ support_email }}</a>.</p>{% else %}<p>Checkout and subscription management are hosted securely by Stripe. CarrierOS never asks for or stores card or bank information.</p>{% if user.billing_customer_reference %}<form method="post" action="/billing/portal"><input type="hidden" name="_csrf" value="{{ csrf_token }}"><button class="btn btn-primary">Manage subscription securely</button></form>{% elif not stripe_ready %}<p class="notice">Secure Stripe billing is being configured. Email <a href="mailto:{{ support_email }}?subject=CarrierOS%20subscription">{{ support_email }}</a> for a founding account.</p>{% endif %}{% endif %}</section>
 </div>
 {% if billing_mode != 'beta' and not user.billing_subscription_reference %}
 <div class="grid-3" style="margin-top:18px">
 {% for code, option in plans.items() %}
-  <section class="card"><h3>{{ option.name }}</h3><div class="metric-value">${{ option.price }}<span class="muted"> / month</span></div><p>{% if option.units == 0 %}Pre-authority planning with 0 active units. Upgrade when ready.{% else %}Up to {{ option.units }} active power units. Unlimited driver records and office users.{% endif %}</p><form method="post" action="/billing/checkout"><input type="hidden" name="_csrf" value="{{ csrf_token }}"><input type="hidden" name="plan" value="{{ code }}"><button class="btn {% if code == user.plan_code %}btn-primary{% else %}btn-secondary{% endif %}" {% if not stripe_ready %}disabled{% endif %}>Start 14-day trial</button></form></section>
+  <section class="card"><h3>{{ option.name }}</h3><div class="metric-value">{{ money(option.price) }}<span class="muted"> / month</span></div><p>{% if option.units == 0 %}Pre-authority planning with 0 active units. Upgrade when ready.{% else %}Up to {{ option.units }} active power units. Unlimited driver records and office users.{% endif %}</p><form method="post" action="/billing/checkout" data-checkout-form><input type="hidden" name="_csrf" value="{{ csrf_token }}"><input type="hidden" name="plan" value="{{ code }}"><button class="btn {% if code == user.plan_code %}btn-primary{% else %}btn-secondary{% endif %}" {% if not stripe_ready %}disabled{% endif %}>Start 14-day trial</button></form></section>
 {% endfor %}
 </div>
 <section class="card" style="margin-top:18px"><h3>Custom Fleet</h3><p>More than 20 active power units. Contact us for a tailored quote and onboarding plan.</p><a class="btn btn-secondary" href="mailto:{{ support_email }}?subject=CarrierOS%20Custom%20Fleet">Request a custom quote</a></section>
+{% endif %}
+<section class="card billing-account-actions" style="margin-top:18px">
+  <h3>Cancel or delete your account</h3>
+  {% if billing_mode != 'beta' %}
+  <p>Manage payment methods, invoices, and plan changes through Stripe. If you cancel, your workspace stays available until the current billing period ends.</p>
+  {% if user.billing_subscription_reference and user.subscription_status not in ['canceled', 'incomplete_expired'] and not user.subscription_cancel_at_period_end %}
+  <form method="post" action="/billing/cancel" onsubmit="return confirm('Schedule this subscription to cancel at the end of the current billing period?');">
+    <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+    <button class="btn btn-secondary" type="submit">Cancel subscription</button>
+  </form>
+  {% elif user.subscription_cancel_at_period_end %}
+  <p class="notice warn">Cancellation is already scheduled for the end of the current billing period.</p>
+  {% endif %}
+  {% else %}
+  <p>This founding beta has no paid subscription to cancel. You can still permanently delete your CarrierOS account below.</p>
+  {% endif %}
+  <details class="danger-zone">
+    <summary>Delete workspace and account permanently</summary>
+    <div class="danger-zone-body">
+      <p><strong>This cannot be undone.</strong> Download your company data first from <a href="/settings">Settings</a>. Deletion removes your CarrierOS workspace, loads, driver records, payments, reports, and uploaded documents. Any active Stripe subscription is canceled immediately first.</p>
+      <form method="post" action="/account/delete" onsubmit="return confirm('Permanently delete this CarrierOS account and all workspace data? This cannot be undone.');">
+        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+        <div class="form-grid">
+          <div class="field"><label for="delete-password">Current password</label><input id="delete-password" type="password" name="password" autocomplete="current-password" required></div>
+          <div class="field"><label for="delete-confirmation">Type DELETE to confirm</label><input id="delete-confirmation" name="confirmation" autocomplete="off" required pattern="DELETE" placeholder="DELETE"></div>
+        </div>
+        <div class="form-actions"><button class="btn btn-danger" type="submit">Permanently delete account</button></div>
+      </form>
+    </div>
+  </details>
+</section>
+{% if checkout_result == 'success' and user.subscription_status not in ['trialing', 'active'] %}
+<span hidden data-checkout-confirmation data-plan="{{ user.plan_code }}"></span>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if checkout_result == 'success' and user.subscription_status not in ['trialing', 'active'] %}
+<script>
+  (() => {
+    const confirmation = document.querySelector('[data-checkout-confirmation]');
+    if (!confirmation) return;
+    let attempts = 0;
+    const confirmTrial = async () => {
+      attempts += 1;
+      try {
+        const response = await fetch('/billing/status', {
+          credentials: 'same-origin',
+          headers: {'Accept': 'application/json'}
+        });
+        if (response.ok) {
+          const status = await response.json();
+          if (status.subscription_status === 'trialing') {
+            window.carrierAnalytics?.trackConversionOnce('trial_started', {
+              plan: status.plan || confirmation.dataset.plan || 'unspecified',
+              trial_end: status.trial_ends_at || ''
+            });
+            return;
+          }
+          if (status.subscription_status === 'active') {
+            window.carrierAnalytics?.trackConversionOnce('subscription_started', {
+              plan: status.plan || confirmation.dataset.plan || 'unspecified',
+              period_end: status.current_period_end || ''
+            });
+            return;
+          }
+        }
+      } catch (_) {
+        // Keep the billing page usable when a status refresh is delayed.
+      }
+      if (attempts < 10) window.setTimeout(confirmTrial, 1500);
+    };
+    confirmTrial();
+  })();
+</script>
 {% endif %}
 {% endblock %}

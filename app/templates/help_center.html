@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}{{ seo_title }}{% endblock %}
+{% block content %}
+<main class="help-site" id="top">
+  {% set nav_current = 'help' %}
+  {% include "_public_navigation.html" %}
+
+  <section class="help-hero">
+    <div>
+      <span class="public-eyebrow">CarrierOS product guides</span>
+      <h1>Know exactly what every tab does.</h1>
+      <p>Follow the freight from the first broker offer through booking, dispatch, delivery, driver pay, receivables, and company profit. Each guide explains when to use the tab, what to enter, and what CarrierOS does with the information.</p>
+      <div class="help-search" role="search">
+        <span class="help-search-icon" aria-hidden="true">&#128269;</span>
+        <label class="visually-hidden" for="help-search">Search CarrierOS help guides</label>
+        <input id="help-search" name="q" type="search" placeholder="Search tabs, workflows, or tasks" autocomplete="off" enterkeyhint="search" aria-describedby="help-search-status">
+        <button id="help-search-clear" type="button" hidden>Clear</button>
+        <kbd aria-hidden="true">/</kbd>
+      </div>
+      <small id="help-search-status" class="help-search-status" role="status" aria-live="polite">Showing all {{ guides|length }} guides.</small>
+    </div>
+    <aside class="help-hero-card" aria-label="CarrierOS workflow summary">
+      <span>START HERE</span>
+      <strong>New to CarrierOS?</strong>
+      <p>Configure the company first, add equipment and driver pay profiles, then quote the load before it reaches dispatch.</p>
+      <ol><li>Settings</li><li>Drivers &amp; equipment</li><li>Rate quotes</li><li>RateCon review</li></ol>
+      <a href="#workflow">View the recommended workflow <span aria-hidden="true">&rarr;</span></a>
+    </aside>
+  </section>
+
+  <section class="help-workflow" id="workflow">
+    <div class="help-section-heading"><span class="public-eyebrow">The operating sequence</span><h2>From offer to collected revenue.</h2><p>CarrierOS keeps each decision attached to the same operating story.</p></div>
+    <div class="help-workflow-track">
+      {% for item in workflow %}
+      <a href="/help/{{ item.slug }}"><span>{{ "%02d"|format(loop.index) }}</span><div><strong>{{ item.title }}</strong><small>{{ item.caption }}</small></div></a>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="help-guides" id="guides">
+    <div class="help-section-heading"><span class="public-eyebrow">Complete reference</span><h2>Guides for every workspace tab.</h2><p>Use the search above or browse the same groups shown in the application navigation.</p></div>
+    <div id="help-empty" class="help-empty" hidden><strong>No guide matched that search.</strong><span>Try a tab name such as “RateCon,” “payments,” “fuel,” or “compliance.”</span></div>
+    {% for group in groups %}
+    <section class="help-guide-group" data-help-group>
+      <div class="help-group-heading"><div><span>{{ "%02d"|format(loop.index) }}</span><div><h3>{{ group.title }}</h3><p>{{ group.summary }}</p></div></div></div>
+      <div class="help-card-grid">
+        {% for guide in guides if guide.group == group.key %}
+        <a class="help-guide-card" href="/help/{{ guide.slug }}" data-help-card data-search="{{ guide.title }} {{ guide.summary }} {{ guide.purpose }}">
+          <span class="help-card-icon">{{ guide.icon }}</span>
+          <div><h4>{{ guide.title }}</h4><p>{{ guide.summary }}</p><b>Open guide <span aria-hidden="true">&rarr;</span></b></div>
+        </a>
+        {% endfor %}
+      </div>
+    </section>
+    {% endfor %}
+  </section>
+
+  <section class="help-support">
+    <div><span class="public-eyebrow">Still need help?</span><h2>Ask the person who built it.</h2><p>Email the tab name, what you were trying to do, and the exact message shown on screen. Do not email passwords, payment details, or sensitive driver documents.</p></div>
+    <a class="public-btn public-btn-orange" href="mailto:{{ support_email }}?subject=CarrierOS%20Help%20Request">Email CarrierOS support <span aria-hidden="true">&rarr;</span></a>
+  </section>
+
+  <footer class="help-footer"><a class="public-brand" href="#top"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a><p>Operational guidance for the CarrierOS small-fleet workspace.</p><nav><a href="/">Home</a><a href="/solutions">Solutions</a><a href="/demo">Live demo</a><a href="/login">Customer login</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav></footer>
+</main>
+{% endblock %}
+{% block scripts %}
+<script src="/static/help-search.js?v={{ version }}" defer></script>
+{% endblock %}

@@ -30,7 +30,26 @@ def _required_env(name: str) -> str:
 
 
 def _stripe_client() -> stripe.StripeClient:
-    return stripe.StripeClient(_required_env("STRIPE_SECRET_KEY"))
+    # Stripe's SDK defaults to an 80-second network timeout. That is too long
+    # for a single-worker web request: a transient Stripe/network issue would
+    # make the plan selection page look frozen. Fail promptly so the route can
+    # return a useful retry message while the app remains responsive.
+    try:
+        timeout_seconds = float(os.getenv("CARRIEROS_STRIPE_TIMEOUT_SECONDS", "20"))
+    except ValueError:
+        timeout_seconds = 20.0
+    timeout_seconds = min(30.0, max(5.0, timeout_seconds))
+    return stripe.StripeClient(
+        _required_env("STRIPE_SECRET_KEY"),
+        # Checkout and price validation are intentionally synchronous calls.
+        # Stripe's HTTPX client defaults to async-only in recent SDK versions;
+        # explicitly enable sync methods so a checkout request cannot become a
+        # raw 500 before Stripe receives it.
+        http_client=stripe.HTTPXClient(
+            timeout=timeout_seconds,
+            allow_sync_methods=True,
+        ),
+    )
 
 
 @lru_cache(maxsize=16)
@@ -164,6 +183,19 @@ def create_portal_session(*, customer_id: str, return_url: str) -> Any:
     if configuration_id:
         params["configuration"] = configuration_id
     return _stripe_client().v1.billing_portal.sessions.create(params=params)
+
+
+def cancel_subscription_at_period_end(*, subscription_id: str) -> Any:
+    """Schedule a subscription to end at the current billing period."""
+    return _stripe_client().v1.subscriptions.update(
+        subscription_id,
+        params={"cancel_at_period_end": True},
+    )
+
+
+def cancel_subscription_immediately(*, subscription_id: str) -> Any:
+    """Cancel a subscription immediately before permanently deleting a workspace."""
+    return _stripe_client().v1.subscriptions.cancel(subscription_id)
 
 
 def construct_webhook_event(payload: bytes, signature: str | None) -> Any:

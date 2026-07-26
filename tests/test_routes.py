@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 
 import pytest
+import stripe
 from fastapi.testclient import TestClient
 
 from app.db import db_session, query_one
@@ -69,6 +70,25 @@ def test_launch_pricing_uses_active_power_units() -> None:
     ]
 
 
+def test_money_and_percent_helpers_use_explicit_display_formats() -> None:
+    assert main_module.money(168.89) == "$168.89"
+    assert main_module.money(35.0) == "$35.00"
+    assert main_module.percent(0.5) == "50.0%"
+
+
+def test_shared_numeric_formatter_covers_currency_and_percentage_inputs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "formatting.db"))
+    with TestClient(app) as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert "const moneyNames" in response.text
+        assert "const percentNames" in response.text
+        assert "input-affix" in client.get("/static/app.css").text
+        assert "toFixed(2)" in response.text
+
+
 def test_public_marketing_home_uses_launch_pricing_and_real_app_links(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -97,12 +117,22 @@ def test_public_marketing_home_uses_launch_pricing_and_real_app_links(
         assert "Purple Heart recipient" in response.text
         assert "20 years of experience" in response.text
         assert 'href="https://www.linkedin.com/in/davidbryant89"' in response.text
+        assert 'href="/carrier-startup-checklist"' in response.text
+        assert "See the startup plan" in response.text
         assert '<a class="public-signin" href="/login">Log in</a>' in response.text
         assert '"@type": "Person"' in response.text
         assert response.headers["cache-control"].startswith("public")
         stylesheet = client.get("/static/app.css")
         assert ".public-signin{display:inline-flex" in stylesheet.text
         assert ".public-signin{display:none}" not in stylesheet.text
+        assert "position:fixed" in stylesheet.text
+        assert "bottom:12px" in stylesheet.text
+        assert "height:calc(100svh - 84px)" in stylesheet.text
+        assert "align-content:start" in stylesheet.text
+        assert "overflow-y:auto" in stylesheet.text
+        assert "window.carrierAnalytics" in response.text
+        assert "begin_signup" in response.text
+        assert "view_pricing" in response.text
 
 
 def test_search_pages_sitemap_and_crawl_controls(
@@ -114,6 +144,7 @@ def test_search_pages_sitemap_and_crawl_controls(
             "/small-fleet-trucking-software": "Small Fleet Trucking Software",
             "/driver-settlement-software": "Driver Pay Tracking",
             "/load-profitability-calculator": "Truck Load Profitability Calculator",
+            "/carrier-startup-checklist": "How to Start a Trucking Company",
         }
         for path, phrase in expected.items():
             response = client.get(path)
@@ -122,6 +153,9 @@ def test_search_pages_sitemap_and_crawl_controls(
             assert f'<link rel="canonical" href="https://otwcarrieros.com{path}">' in response.text
             assert 'content="index, follow' in response.text
             assert '"@type": "FAQPage"' in response.text
+        startup = client.get("/carrier-startup-checklist")
+        assert 'href="/signup?plan=carrier_startup"' in startup.text
+        assert "Start the $10 startup plan" in startup.text
 
         sitemap = client.get("/sitemap.xml")
         assert sitemap.status_code == 200
@@ -185,6 +219,41 @@ def test_public_switching_and_security_pages_are_clear_about_migration_and_contr
         template = client.get("/switching/template.csv")
         assert template.status_code == 200
         assert "Load number,Pickup date,Delivery date" in template.text
+def test_public_demo_mirrors_current_workspace_and_referral_scope(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "expanded-demo.db"))
+    with TestClient(app) as client:
+        response = client.get("/demo")
+        assert response.status_code == 200
+        for workspace in (
+            "Dashboard",
+            "Dispatch",
+            "Rate quotes",
+            "RateCon inbox",
+            "Loads",
+            "Drivers &amp; equipment",
+            "Money",
+            "Reports",
+            "Shortcuts",
+            "Help center",
+            "Compliance",
+            "Documents",
+            "Detention &amp; A/R",
+            "Weekly fuel",
+            "Growth mentor",
+            "Document audits",
+            "Startup guide",
+            "Onboarding",
+            "Referral &amp; sharing",
+            "Settings",
+            "Billing",
+        ):
+            assert workspace in response.text
+        assert "No automatic commission" in response.text
+        assert "Private OTW account only" in response.text
+        assert "Other CarrierOS customers do not see OTW" in response.text
+        assert "No silent record changes" in response.text
 
 
 def test_signup_requires_verified_billing_before_access(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -192,6 +261,9 @@ def test_signup_requires_verified_billing_before_access(monkeypatch: pytest.Monk
     with TestClient(app) as client:
         response = signup(client, "pending@example.com", activate=False)
         assert response.headers["location"] == "/billing?new=1"
+        billing = client.get("/billing?new=1")
+        assert 'data-analytics-event="sign_up"' in billing.text
+        assert 'data-analytics-plan="owner_operator"' in billing.text
         organization = query_one("SELECT * FROM organizations")
         assert organization["subscription_status"] == "incomplete"
         assert organization["trial_ends_at"] is None
@@ -255,7 +327,7 @@ def test_signup_empty_workspace_and_authenticated_pages(monkeypatch: pytest.Monk
         assert "sk_test" not in readiness.text
         assert signup(client, "owner@example.com").status_code == 303
         for page in (
-            "/dashboard", "/loads", "/loads/new", "/vehicles", "/drivers", "/fuel",
+            "/dashboard", "/dispatch", "/loads", "/loads/new", "/vehicles", "/drivers", "/fuel",
             "/payments", "/quotes", "/rate-quotes", "/rate-quotes/new", "/financials", "/idle", "/settings",
             "/compliance", "/onboarding", "/documents", "/receivables", "/links", "/billing",
             "/audits", "/growth", "/startup", "/getting-started", "/migration",
@@ -271,6 +343,69 @@ def test_signup_empty_workspace_and_authenticated_pages(monkeypatch: pytest.Monk
     with TestClient(app) as public_client:
         assert public_client.get("/privacy").status_code == 200
         assert public_client.get("/terms").status_code == 200
+
+
+def test_dispatch_page_shows_next_empty_window_and_shortcuts(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "dispatch-page.db"))
+    delivery = date.today() + timedelta(days=4)
+    with TestClient(app) as client:
+        signup(client, "dispatch-page@example.com", "Dispatch Page Fleet")
+        assert client.post(
+            "/vehicles",
+            data={"name": "Unit 7", "equipment_type": "Box Truck", "active": "on"},
+            follow_redirects=False,
+        ).status_code == 303
+        vehicle = query_one("SELECT id FROM vehicles WHERE name='Unit 7'")
+        assert client.post(
+            "/drivers",
+            data={
+                "name": "Jordan Driver",
+                "phone": "615-555-0101",
+                "role": "Driver",
+                "pay_model": "Flat Rate per Load",
+                "vehicle_id": str(vehicle["id"]),
+                "flat_rate_per_load": "400",
+                "active": "on",
+            },
+            follow_redirects=False,
+        ).status_code == 303
+        driver = query_one("SELECT id FROM drivers WHERE name='Jordan Driver'")
+        assert client.post(
+            "/loads/new",
+            data={
+                "load_number": "DSP-200",
+                "status": "Booked",
+                "include_in_model": "on",
+                "pickup_date": date.today().isoformat(),
+                "delivery_date": delivery.isoformat(),
+                "driver_id": str(driver["id"]),
+                "vehicle_id": str(vehicle["id"]),
+                "broker": "Dispatch Broker",
+                "revenue": "2800",
+                "origin": "Nashville, TN",
+                "destination": "Birmingham, AL",
+                "loaded_miles": "195",
+                "deadhead_miles": "25",
+            },
+            follow_redirects=False,
+        ).status_code == 303
+        assert client.post(
+            "/links",
+            data={"label": "Load board", "url": "https://example.com/load-board", "category": "Load board"},
+            follow_redirects=False,
+        ).status_code == 303
+
+        response = client.get("/dispatch")
+        display_date = delivery.strftime("%b %d, %Y").replace(" 0", " ")
+        assert response.status_code == 200
+        assert "Dispatch" in response.text
+        assert "Jordan Driver" in response.text
+        assert "Birmingham, AL" in response.text
+        assert f"Available {display_date}" in response.text
+        assert "Load board" in response.text
+        assert 'href="tel:6155550101"' in response.text
 
 
 def test_business_links_are_safe_and_tenant_isolated(
@@ -463,7 +598,11 @@ def test_security_headers_and_no_default_credentials(monkeypatch: pytest.MonkeyP
         page = client.get("/login")
         assert page.status_code == 200
         assert page.headers["x-frame-options"] == "DENY"
-        assert "frame-ancestors 'none'" in page.headers["content-security-policy"]
+        csp = page.headers["content-security-policy"]
+        assert "frame-ancestors 'none'" in csp
+        assert "https://www.googletagmanager.com" in csp
+        assert "https://www.google-analytics.com" in csp
+        assert "https://region1.google-analytics.com" in csp
         assert page.headers["cache-control"] == "no-store"
         assert page.headers["cross-origin-opener-policy"] == "same-origin"
         assert "ChangeMe" not in page.text
@@ -510,8 +649,9 @@ def test_checkout_uses_server_side_plan_whitelist(monkeypatch: pytest.MonkeyPatc
             data={"plan": "starter_fleet"},
             follow_redirects=False,
         )
-        assert response.status_code == 303
-        assert response.headers["location"] == "https://checkout.stripe.test/session"
+        assert response.status_code == 200
+        assert "Open Stripe checkout" in response.text
+        assert "https://checkout.stripe.test/session" in response.text
         assert captured["plan_code"] == "starter_fleet"
         assert captured["expected_monthly_price"] == 50
         assert captured["owner_email"] == "checkout@example.com"
@@ -522,6 +662,90 @@ def test_checkout_uses_server_side_plan_whitelist(monkeypatch: pytest.MonkeyPatc
             follow_redirects=False,
         )
         assert invalid.status_code == 400
+
+
+def test_checkout_surfaces_live_price_configuration_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "checkout-error.db"))
+    monkeypatch.setenv("CARRIEROS_PUBLIC_URL", "https://app.carrieros.example")
+    configure_stripe(monkeypatch)
+
+    def failed_checkout(**kwargs):
+        raise stripe.InvalidRequestError(
+            "No such price",
+            param="line_items[0][price]",
+            code="resource_missing",
+        )
+
+    monkeypatch.setattr(main_module, "create_checkout_session", failed_checkout)
+    with TestClient(app) as client:
+        signup(client, "checkout-error@example.com", activate=False)
+        response = client.post(
+            "/billing/checkout",
+            data={"plan": "owner_operator"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        assert response.headers["location"] == "/billing"
+        billing = client.get("/billing")
+        assert billing.status_code == 200
+        assert "rejected this plan in live mode" in billing.text
+        assert 'class="notice bad"' in billing.text
+
+
+def test_customer_can_schedule_subscription_cancellation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "cancel.db"))
+    configure_stripe(monkeypatch)
+    captured = {}
+
+    def fake_cancel(**kwargs):
+        captured.update(kwargs)
+        return {"id": kwargs["subscription_id"], "current_period_end": 1800000000}
+
+    monkeypatch.setattr(main_module, "cancel_subscription_at_period_end", fake_cancel)
+    with TestClient(app) as client:
+        signup(client, "cancel@example.com")
+        organization = query_one("SELECT id FROM organizations")
+        with db_session() as conn:
+            conn.execute(
+                "UPDATE organizations SET billing_subscription_reference='sub_cancel', subscription_status='active' WHERE id=?",
+                (organization["id"],),
+            )
+        response = client.post("/billing/cancel", follow_redirects=False)
+        assert response.status_code == 303
+        assert captured == {"subscription_id": "sub_cancel"}
+        row = query_one("SELECT subscription_cancel_at_period_end FROM organizations WHERE id=?", (organization["id"],))
+        assert row["subscription_cancel_at_period_end"] == 1
+        assert "Cancellation scheduled" in client.get("/billing").text
+
+
+def test_customer_can_delete_workspace_after_password_confirmation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CARRIEROS_DB", str(tmp_path / "delete.db"))
+    configure_stripe(monkeypatch)
+    canceled = []
+    monkeypatch.setattr(main_module, "cancel_subscription_immediately", lambda **kwargs: canceled.append(kwargs))
+    with TestClient(app) as client:
+        signup(client, "delete@example.com")
+        organization = query_one("SELECT id FROM organizations")
+        with db_session() as conn:
+            conn.execute(
+                "UPDATE organizations SET billing_subscription_reference='sub_delete', subscription_status='active' WHERE id=?",
+                (organization["id"],),
+            )
+        response = client.post(
+            "/account/delete",
+            data={"password": "StrongPassword!42", "confirmation": "DELETE"},
+        )
+        assert response.status_code == 200
+        assert "account was deleted" in response.text
+        assert canceled == [{"subscription_id": "sub_delete"}]
+        assert query_one("SELECT id FROM organizations WHERE id=?", (organization["id"],)) is None
+        assert query_one("SELECT id FROM users WHERE email=?", ("delete@example.com",)) is None
 
 
 def test_webhooks_activate_update_and_deduplicate_subscription(

@@ -57,6 +57,14 @@ CREATE TABLE IF NOT EXISTS organizations (
     subscription_cancel_at_period_end INTEGER NOT NULL DEFAULT 0,
     terms_accepted_at TEXT,
     terms_version TEXT,
+    acquisition_source TEXT,
+    acquisition_medium TEXT,
+    acquisition_campaign TEXT,
+    acquisition_term TEXT,
+    acquisition_content TEXT,
+    acquisition_landing_page TEXT,
+    acquisition_referrer_host TEXT,
+    acquisition_click_id TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -165,6 +173,74 @@ CREATE TABLE IF NOT EXISTS drivers (
     FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
     FOREIGN KEY (vehicle_id) REFERENCES vehicles(id) ON DELETE SET NULL
 );
+
+CREATE TABLE IF NOT EXISTS referral_partners (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_organization_id INTEGER,
+    driver_id INTEGER,
+    created_by_user_id INTEGER,
+    display_name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    referral_code TEXT NOT NULL UNIQUE,
+    portal_token_hash TEXT NOT NULL UNIQUE,
+    active INTEGER NOT NULL DEFAULT 0,
+    terms_version TEXT,
+    terms_accepted_at TEXT,
+    deactivated_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (source_organization_id, driver_id),
+    FOREIGN KEY (source_organization_id) REFERENCES organizations(id) ON DELETE SET NULL,
+    FOREIGN KEY (driver_id) REFERENCES drivers(id) ON DELETE SET NULL,
+    FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS referral_attributions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    referred_organization_id INTEGER UNIQUE,
+    referral_partner_id INTEGER NOT NULL,
+    referral_code_snapshot TEXT NOT NULL,
+    referred_company_snapshot TEXT NOT NULL,
+    attributed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (referred_organization_id) REFERENCES organizations(id) ON DELETE SET NULL,
+    FOREIGN KEY (referral_partner_id) REFERENCES referral_partners(id)
+);
+
+CREATE TABLE IF NOT EXISTS referral_commissions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    referral_partner_id INTEGER NOT NULL,
+    referred_organization_id INTEGER,
+    stripe_invoice_id TEXT NOT NULL UNIQUE,
+    stripe_charge_id TEXT,
+    referred_company_snapshot TEXT NOT NULL,
+    subscription_payment_cents INTEGER NOT NULL,
+    eligible_basis_cents INTEGER NOT NULL,
+    commission_rate_bps INTEGER NOT NULL DEFAULT 5000,
+    commission_cents INTEGER NOT NULL,
+    reversed_cents INTEGER NOT NULL DEFAULT 0,
+    paid_cents INTEGER NOT NULL DEFAULT 0,
+    offset_applied_cents INTEGER NOT NULL DEFAULT 0,
+    eligible_on TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    earned_at TEXT NOT NULL,
+    paid_at TEXT,
+    paid_by_user_id INTEGER,
+    payout_reference TEXT,
+    reversed_at TEXT,
+    reversal_event_type TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (referral_partner_id) REFERENCES referral_partners(id),
+    FOREIGN KEY (referred_organization_id) REFERENCES organizations(id) ON DELETE SET NULL,
+    FOREIGN KEY (paid_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_referral_partners_source_org
+ON referral_partners(source_organization_id, active);
+
+CREATE INDEX IF NOT EXISTS idx_referral_attributions_partner
+ON referral_attributions(referral_partner_id);
+
+CREATE INDEX IF NOT EXISTS idx_referral_commissions_partner_status
+ON referral_commissions(referral_partner_id, status, eligible_on);
 
 CREATE TABLE IF NOT EXISTS weekly_fuel (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -546,6 +622,14 @@ ORGANIZATION_MIGRATIONS = (
     ("subscription_cancel_at_period_end", "ALTER TABLE organizations ADD COLUMN subscription_cancel_at_period_end INTEGER NOT NULL DEFAULT 0"),
     ("terms_accepted_at", "ALTER TABLE organizations ADD COLUMN terms_accepted_at TEXT"),
     ("terms_version", "ALTER TABLE organizations ADD COLUMN terms_version TEXT"),
+    ("acquisition_source", "ALTER TABLE organizations ADD COLUMN acquisition_source TEXT"),
+    ("acquisition_medium", "ALTER TABLE organizations ADD COLUMN acquisition_medium TEXT"),
+    ("acquisition_campaign", "ALTER TABLE organizations ADD COLUMN acquisition_campaign TEXT"),
+    ("acquisition_term", "ALTER TABLE organizations ADD COLUMN acquisition_term TEXT"),
+    ("acquisition_content", "ALTER TABLE organizations ADD COLUMN acquisition_content TEXT"),
+    ("acquisition_landing_page", "ALTER TABLE organizations ADD COLUMN acquisition_landing_page TEXT"),
+    ("acquisition_referrer_host", "ALTER TABLE organizations ADD COLUMN acquisition_referrer_host TEXT"),
+    ("acquisition_click_id", "ALTER TABLE organizations ADD COLUMN acquisition_click_id TEXT"),
     ("min_total_profit", "ALTER TABLE organizations ADD COLUMN min_total_profit REAL NOT NULL DEFAULT 200"),
     ("min_profit_per_day", "ALTER TABLE organizations ADD COLUMN min_profit_per_day REAL NOT NULL DEFAULT 100"),
     ("min_revenue_per_total_mile", "ALTER TABLE organizations ADD COLUMN min_revenue_per_total_mile REAL NOT NULL DEFAULT 1.75"),
@@ -593,6 +677,14 @@ LOAD_MIGRATIONS = (
     ("delivery_instructions", "ALTER TABLE loads ADD COLUMN delivery_instructions TEXT"),
     ("ratecon_reference", "ALTER TABLE loads ADD COLUMN ratecon_reference TEXT"),
     ("ratecon_received_at", "ALTER TABLE loads ADD COLUMN ratecon_received_at TEXT"),
+)
+
+REFERRAL_COMMISSION_MIGRATIONS = (
+    ("stripe_charge_id", "ALTER TABLE referral_commissions ADD COLUMN stripe_charge_id TEXT"),
+    (
+        "offset_applied_cents",
+        "ALTER TABLE referral_commissions ADD COLUMN offset_applied_cents INTEGER NOT NULL DEFAULT 0",
+    ),
 )
 
 
@@ -777,6 +869,16 @@ def init_db(seed: bool = False) -> None:
         for column, statement in LOAD_MIGRATIONS:
             if column not in load_columns:
                 conn.execute(statement)
+        referral_commission_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(referral_commissions)")
+        }
+        for column, statement in REFERRAL_COMMISSION_MIGRATIONS:
+            if column not in referral_commission_columns:
+                conn.execute(statement)
+        conn.execute(
+            """CREATE INDEX IF NOT EXISTS idx_referral_commissions_charge
+            ON referral_commissions(stripe_charge_id)"""
+        )
         conn.execute(
             """CREATE UNIQUE INDEX IF NOT EXISTS idx_loads_opportunity_unique
             ON loads(opportunity_id) WHERE opportunity_id IS NOT NULL"""
@@ -1045,7 +1147,76 @@ def export_organization_data(organization_id: int) -> dict[str, Any]:
                 (organization_id,),
             ).fetchall()
             payload[table] = [dict(row) for row in rows]
+        referral_partners = conn.execute(
+            """SELECT * FROM referral_partners
+            WHERE source_organization_id=? ORDER BY id""",
+            (organization_id,),
+        ).fetchall()
+        partner_ids = [int(row["id"]) for row in referral_partners]
+        payload["referral_partners"] = [dict(row) for row in referral_partners]
+        if partner_ids:
+            placeholders = ",".join("?" for _ in partner_ids)
+            for table in ("referral_attributions", "referral_commissions"):
+                rows = conn.execute(
+                    f"""SELECT * FROM {table}
+                    WHERE referral_partner_id IN ({placeholders}) ORDER BY id""",
+                    partner_ids,
+                ).fetchall()
+                payload[table] = [dict(row) for row in rows]
+        else:
+            payload["referral_attributions"] = []
+            payload["referral_commissions"] = []
         return payload
+
+
+_ORGANIZATION_DELETE_GUARDS = {
+    "audit_events_no_update": """CREATE TRIGGER IF NOT EXISTS audit_events_no_update
+BEFORE UPDATE ON audit_events
+BEGIN
+    SELECT RAISE(ABORT, 'audit events are immutable');
+END;""",
+    "opportunity_snapshots_no_delete": """CREATE TRIGGER IF NOT EXISTS opportunity_snapshots_no_delete
+BEFORE DELETE ON opportunity_snapshots
+BEGIN
+    SELECT RAISE(ABORT, 'opportunity snapshots are immutable');
+END;""",
+    "opportunity_negotiations_no_delete": """CREATE TRIGGER IF NOT EXISTS opportunity_negotiations_no_delete
+BEFORE DELETE ON opportunity_negotiations
+BEGIN
+    SELECT RAISE(ABORT, 'opportunity negotiation history is append-only');
+END;""",
+    "ratecon_extractions_no_delete": """CREATE TRIGGER IF NOT EXISTS ratecon_extractions_no_delete
+BEFORE DELETE ON ratecon_extractions
+BEGIN
+    SELECT RAISE(ABORT, 'ratecon extractions are immutable');
+END;""",
+    "load_financial_snapshots_no_delete": """CREATE TRIGGER IF NOT EXISTS load_financial_snapshots_no_delete
+BEFORE DELETE ON load_financial_snapshots
+BEGIN
+    SELECT RAISE(ABORT, 'load financial snapshots are immutable');
+END;""",
+}
+
+
+def delete_organization(organization_id: int) -> bool:
+    """Permanently remove a workspace and its cascading operational records.
+
+    Immutable calculation/extraction histories normally reject deletes. A
+    confirmed account deletion is the one intentional exception; the guards
+    are dropped only for this transaction and recreated before it commits.
+    Minimal security audit events are retained with their foreign keys nulled.
+    """
+    with db_session() as conn:
+        if not conn.execute("SELECT 1 FROM organizations WHERE id=?", (organization_id,)).fetchone():
+            return False
+        for trigger_name in _ORGANIZATION_DELETE_GUARDS:
+            conn.execute(f"DROP TRIGGER IF EXISTS {trigger_name}")
+        try:
+            deleted = conn.execute("DELETE FROM organizations WHERE id=?", (organization_id,)).rowcount
+        finally:
+            for statement in _ORGANIZATION_DELETE_GUARDS.values():
+                conn.execute(statement)
+        return deleted == 1
 
 
 def utc_now_iso() -> str:

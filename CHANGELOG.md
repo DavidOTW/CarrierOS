@@ -6,6 +6,55 @@
 - Imports require an explicit confirmation after preview, write all records in one transaction, create the load status/revenue/assignment records used by current reporting, and roll back the batch if any write fails.
 - Added migration navigation, setup checklist links, mobile-friendly review tables, and regression tests for clean imports and rejected rows.
 
+## 0.16.0a15 - Account-scoped referral dashboards
+
+- Kept the paid OTW driver referral program and its management navigation limited to the configured CarrierOS referral-administrator account.
+- Added a non-commissionable CarrierOS sharing link to every other customer dashboard so carriers can spread the word without seeing OTW's private driver-pay controls.
+- Added route coverage proving the two dashboard experiences remain separated.
+
+## 0.16.0a14 - Public navigation and Help Center search
+
+- Added one consistent desktop and mobile navigation menu across the CarrierOS marketing, solutions, pricing, and Help Center pages.
+- Rebuilt Help Center search as an accessible, browser-safe control with live filtering, a clear action, keyboard shortcuts, and an independently cached script.
+
+## 0.16.0a13 - Dependency updates
+
+- Updated the GitHub Actions checkout and Python setup runtimes to version 7.
+- Updated the Stripe Python SDK from 14.4.1 to 15.3.1 and verified the checkout, billing-portal, webhook, subscription, referral, refund, and dispute paths.
+
+## 0.16.0a12 - Google Analytics
+
+- Installed the `G-RMCP51Y4Y7` Google Analytics 4 tag across the CarrierOS website and application.
+- Configured analytics page locations without URL query parameters so reset tokens and other query values are not sent as page-location data.
+- Expanded the Privacy Policy with a plain-language Google Analytics disclosure and opt-out information.
+
+## 0.16.0a11 - Google Search Console verification
+
+- Added the public Google Search Console verification tag for the canonical `https://otwcarrieros.com/` URL-prefix property.
+- Preserved the verification tag across every public template so Google can continue validating ownership after deployment.
+
+## 0.16.0a10 - CarrierOS search architecture
+
+- Added a crawlable CarrierOS Solutions hub and nine people-first pages for small-fleet TMS, dispatch, RateCon review, document management, receivables, compliance, owner-operators, box-truck fleets, and hotshot carriers.
+- Expanded the four existing search landing pages with practical operating detail, product boundaries, FAQs, and contextual internal links.
+- Corrected the server-level `noindex` conflict on the public Help Center and its 20 product guides.
+- Added breadcrumb, website, organization, founder, software, FAQ, and help-article structured data with unique canonical titles and descriptions.
+- Expanded homepage, demo, checkout, help, footer, robots, and sitemap connections so crawlers and people can reach the full public content architecture.
+
+## 0.16.0a9 - CarrierOS help center
+
+- Added a public, searchable help center with step-by-step operating guides for every workspace tab.
+- Added a guided offer-to-cash workflow, related-guide navigation, product boundaries, operating tips, and responsive mobile layouts.
+- Linked the help center from the customer workspace, mobile menu, marketing resources, public footer, and XML sitemap.
+- Added route, content, canonical-link, navigation, and sitemap coverage for the complete guide library.
+
+## 0.16.0a8 - Driver referral program draft
+
+- Added OTW-administered private driver invitations, secure activation and earnings portals, versioned referral terms acceptance, and unique public referral links.
+- Added first-touch signup attribution and a recurring 50% commission ledger for successful CarrierOS subscription invoices, with a 30-day confirmation hold and idempotent Stripe processing.
+- Added refund, void, and dispute adjustments; private driver earnings portals; and an administrator-controlled manual payout ledger.
+- Added self-referral blocking, required promotional-disclosure copy, noindex controls, token-path log redaction, and referral privacy and operations documentation.
+
 ## 0.16.0a4 - Phase 4 draft
 
 - Added a non-mutating production release-readiness gate for live billing, secure document storage, managed malware scanning, database integrity, schema version, and verified backup evidence.

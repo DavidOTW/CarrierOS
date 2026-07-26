@@ -1,9 +1,48 @@
 <!doctype html>
 <html lang="en">
 <head>
+  {% if google_analytics_measurement_id %}
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id={{ google_analytics_measurement_id }}"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    const carrierSafeCampaignKeys = [
+      'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+      'gclid', 'gbraid', 'wbraid'
+    ];
+    const carrierQuery = new URLSearchParams(window.location.search);
+    try {
+      if (carrierQuery.get('internal_test') === '1') {
+        window.localStorage.setItem('carrieros_internal_traffic', '1');
+      } else if (carrierQuery.get('internal_test') === '0') {
+        window.localStorage.removeItem('carrieros_internal_traffic');
+      }
+    } catch (_) {
+      // Analytics remains available when browser storage is restricted.
+    }
+    let carrierInternalTraffic = false;
+    try {
+      carrierInternalTraffic = window.localStorage.getItem('carrieros_internal_traffic') === '1';
+    } catch (_) {}
+    const carrierSafeLocation = new URL(window.location.origin + window.location.pathname);
+    carrierSafeCampaignKeys.forEach((key) => {
+      const value = carrierQuery.get(key);
+      if (value) carrierSafeLocation.searchParams.set(key, value);
+    });
+    gtag('js', new Date());
+    gtag('config', '{{ google_analytics_measurement_id }}', {
+      page_location: carrierSafeLocation.href,
+      {% if user %}user_id: 'carrieros-user-{{ user.id }}',{% endif %}
+      traffic_type: carrierInternalTraffic ? 'internal' : 'external'
+    });
+  </script>
+  {% endif %}
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0f2f46">
+  <meta name="author" content="Outside The Wire Logistics LLC">
+  <meta name="google-site-verification" content="p9i3Hm7KxwLc1INuRGmRfeFNVX0S-JLsm3f8oDezB0A">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="CarrierOS">
@@ -13,12 +52,15 @@
   {% if canonical_url %}<link rel="canonical" href="{{ canonical_url }}">{% endif %}
   {% if seo_title and seo_description %}
   <meta property="og:site_name" content="CarrierOS">
+  <meta property="og:locale" content="en_US">
   <meta property="og:title" content="{{ seo_title }}">
   <meta property="og:description" content="{{ seo_description }}">
   <meta property="og:type" content="website">
   <meta property="og:url" content="{{ canonical_url }}">
   <meta property="og:image" content="{{ social_image_url }}">
   <meta property="og:image:alt" content="CarrierOS — Run the fleet. Know the profit.">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="{{ seo_title }}">
   <meta name="twitter:description" content="{{ seo_description }}">
@@ -42,8 +84,8 @@
     <nav class="nav">
       <div class="nav-section">Daily workflow</div>
       <a class="{% if request.url.path == '/dashboard' %}active{% endif %}" href="/dashboard"><span class="nav-icon">DB</span>Dashboard</a>
-      <a href="/dashboard#availability"><span class="nav-icon">DS</span>Dispatch</a>
-      <a class="{% if request.url.path.startswith('/rate-quotes') or request.url.path.startswith('/quotes') %}active{% endif %}" href="/rate-quotes"><span class="nav-icon">RQ</span>Rate Quotes</a>
+      <a class="{% if request.url.path.startswith('/dispatch') %}active{% endif %}" href="/dispatch"><span class="nav-icon">DS</span>Dispatch</a>
+      <a class="{% if request.url.path.startswith('/rate-quotes') or request.url.path.startswith('/quotes') %}active{% endif %}" href="/rate-quotes"><span class="nav-icon">RQ</span>Rate quotes</a>
       <a class="{% if request.url.path.startswith('/ratecons') %}active{% endif %}" href="/ratecons"><span class="nav-icon">RC</span>RateCon inbox</a>
       <a class="{% if request.url.path.startswith('/loads') %}active{% endif %}" href="/loads"><span class="nav-icon">LD</span>Loads</a>
       <a class="{% if request.url.path.startswith('/drivers') or request.url.path.startswith('/vehicles') %}active{% endif %}" href="/drivers"><span class="nav-icon">DE</span>Drivers &amp; equipment</a>
@@ -51,23 +93,25 @@
       <a class="{% if request.url.path.startswith('/payments') %}active{% endif %}" href="/payments"><span class="nav-icon">PY</span>Driver pay</a>
       <div class="nav-section">Review &amp; tools</div>
       <a class="{% if request.url.path.startswith('/idle') %}active{% endif %}" href="/idle"><span class="nav-icon">RP</span>Reports</a>
+      <a class="{% if request.url.path.startswith('/links') %}active{% endif %}" href="/links"><span class="nav-icon">SC</span>Shortcuts</a>
+      <a href="/help"><span class="nav-icon">HC</span>Help center</a>
+      <a class="{% if request.url.path.startswith('/compliance') %}active{% endif %}" href="/compliance"><span class="nav-icon">CP</span>Compliance</a>
       <a class="{% if request.url.path.startswith('/documents') %}active{% endif %}" href="/documents"><span class="nav-icon">DC</span>Documents</a>
       <a class="{% if request.url.path.startswith('/receivables') %}active{% endif %}" href="/receivables"><span class="nav-icon">AR</span>Detention &amp; A/R</a>
-      <a class="{% if request.url.path.startswith('/compliance') %}active{% endif %}" href="/compliance"><span class="nav-icon">CP</span>Compliance</a>
-      <a class="{% if request.url.path.startswith('/links') %}active{% endif %}" href="/links"><span class="nav-icon">CN</span>Connections</a>
       <a class="{% if request.url.path.startswith('/getting-started') %}active{% endif %}" href="/getting-started"><span class="nav-icon">GS</span>Getting started</a>
       <a class="{% if request.url.path.startswith('/migration') %}active{% endif %}" href="/migration"><span class="nav-icon">IM</span>Import history</a>
+      <a class="{% if request.url.path.startswith('/fuel') %}active{% endif %}" href="/fuel"><span class="nav-icon">FL</span>Weekly fuel</a>
       <a class="{% if request.url.path.startswith('/growth') %}active{% endif %}" href="/growth"><span class="nav-icon">GR</span>Growth mentor</a>
       <a class="{% if request.url.path.startswith('/audits') %}active{% endif %}" href="/audits"><span class="nav-icon">AU</span>Document audits</a>
       <a class="{% if request.url.path.startswith('/startup') %}active{% endif %}" href="/startup"><span class="nav-icon">SU</span>Startup guide</a>
       <div class="nav-section">Administration</div>
       <a class="{% if request.url.path.startswith('/onboarding') %}active{% endif %}" href="/onboarding"><span class="nav-icon">ON</span>Driver onboarding</a>
-      <a class="{% if request.url.path.startswith('/fuel') %}active{% endif %}" href="/fuel"><span class="nav-icon">FL</span>Weekly fuel</a>
+      {% if referral_admin %}<a class="{% if request.url.path.startswith('/referrals') %}active{% endif %}" href="/referrals"><span class="nav-icon">RF</span>Referral program</a>{% endif %}
       <a class="{% if request.url.path.startswith('/settings') %}active{% endif %}" href="/settings"><span class="nav-icon">ST</span>Settings</a>
       <a class="{% if request.url.path.startswith('/billing') %}active{% endif %}" href="/billing"><span class="nav-icon">BL</span>Billing</a>
     </nav>
     {% if user %}<div class="sidebar-account"><span>{{ user.full_name[:1]|upper }}</span><div><strong>{{ user.organization_name }}</strong><small>{% if user.active_unit_limit == 0 %}Startup planning &middot; 0 units{% else %}Up to {{ user.active_unit_limit }} active power units{% endif %}</small></div></div>{% endif %}
-    <div class="sidebar-footer">Private customer workspace &middot; v{{ version }}<br><a href="/terms">Terms</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="mailto:{{ support_email }}">Support</a></div>
+    <div class="sidebar-footer">Private customer workspace &middot; v{{ version }}<br><a href="/help">Help</a> &middot; <a href="/terms">Terms</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="mailto:{{ support_email }}">Support</a></div>
   </aside>
   <main class="main">
     <header class="topbar">
@@ -77,10 +121,10 @@
         {% if user %}<div class="user-avatar">{{ user.full_name[:1]|upper }}</div><div class="user-chip"><strong>{{ user.full_name }}</strong><a href="/logout">Log out</a></div>{% endif %}
       </div>
       <details class="mobile-nav"><summary>Menu</summary><div class="mobile-menu-panel">
-        <a href="/dashboard">Dashboard</a><a href="/dashboard#availability">Dispatch</a><a href="/rate-quotes">Rate Quotes</a><a href="/ratecons">RateCon inbox</a><a href="/loads">Loads</a><a href="/drivers">Drivers &amp; equipment</a><a href="/financials">Money</a><a href="/payments">Driver pay</a><a href="/idle">Reports</a><a href="/documents">Documents</a><a href="/receivables">Detention &amp; A/R</a><a href="/compliance">Compliance</a><a href="/links">Connections</a><a href="/getting-started">Getting started</a><a href="/migration">Import history</a><a href="/growth">Growth mentor</a><a href="/audits">Audits</a><a href="/startup">Startup guide</a><a href="/onboarding">Driver onboarding</a><a href="/fuel">Weekly fuel</a><a href="/settings">Settings</a><a href="/billing">Billing</a><a href="/logout">Log out</a>
+        <a href="/dashboard">Dashboard</a><a href="/dispatch">Dispatch</a><a href="/rate-quotes">Rate quotes</a><a href="/ratecons">RateCon inbox</a><a href="/loads">Loads</a><a href="/drivers">Drivers &amp; equipment</a><a href="/financials">Money</a><a href="/payments">Driver pay</a><a href="/idle">Reports</a><a href="/links">Shortcuts</a><a href="/help">Help center</a><a href="/compliance">Compliance</a><a href="/documents">Documents</a><a href="/receivables">A/R</a><a href="/fuel">Fuel</a><a href="/getting-started">Getting started</a><a href="/migration">Import history</a><a href="/growth">Growth mentor</a><a href="/audits">Audits</a><a href="/startup">Startup</a><a href="/onboarding">Onboarding</a>{% if referral_admin %}<a href="/referrals">Referral program</a>{% endif %}<a href="/settings">Settings</a><a href="/billing">Billing</a><a href="/logout">Log out</a>
       </div></details>
     </header>
-    <div class="content">{% if flash %}<div class="notice good">{{ flash }}</div>{% endif %}
+    <div class="content">{% if flash %}<div class="notice {{ flash_kind or 'good' }}">{{ flash }}</div>{% endif %}
 {% endif %}
 {% block content %}{% endblock %}
 {% if not public_page %}
@@ -90,6 +134,148 @@
 {% endif %}
 <script>
   const carrierCsrfToken = {{ csrf_token|tojson }};
+  const carrierAttributionStorageKey = 'carrieros_first_touch_v1';
+  const carrierAttributionFieldMap = {
+    utm_source: 'source',
+    utm_medium: 'medium',
+    utm_campaign: 'campaign',
+    utm_term: 'term',
+    utm_content: 'content'
+  };
+  const readCarrierAttribution = () => {
+    try {
+      return JSON.parse(window.localStorage.getItem(carrierAttributionStorageKey) || 'null');
+    } catch (_) {
+      return null;
+    }
+  };
+  const captureCarrierAttribution = () => {
+    const existing = readCarrierAttribution();
+    if (existing) return existing;
+    const params = new URLSearchParams(window.location.search);
+    const attribution = {
+      source: '',
+      medium: '',
+      campaign: '',
+      term: '',
+      content: '',
+      landing_page: window.location.pathname,
+      referrer_host: '',
+      click_id: ''
+    };
+    Object.entries(carrierAttributionFieldMap).forEach(([queryKey, field]) => {
+      attribution[field] = (params.get(queryKey) || '').slice(0, 200);
+    });
+    attribution.click_id = (
+      params.get('gclid') || params.get('gbraid') || params.get('wbraid') || ''
+    ).slice(0, 255);
+    try {
+      attribution.referrer_host = document.referrer
+        ? new URL(document.referrer).hostname.slice(0, 255)
+        : '';
+    } catch (_) {}
+    const hasCampaign = Object.values(carrierAttributionFieldMap)
+      .some((field) => attribution[field]);
+    if (!hasCampaign && !attribution.click_id) {
+      attribution.source = attribution.referrer_host || 'direct';
+      attribution.medium = attribution.referrer_host ? 'referral' : 'none';
+    }
+    try {
+      window.localStorage.setItem(carrierAttributionStorageKey, JSON.stringify(attribution));
+    } catch (_) {}
+    return attribution;
+  };
+  const carrierAttribution = captureCarrierAttribution();
+  window.carrierAnalytics = {
+    track(eventName, parameters = {}) {
+      if (typeof window.gtag !== 'function') return;
+      window.gtag('event', eventName, {
+        page_path: window.location.pathname,
+        campaign_source: carrierAttribution?.source || 'unknown',
+        campaign_medium: carrierAttribution?.medium || 'unknown',
+        campaign_name: carrierAttribution?.campaign || 'unknown',
+        ...parameters
+      });
+    },
+    trackOnce(eventName, parameters = {}) {
+      const key = `carrieros_analytics_${eventName}_${window.location.pathname}_${window.location.search}`;
+      try {
+        if (window.sessionStorage.getItem(key)) return;
+        window.sessionStorage.setItem(key, '1');
+      } catch (_) {
+        // Analytics still works when private browsing blocks sessionStorage.
+      }
+      this.track(eventName, parameters);
+    },
+    trackConversionOnce(eventName, parameters = {}) {
+      const suffix = [
+        eventName,
+        parameters.plan || 'unspecified',
+        parameters.trial_end || parameters.period_end || 'current'
+      ].join('_');
+      const key = `carrieros_conversion_${suffix}`;
+      try {
+        if (window.localStorage.getItem(key)) return;
+        window.localStorage.setItem(key, '1');
+      } catch (_) {
+        return this.trackOnce(eventName, parameters);
+      }
+      this.track(eventName, parameters);
+    }
+  };
+  {% if public_page %}
+  document.addEventListener('click', (event) => {
+    const link = event.target.closest('a[href]');
+    if (!link) return;
+    const href = link.getAttribute('href') || '';
+    if (href.startsWith('mailto:')) {
+      window.carrierAnalytics.track('generate_lead', {lead_source: 'email'});
+      return;
+    }
+    if (href.startsWith('/demo')) {
+      window.carrierAnalytics.track('demo_cta_click', {
+        cta_location: link.dataset.analyticsLocation || 'public_page'
+      });
+      return;
+    }
+    if (href.startsWith('/signup')) {
+      const destination = new URL(href, window.location.origin);
+      window.carrierAnalytics.track('signup_cta_click', {
+        plan: destination.searchParams.get('plan') || 'unspecified',
+        cta_location: link.dataset.analyticsLocation || 'public_page'
+      });
+      return;
+    }
+    if (href.startsWith('/checkout')) {
+      window.carrierAnalytics.track('pricing_cta_click', {
+        cta_location: link.dataset.analyticsLocation || 'public_page'
+      });
+    }
+  });
+  {% endif %}
+  document.querySelectorAll('[data-analytics-event]').forEach((marker) => {
+    const parameters = {
+      plan: marker.dataset.analyticsPlan || 'unspecified',
+      trial_end: marker.dataset.analyticsTrialEnd || '',
+      period_end: marker.dataset.analyticsPeriodEnd || ''
+    };
+    if (marker.dataset.analyticsPersistent === 'true') {
+      window.carrierAnalytics.trackConversionOnce(marker.dataset.analyticsEvent, parameters);
+    } else {
+      window.carrierAnalytics.trackOnce(marker.dataset.analyticsEvent, parameters);
+    }
+  });
+  document.querySelectorAll('[data-analytics-view]').forEach((section) => {
+    if (!('IntersectionObserver' in window)) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      window.carrierAnalytics.trackOnce(section.dataset.analyticsView, {
+        section: section.id || 'unnamed'
+      });
+      observer.disconnect();
+    }, {threshold: 0.35});
+    observer.observe(section);
+  });
   document.querySelectorAll('form[method="post"]').forEach((form) => {
     if (form.querySelector('input[name="_csrf"]')) return;
     const field = document.createElement('input');
@@ -98,6 +284,140 @@
     field.value = carrierCsrfToken;
     form.appendChild(field);
   });
+  document.querySelectorAll('form[data-checkout-form]').forEach((form) => {
+    form.addEventListener('submit', () => {
+      window.carrierAnalytics.track('begin_checkout', {
+        plan: form.querySelector('[name="plan"]')?.value || 'unspecified'
+      });
+      const button = form.querySelector('button[type="submit"], button:not([type])');
+      if (!button) return;
+      button.disabled = true;
+      button.dataset.originalLabel = button.textContent;
+      button.textContent = 'Opening secure checkout...';
+
+      // A Stripe-hosted page can be delayed by a browser privacy extension,
+      // mobile network, or a transient Stripe edge issue even after CarrierOS
+      // has successfully created the session. Do not leave the customer with
+      // a permanently disabled button when that happens: return a retryable
+      // state and explain what to do without exposing billing details.
+      const status = document.createElement('span');
+      status.className = 'muted checkout-status';
+      status.setAttribute('role', 'status');
+      status.textContent = 'Connecting to secure Stripe checkout...';
+      form.appendChild(status);
+      window.setTimeout(() => {
+        if (!button.disabled || document.visibilityState !== 'visible') return;
+        button.disabled = false;
+        button.textContent = 'Try checkout again';
+        status.textContent = 'Stripe is taking longer than expected. Check your connection and try again.';
+      }, 15000);
+    });
+  });
+  document.querySelectorAll('form[data-signup-form]').forEach((form) => {
+    const attributionNames = {
+      source: 'acquisition_source',
+      medium: 'acquisition_medium',
+      campaign: 'acquisition_campaign',
+      term: 'acquisition_term',
+      content: 'acquisition_content',
+      landing_page: 'acquisition_landing_page',
+      referrer_host: 'acquisition_referrer_host',
+      click_id: 'acquisition_click_id'
+    };
+    Object.entries(attributionNames).forEach(([key, fieldName]) => {
+      const hidden = document.createElement('input');
+      hidden.type = 'hidden';
+      hidden.name = fieldName;
+      hidden.value = carrierAttribution?.[key] || '';
+      form.appendChild(hidden);
+    });
+    let signupStarted = false;
+    const beginSignup = () => {
+      if (signupStarted) return;
+      signupStarted = true;
+      window.carrierAnalytics.trackOnce('begin_signup', {
+        plan: form.querySelector('[name="plan"]')?.value || 'unspecified'
+      });
+    };
+    form.addEventListener('focusin', (event) => {
+      if (event.target.matches('input, select')) beginSignup();
+    });
+    form.addEventListener('submit', () => {
+      beginSignup();
+      window.carrierAnalytics.track('signup_submit', {
+        plan: form.querySelector('[name="plan"]')?.value || 'unspecified'
+      });
+      const button = form.querySelector('button[type="submit"], button:not([type])');
+      if (!button) return;
+      button.disabled = true;
+      button.dataset.originalLabel = button.textContent;
+      button.textContent = 'Creating your workspace...';
+    });
+  });
+  // Make monetary and percentage number fields unambiguous while keeping the
+  // posted values numeric. Untouched values are restored before submit so
+  // precision such as three-decimal fuel prices is never lost.
+  (() => {
+    const moneyNames = new Set([
+      'expected_amount', 'truck_financing_monthly', 'auto_insurance_monthly',
+      'trailer_financing_monthly', 'trailer_insurance_monthly', 'other_fixed_monthly',
+      'maintenance_per_mile', 'flat_rate_per_load', 'pay_per_loaded_mile',
+      'pay_per_total_mile', 'day_rate', 'average_price', 'revenue', 'fuel_override',
+      'tolls_misc', 'other_direct_costs', 'amount', 'hourly_rate', 'fuel_price',
+      'original_offered_rate', 'total_rate', 'linehaul_revenue', 'fuel_surcharge',
+      'additional_revenue', 'stop_pay_revenue', 'tolls', 'lumper', 'misc_expenses',
+      'counteroffer_rate', 'final_agreed_rate', 'quoted_revenue', 'admin_fee_per_load',
+      'min_company_profit_per_mile', 'min_total_profit', 'min_profit_per_day',
+      'min_revenue_per_total_mile', 'fallback_diesel_price', 'monthly_cost', 'purchase_price',
+      'down_payment', 'monthly_insurance', 'other_monthly_costs', 'revenue_per_mile',
+      'diesel_price', 'cash_reserve'
+    ]);
+    const percentNames = new Set([
+      'processing_fee_pct', 'payroll_burden_pct', 'owner_distribution_pct',
+      'target_margin_pct', 'target_max_deadhead_pct', 'quote_counteroffer_pct',
+      'tax_reserve_pct', 'growth_reserve_pct', 'driver_profit_split_pct',
+      'contractor_gross_split_pct', 'owner_operator_split_pct', 'factoring_pct',
+      'quick_pay_pct', 'apr_pct', 'driver_pay_pct'
+    ]);
+    const formatFor = (input) => {
+      if (input.dataset.format === 'money' || input.dataset.format === 'currency') return 'money';
+      if (input.dataset.format === 'percent') return 'percent';
+      const name = (input.name || '').toLowerCase();
+      if (percentNames.has(name) || /(?:^|_)(?:pct|percent|margin|split)$/.test(name)) return 'percent';
+      if (moneyNames.has(name) || name.startsWith('overhead_')) return 'money';
+      return null;
+    };
+    document.querySelectorAll('input[type="number"]').forEach((input) => {
+      const format = formatFor(input);
+      if (!format || input.closest('.input-affix')) return;
+      const original = input.value;
+      const wrapper = document.createElement('span');
+      wrapper.className = `input-affix ${format}-input`;
+      const affix = document.createElement('span');
+      affix.textContent = format === 'money' ? '$' : '%';
+      affix.setAttribute('aria-hidden', 'true');
+      input.parentNode.insertBefore(wrapper, input);
+      wrapper.appendChild(input);
+      wrapper.appendChild(affix);
+      if (format === 'money') wrapper.insertBefore(affix, input);
+      if (original !== '') {
+        const numeric = Number(original);
+        if (Number.isFinite(numeric)) {
+          input.dataset.originalFormattedValue = numeric.toFixed(2);
+          input.dataset.originalValue = original;
+          input.value = input.dataset.originalFormattedValue;
+        }
+      }
+      input.dataset.format = format;
+    });
+    document.querySelectorAll('form').forEach((form) => {
+      form.addEventListener('submit', () => {
+        form.querySelectorAll('input[data-original-value][data-original-formatted-value]').forEach((input) => {
+          if (input.value === input.dataset.originalFormattedValue) input.value = input.dataset.originalValue;
+        });
+      });
+    });
+  })();
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => navigator.serviceWorker.register('/service-worker.js').catch(() => {}));
   }

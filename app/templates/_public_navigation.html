@@ -1,0 +1,31 @@
+{% set active_section = nav_current|default('') %}
+{% set primary_href = nav_primary_href|default('/dashboard' if user else signup_href) %}
+{% set primary_label = nav_primary_label|default('Open workspace' if user else signup_cta) %}
+<header class="public-nav">
+  <a class="public-brand" href="/" aria-label="CarrierOS home"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a>
+  <nav class="public-nav-links" aria-label="Primary navigation">
+    <a href="/" {% if active_section == 'home' %}aria-current="page"{% endif %}>Home</a>
+    <a href="/#platform" {% if active_section == 'platform' %}aria-current="page"{% endif %}>Platform</a>
+    <a href="/solutions" {% if active_section == 'solutions' %}aria-current="page"{% endif %}>Solutions</a>
+    <a href="/help" {% if active_section == 'help' %}aria-current="page"{% endif %}>Help center</a>
+    <a href="/#pricing" {% if active_section == 'pricing' %}aria-current="page"{% endif %}>Pricing</a>
+    <a href="/demo" {% if active_section == 'demo' %}aria-current="page"{% endif %}>Live demo</a>
+  </nav>
+  <div class="public-nav-actions">
+    {% if not user %}<a class="public-signin" href="/login">Log in</a>{% endif %}
+    {% if primary_href %}<a class="public-btn public-btn-dark" href="{{ primary_href }}">{{ primary_label }} <span aria-hidden="true">&rarr;</span></a>{% endif %}
+    <details class="public-mobile-menu">
+      <summary aria-label="Open navigation menu"><span>Menu</span><i aria-hidden="true"></i></summary>
+      <nav aria-label="Mobile navigation">
+        <a href="/" {% if active_section == 'home' %}aria-current="page"{% endif %}>Home</a>
+        <a href="/#platform" {% if active_section == 'platform' %}aria-current="page"{% endif %}>Platform</a>
+        <a href="/solutions" {% if active_section == 'solutions' %}aria-current="page"{% endif %}>Solutions</a>
+        <a href="/help" {% if active_section == 'help' %}aria-current="page"{% endif %}>Help center</a>
+        <a href="/#pricing" {% if active_section == 'pricing' %}aria-current="page"{% endif %}>Pricing</a>
+        <a href="/demo" {% if active_section == 'demo' %}aria-current="page"{% endif %}>Live demo</a>
+        {% if not user %}<a href="/login">Log in</a>{% endif %}
+        {% if primary_href %}<a class="public-mobile-cta" href="{{ primary_href }}">{{ primary_label }} <span aria-hidden="true">&rarr;</span></a>{% endif %}
+      </nav>
+    </details>
+  </div>
+</header>

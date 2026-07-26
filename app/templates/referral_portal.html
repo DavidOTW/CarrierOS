@@ -1,0 +1,34 @@
+{% extends "base.html" %}{% block title %}Referral partner portal &middot; CarrierOS{% endblock %}
+{% block content %}
+<div class="login-page">
+  <section class="login-hero">
+    <div class="brand" style="border:0;padding:0;margin-bottom:32px"><div class="brand-mark">50</div><div><strong>CarrierOS Referrals</strong><small style="color:#cae0eb">Recurring driver earnings</small></div></div>
+    <h1>Earn {{ commission_rate_pct }}% while your referrals keep paying.</h1>
+    <p>Share CarrierOS with carrier owners who can use it. Each eligible subscription payment earns a recurring commission after the {{ hold_days }}-day confirmation period.</p>
+    <div class="login-bullets"><span>&check; {{ commission_rate_pct }}% recurring commission</span><span>&check; No customer price increase</span><span>&check; Private earnings portal</span><span>&check; Clear monthly ledger</span></div>
+  </section>
+  <section class="login-panel"><div class="login-card" style="max-width:760px">
+    {% if partner.active %}
+      <h2>{{ partner.display_name }}'s referral portal</h2><p class="muted">Keep this private portal link secure. Your public sharing link is below.</p>
+      <div class="grid grid-3" style="margin-top:18px"><div class="metric-pair"><span>Total earned</span><strong>{{ money(totals.earned_cents/100) }}</strong></div><div class="metric-pair"><span>Unpaid ledger</span><strong>{{ money(totals.unpaid_cents/100) }}</strong></div><div class="metric-pair"><span>Paid</span><strong>{{ money(totals.paid_cents/100) }}</strong></div></div>
+      {% if totals.offset_cents %}<div class="notice warn" style="margin-top:16px">Refund or dispute adjustment awaiting offset: {{ money(totals.offset_cents/100) }}</div>{% endif %}
+      <div class="field" style="margin-top:20px"><label>Your public referral link</label><input id="partner-referral-link" value="{{ referral_link }}" readonly onclick="this.select()"></div>
+      <div class="form-actions"><button class="btn btn-primary" type="button" onclick="navigator.clipboard.writeText(document.getElementById('partner-referral-link').value).then(()=>this.textContent='Copied')">Copy referral link</button></div>
+      <div class="notice" style="margin-top:18px"><strong>Use this disclosure beside your link:</strong><br>I earn a recurring commission when someone subscribes to CarrierOS through my link.</div>
+      <div class="grid grid-2" style="margin-top:18px"><div class="metric-pair"><span>Active paying referrals</span><strong>{{ active_referral_count }}</strong></div><div class="metric-pair"><span>Total attributed referrals</span><strong>{{ referral_count }}</strong></div></div>
+      <h3 style="margin-top:24px">Recent commission activity</h3>
+      <div class="table-wrap"><table><thead><tr><th>Earned</th><th>Eligible</th><th>Commission</th><th>Status</th></tr></thead><tbody>{% for row in recent_commissions %}<tr><td>{{ row.earned_at[:10] }}</td><td>{{ row.eligible_on }}</td><td>{{ money((row.commission_cents-row.reversed_cents)/100) }}</td><td><span class="badge {% if row.status == 'paid' %}good{% elif row.status in ['reversed','adjusted'] %}warn{% else %}info{% endif %}">{{ row.status|replace('_',' ')|title }}</span></td></tr>{% else %}<tr><td colspan="4" class="empty">No paid referral invoices yet.</td></tr>{% endfor %}</tbody></table></div>
+    {% else %}
+      <h2>Activate your referral portal</h2>
+      <p class="muted">Invitation for {{ partner.display_name }}. Confirm the invited email and accept the program terms.</p>
+      <form method="post" action="/referral-program/portal/{{ portal_token }}">
+        <div class="field"><label>Invited email</label><input type="email" name="email" autocomplete="email" required></div>
+        <div class="field inline" style="margin-top:14px"><input id="accepted-referral-terms" type="checkbox" name="accepted_terms" required><label for="accepted-referral-terms">I accept the <a href="/referral-terms" target="_blank" rel="noopener">CarrierOS Referral Program Terms</a> and will clearly disclose that I earn commissions.</label></div>
+        <div class="form-actions"><button class="btn btn-primary" style="width:100%">Activate my {{ commission_rate_pct }}% recurring referral link</button></div>
+      </form>
+      <div class="notice" style="margin-top:18px">Do not enter bank information, a Social Security number, or tax ID here. CarrierOS will request required payout documentation separately through an appropriate secure process.</div>
+    {% endif %}
+    <p class="small muted" style="margin-top:20px">Questions? <a href="mailto:{{ support_email }}?subject=CarrierOS%20Referral%20Program">{{ support_email }}</a> &middot; <a href="/referral-terms">Program terms</a></p>
+  </div></section>
+</div>
+{% endblock %}

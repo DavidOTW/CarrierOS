@@ -2,18 +2,17 @@
 {% block title %}{{ seo_title }}{% endblock %}
 {% block content %}
 <main class="public-marketing" id="top">
-  <header class="public-nav">
-    <a class="public-brand" href="/"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a>
-    <nav aria-label="Primary navigation"><a href="#platform">Platform</a><a href="#pay">Driver pay</a><a href="#founder">Founder</a><a href="#pricing">Pricing</a><a href="/switching">Switching plan</a><a href="/security">Data &amp; security</a></nav>
-    <div class="public-nav-actions"><a class="public-signin" href="/login">Log in</a><a class="public-btn public-btn-dark" href="/demo">Open live demo <span aria-hidden="true">&rarr;</span></a></div>
-  </header>
+  {% set nav_current = 'home' %}
+  {% set nav_primary_href = '/demo' %}
+  {% set nav_primary_label = 'Open live demo' %}
+  {% include "_public_navigation.html" %}
 
   <section class="public-hero">
     <div class="public-hero-copy">
       <span class="public-release"><i></i> {% if signups_open %}14-day free trial &middot; cancel before billing{% else %}Live demo open &middot; launch access available{% endif %}</span>
       <h1>Run the fleet.<br>Know the <em>profit.</em></h1>
       <p>CarrierOS turns a broker offer into a cost-based profit check before you book, then keeps dispatch, driver pay, and load-level profit connected in one clear workspace.</p>
-      <div class="public-hero-actions"><a class="public-btn public-btn-orange" href="/demo">Explore the live demo <span aria-hidden="true">&rarr;</span></a><a class="public-btn public-btn-light" href="{{ signup_href }}">{{ signup_cta }}</a></div>
+      <div class="public-hero-actions"><a class="public-btn public-btn-orange" href="/demo">Explore the live demo <span aria-hidden="true">&rarr;</span></a><a class="public-btn public-btn-light" href="/checkout">{{ signup_cta }}</a></div>
       <div class="public-trust"><span>No per-user fees</span><span>Seven pay structures</span><span>Veteran-founded</span><span>Built by a carrier</span></div>
     </div>
     <div class="public-product" aria-label="CarrierOS dashboard preview">
@@ -67,10 +66,10 @@
 
   <section class="public-formula"><div><span class="public-eyebrow">The number that matters</span><h2>Your profit split is already solid. CarrierOS keeps it visible.</h2><p>The demo shows exactly how revenue becomes driver pay and carrier net using fictional sample values.</p></div><div class="public-formula-card"><span>Load revenue</span><strong>$4,680</strong><span>Allowed load costs</span><strong>&minus; $1,720</strong><b>= $2,960 split base</b><span>Driver share (40%)</span><strong>&minus; $1,184</strong><div><span>Carrier net before overhead</span><strong>$1,776</strong></div></div></section>
 
-  <section class="public-section public-pricing" id="pricing">
+  <section class="public-section public-pricing" id="pricing" data-analytics-view="view_pricing">
     <div class="public-section-intro public-centered"><span class="public-eyebrow">Simple subscription plans</span><h2>Price the fleet, not the office.</h2><p>Unlimited driver records and office users. Choose a plan by active power units and keep overhead predictable.</p></div>
     <div class="public-plans">
-      {% for code, plan in plans.items() %}<article class="{% if code == 'starter_fleet' %}featured{% endif %}">{% if code == 'starter_fleet' %}<span class="public-plan-badge">Popular</span>{% endif %}<h3>{{ plan.name }}</h3><p>{% if plan.units == 0 %}Pre-authority &middot; 0 active units{% else %}Up to {{ plan.units }} active power units{% endif %}</p><div><strong>${{ plan.price }}</strong><span>/ month</span></div><small>{% if plan.units == 0 %}Upgrade when the first unit is ready.{% else %}Unlimited drivers and office users.{% endif %}</small><ul>{% if plan.units == 0 %}<li>Guided carrier startup checklist</li><li>Official agency tutorials</li><li>Equipment finance mentor</li><li>Private planning workspace</li>{% else %}<li>Pre-book rate profit checks</li><li>Dispatch and load tracking</li><li>All seven pay structures</li><li>Private company workspace</li>{% endif %}</ul><a href="{% if signups_open %}/signup?plan={{ code }}{% else %}{{ signup_href }}{% endif %}">{{ signup_cta }} <span aria-hidden="true">&rarr;</span></a></article>{% endfor %}
+      {% for code, plan in plans.items() %}<article class="{% if code == 'starter_fleet' %}featured{% endif %}">{% if code == 'starter_fleet' %}<span class="public-plan-badge">Popular</span>{% endif %}<h3>{{ plan.name }}</h3><p>{% if plan.units == 0 %}Pre-authority &middot; 0 active units{% else %}Up to {{ plan.units }} active power units{% endif %}</p><div><strong>{{ money(plan.price) }}</strong><span>/ month</span></div><small>{% if plan.units == 0 %}Upgrade when the first unit is ready.{% else %}Unlimited drivers and office users.{% endif %}</small><ul>{% if plan.units == 0 %}<li>Guided carrier startup checklist</li><li>Official agency tutorials</li><li>Equipment finance mentor</li><li>Private planning workspace</li>{% else %}<li>Pre-book rate profit checks</li><li>Dispatch and load tracking</li><li>All seven pay structures</li><li>Private company workspace</li>{% endif %}</ul><a href="/checkout?plan={{ code }}">{{ signup_cta }} <span aria-hidden="true">&rarr;</span></a></article>{% endfor %}
       <article><h3>Custom Fleet</h3><p>More than 20 active power units</p><div><strong>Custom</strong></div><small>A plan shaped around your operation.</small><ul><li>Everything in Growing Fleet</li><li>Custom fleet capacity</li><li>Guided setup conversation</li><li>Unlimited drivers and office users</li></ul><a href="mailto:{{ support_email }}?subject=CarrierOS%20Custom%20Fleet">Request a quote <span aria-hidden="true">&rarr;</span></a></article>
     </div>
   </section>
@@ -78,11 +77,14 @@
   <section class="public-section public-resources" id="resources">
     <div class="public-section-intro"><span class="public-eyebrow">Built around small-carrier decisions</span><h2>Start with the problem you need to solve.</h2><p>See how CarrierOS supports the operating questions fleet owners search for every day.</p></div>
     <div class="public-resource-grid">
+      <a href="/solutions"><span>All use cases</span><h3>CarrierOS solutions</h3><p>Find the workflow for dispatch, RateCons, documents, receivables, compliance, and equipment type.</p><b>Explore every solution &rarr;</b></a>
+      <a href="/help"><span>Product guides</span><h3>CarrierOS Help Center</h3><p>Learn what every workspace tab does and follow the operating workflow step by step.</p><b>Browse all product guides &rarr;</b></a>
       <a href="/small-fleet-trucking-software"><span>Fleet operations</span><h3>Small fleet trucking software</h3><p>Connect dispatch, driver pay, costs, receivables, and profit in one workspace.</p><b>Explore the platform &rarr;</b></a>
       <a href="/driver-settlement-software"><span>Driver pay</span><h3>Driver pay tracking</h3><p>Estimate seven supported compensation structures and track what is earned and paid.</p><b>Review driver-pay tools &rarr;</b></a>
       <a href="/load-profitability-calculator"><span>Load economics</span><h3>Truck load profitability calculator</h3><p>Compare revenue with fuel, pay, maintenance, fixed cost, fees, and overhead.</p><b>See profitability tools &rarr;</b></a>
-      <a href="/signup?plan=carrier_startup"><span>Starting a carrier</span><h3>Carrier startup checklist</h3><p>Build authority, safety, cash, equipment, and recordkeeping foundations before the first load.</p><b>Start the guided workspace &rarr;</b></a>
+      <a href="/carrier-startup-checklist"><span>Starting a carrier</span><h3>Carrier startup checklist</h3><p>Build authority, safety, cash, equipment, and recordkeeping foundations before the first load.</p><b>See the startup plan &rarr;</b></a>
     </div>
+    <nav class="public-segment-links" aria-label="CarrierOS solutions by operation"><span>Explore by operation:</span><a href="/owner-operator-business-software">Owner-operators</a><a href="/box-truck-fleet-management-software">Box-truck fleets</a><a href="/hotshot-trucking-software">Hotshot carriers</a><a href="/rate-confirmation-management-software">RateCon review</a><a href="/trucking-accounts-receivable-software">Receivables</a></nav>
   </section>
 
   <section class="public-switching" aria-label="Switching to CarrierOS">
@@ -91,6 +93,6 @@
   </section>
 
   <section class="public-launch"><span class="public-eyebrow">Built for the people moving freight</span><h2>Trade spreadsheet archaeology for a clear operating picture.</h2><p>Explore the sample fleet, then open your own private workspace when you are ready.</p><div><a class="public-btn public-btn-orange" href="{{ signup_href }}">{{ signup_cta }} <span aria-hidden="true">&rarr;</span></a><a class="public-btn public-btn-outline" href="/demo">Explore the demo</a></div></section>
-  <footer class="public-footer"><a class="public-brand" href="#top"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a><p>A product of <a href="https://www.outsidethewirelogistics.com/">Outside The Wire Logistics LLC</a>.</p><nav><a href="/small-fleet-trucking-software">Small fleet software</a><a href="/driver-settlement-software">Driver pay</a><a href="/load-profitability-calculator">Load profitability</a><a href="/switching">Switching plan</a><a href="/security">Data &amp; security</a><a href="/login">Customer login</a><a href="/demo">Live demo</a><a href="mailto:{{ support_email }}">Contact</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav><small>CarrierOS does not provide tax, legal, payroll, accounting, insurance, or regulatory advice.</small></footer>
+  <footer class="public-footer"><a class="public-brand" href="#top"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a><p>A product of <a href="https://www.outsidethewirelogistics.com/">Outside The Wire Logistics LLC</a>.</p><nav><a href="/solutions">Solutions</a><a href="/help">Help center</a><a href="/small-fleet-trucking-software">Small fleet software</a><a href="/driver-settlement-software">Driver pay</a><a href="/load-profitability-calculator">Load profitability</a><a href="/switching">Switching plan</a><a href="/security">Data &amp; security</a><a href="/login">Customer login</a><a href="/demo">Live demo</a><a href="mailto:{{ support_email }}">Contact</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav><small>CarrierOS does not provide tax, legal, payroll, accounting, insurance, or regulatory advice.</small></footer>
 </main>
 {% endblock %}
