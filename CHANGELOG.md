@@ -1,5 +1,12 @@
 # Changelog
 
+## Next phase - delivery-to-cash closure
+
+- Added Phase 4 invoice and receipt workflow: delivered loads can become linked invoices and advance through `READY_TO_INVOICE` to `INVOICED`.
+- Added append-only, idempotent invoice payment records with partial/final receipt handling, amount-due aging, and tenant-scoped audit events.
+- Added invoice editing, receipt recording, and load-state synchronization to `PARTIALLY_PAID` or `PAID` after the recorded receipts cover the invoice.
+- Added a delivery-to-cash view to Receivables with ready-to-invoice loads, open/past-due totals, balance columns, and human verification guidance.
+
 ## Next phase - controlled history migration
 
 - Added an authenticated CSV migration tool with a 50-row preview limit, UTF-8 handling, required-column mapping, date/revenue validation, active driver and unit matching, status normalization, and duplicate detection.

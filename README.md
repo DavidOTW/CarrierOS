@@ -34,7 +34,7 @@ Production RateCon upload refuses to run until encrypted private storage is expl
   confirm a validated CSV history import; imports are tenant-scoped, duplicate-checked,
   transactionally rolled back on error, and never happen silently.
 
-The earlier V1 roadmap and Phase 1 boundary remain in `docs/V1_PRODUCT_REQUIREMENTS.md`, `docs/V1_ARCHITECTURE.md`, `docs/V1_IMPLEMENTATION_PLAN.md`, and `docs/V1_RISK_REGISTER.md`; the v0.16 documents above are authoritative for the current four-PR program. Commercial routing, production OCR, live GPS/ELD/HOS, automated SMS delivery, invoice/payment automation, settlement approval, collections, and accounting sync are not available in the deployed v0.16.0a2 application. Phase 2 extraction and Phase 3 delivery documents propose facts for human review; they do not make financial decisions or provide accounting advice.
+The earlier V1 roadmap and Phase 1 boundary remain in `docs/V1_PRODUCT_REQUIREMENTS.md`, `docs/V1_ARCHITECTURE.md`, `docs/V1_IMPLEMENTATION_PLAN.md`, and `docs/V1_RISK_REGISTER.md`; the v0.16 documents above are authoritative for the current four-PR program. Commercial routing, production OCR, live GPS/ELD/HOS, automated SMS delivery, broker invoice transmission, bank reconciliation, settlement approval, collections, and accounting sync are not automated in the deployed v0.16 application. Phase 2 extraction, Phase 3 delivery documents, and the Phase 4 delivery-to-cash ledger propose facts for human review; they do not make financial decisions or provide accounting advice.
 
 ## Local development
 
