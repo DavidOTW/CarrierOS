@@ -1270,7 +1270,15 @@ def compliance_status(expiration_date: str | None) -> tuple[str, int | None]:
 
 def invoice_aging(row: Any) -> dict[str, Any]:
     data = dict(row)
-    if row["paid_date"] or str(row["status"]).lower() == "paid":
+    amount = round(float(row["amount"] or 0), 2)
+    amount_paid = round(float(data.get("amount_paid") or 0), 2)
+    # Legacy invoices were marked Paid directly. Treat that as a full payment
+    # even before the Phase 4 payment ledger has any rows.
+    if str(row["status"]).lower() == "paid" and amount_paid <= 0:
+        amount_paid = amount
+    data["amount_paid"] = amount_paid
+    data["amount_due"] = round(max(0.0, amount - amount_paid), 2)
+    if data["amount_due"] <= 0 or row["paid_date"] or str(row["status"]).lower() == "paid":
         data["age_days"] = 0
         data["aging_label"] = "Paid"
         return data
@@ -1288,6 +1296,21 @@ def invoice_aging(row: Any) -> dict[str, Any]:
     else:
         data["aging_label"] = "90+ days"
     return data
+
+
+def invoice_rows_for_organization(organization_id: int) -> list[dict[str, Any]]:
+    rows = query_all(
+        """SELECT i.*,l.load_number,
+        COALESCE(SUM(p.amount), 0) AS amount_paid
+        FROM invoices i
+        LEFT JOIN loads l ON l.id=i.load_id AND l.organization_id=i.organization_id
+        LEFT JOIN invoice_payments p ON p.invoice_id=i.id AND p.organization_id=i.organization_id
+        WHERE i.organization_id=?
+        GROUP BY i.id
+        ORDER BY i.due_date,i.id""",
+        (organization_id,),
+    )
+    return [invoice_aging(row) for row in rows]
 
 
 @app.exception_handler(401)
@@ -3985,6 +4008,18 @@ def load_detail(request: Request, load_id: int):
         (user["organization_id"], load_id),
     )
     delivery_documents = _delivery_documents_for_load(int(user["organization_id"]), load_id)
+    invoice_row = query_one(
+        """SELECT i.*,COALESCE(SUM(p.amount),0) AS amount_paid
+        FROM invoices i LEFT JOIN invoice_payments p
+        ON p.invoice_id=i.id AND p.organization_id=i.organization_id
+        WHERE i.organization_id=? AND i.load_id=? GROUP BY i.id ORDER BY i.id DESC LIMIT 1""",
+        (user["organization_id"], load_id),
+    )
+    invoice = invoice_aging(invoice_row) if invoice_row else None
+    invoice_ready = normalize_state(item.get("status_code")) in {
+        LoadState.DELIVERED_DOCUMENTS_PENDING,
+        LoadState.READY_TO_INVOICE,
+    }
     status_history = [dict(row) for row in query_all(
         """SELECT h.*,u.full_name AS changed_by_name FROM load_status_history h
         LEFT JOIN users u ON u.id=h.changed_by AND u.organization_id=h.organization_id
@@ -3995,6 +4030,8 @@ def load_detail(request: Request, load_id: int):
         "load": item,
         "payments": [dict(p) for p in payments],
         "delivery_documents": delivery_documents,
+        "invoice": invoice,
+        "invoice_ready": invoice_ready,
         "status_history": status_history,
         "delivery_status_options": [
             LoadState.AT_PICKUP.value,
@@ -6914,13 +6951,32 @@ def download_document_docx(request: Request, doc_id: int):
 @app.get("/receivables", response_class=HTMLResponse)
 def receivables_page(request: Request):
     user = require_user(request)
-    invoices = [invoice_aging(r) for r in query_all("SELECT * FROM invoices WHERE organization_id=? ORDER BY due_date", (user["organization_id"],))]
+    invoices = invoice_rows_for_organization(int(user["organization_id"]))
     claims = query_all(
         """SELECT c.*,l.load_number FROM detention_claims c LEFT JOIN loads l ON l.id=c.load_id
         WHERE c.organization_id=? ORDER BY c.created_at DESC""", (user["organization_id"],),
     )
-    loads = query_all("SELECT id,load_number,broker FROM loads WHERE organization_id=? ORDER BY pickup_date DESC,id DESC", (user["organization_id"],))
-    return render(request, "receivables.html", {"invoices": invoices, "claims": [dict(c) for c in claims], "loads": [dict(load_row) for load_row in loads]})
+    loads = query_all(
+        """SELECT id,load_number,broker,revenue,final_agreed_rate,status,status_code,delivery_date
+        FROM loads WHERE organization_id=? ORDER BY pickup_date DESC,id DESC""",
+        (user["organization_id"],),
+    )
+    ready_to_invoice = [
+        dict(load_row) for load_row in loads
+        if normalize_state(load_row["status_code"]) in {
+            LoadState.DELIVERED_DOCUMENTS_PENDING,
+            LoadState.READY_TO_INVOICE,
+        }
+    ]
+    open_total = round(sum(row["amount_due"] for row in invoices if row["amount_due"] > 0), 2)
+    overdue_total = round(sum(row["amount_due"] for row in invoices if row["amount_due"] > 0 and row["age_days"] > 0), 2)
+    return render(request, "receivables.html", {
+        "invoices": invoices, "claims": [dict(c) for c in claims],
+        "loads": [dict(load_row) for load_row in loads],
+        "ready_to_invoice": ready_to_invoice,
+        "open_total": open_total,
+        "overdue_total": overdue_total,
+    })
 
 
 @app.post("/invoices")
@@ -6935,6 +6991,199 @@ async def create_invoice(request: Request):
         VALUES (?,?,?,?,?,?,?,'Unpaid',?)""",
         (user["organization_id"], str(form.get("invoice_number", "")).strip(), str(form.get("customer", "")).strip(), integer(form.get("load_id")) or None, number(form.get("amount")), invoice_date, due_date, str(form.get("notes", "")).strip()),
     )
+    return redirect("/receivables")
+
+
+@app.post("/invoices/from-load/{load_id}")
+async def create_invoice_from_load(request: Request, load_id: int):
+    user = require_permission(request, "money.manage")
+    form = await verified_form(request)
+    load = query_one(
+        "SELECT * FROM loads WHERE id=? AND organization_id=?",
+        (load_id, user["organization_id"]),
+    )
+    if not load:
+        raise HTTPException(404, "Load not found")
+    if query_one(
+        "SELECT id FROM invoices WHERE load_id=? AND organization_id=?",
+        (load_id, user["organization_id"]),
+    ):
+        set_flash_error(request, "This load already has an invoice record.")
+        return redirect("/receivables")
+    state = normalize_state(load["status_code"])
+    if state not in {
+        LoadState.DELIVERED_DOCUMENTS_PENDING,
+        LoadState.READY_TO_INVOICE,
+        LoadState.INVOICED,
+        LoadState.PARTIALLY_PAID,
+        LoadState.PAID,
+    }:
+        raise HTTPException(409, "A load must be delivered before it can be invoiced")
+    amount = round(float(load["final_agreed_rate"] or load["revenue"] or 0), 2)
+    if amount <= 0:
+        raise HTTPException(400, "Add a positive load revenue before creating an invoice")
+    org = query_one("SELECT default_payment_days FROM organizations WHERE id=?", (user["organization_id"],))
+    payment_days = int(org["default_payment_days"] if org and org["default_payment_days"] is not None else 30)
+    invoice_date = date.today().isoformat()
+    due_date = str(form.get("due_date") or "").strip() or (
+        parse_date(load["delivery_date"]) + timedelta(days=payment_days)
+        if parse_date(load["delivery_date"]) else date.today() + timedelta(days=payment_days)
+    ).isoformat()
+    invoice_number = str(form.get("invoice_number") or f"INV-{load['load_number']}").strip()
+    customer = str(form.get("customer") or load["broker"] or user["organization_name"]).strip()
+    try:
+        with db_session() as conn:
+            invoice_id = int(conn.execute(
+                """INSERT INTO invoices
+                (organization_id,invoice_number,customer,load_id,amount,invoice_date,due_date,status,notes)
+                VALUES (?,?,?,?,?,?,?,'Unpaid',?)""",
+                (user["organization_id"], invoice_number, customer, load_id, amount, invoice_date, due_date, str(form.get("notes") or "").strip()),
+            ).lastrowid)
+            if state == LoadState.DELIVERED_DOCUMENTS_PENDING:
+                _transition_workflow(
+                    conn, organization_id=int(user["organization_id"]), load_id=load_id,
+                    target=LoadState.READY_TO_INVOICE, actor_user_id=int(user["id"]),
+                    idempotency_key=f"invoice:{invoice_id}:ready",
+                    reason="Delivery record prepared for invoicing",
+                )
+                state = LoadState.READY_TO_INVOICE
+            if state == LoadState.READY_TO_INVOICE:
+                _transition_workflow(
+                    conn, organization_id=int(user["organization_id"]), load_id=load_id,
+                    target=LoadState.INVOICED, actor_user_id=int(user["id"]),
+                    idempotency_key=f"invoice:{invoice_id}:issued",
+                    reason=f"Invoice {invoice_number} created",
+                )
+    except sqlite3.IntegrityError as exc:
+        raise HTTPException(409, "An invoice with this number or load already exists") from exc
+    record_audit_event(
+        "invoice.created_from_load", int(user["organization_id"]), int(user["id"]),
+        {"invoice_id": invoice_id, "load_id": load_id, "amount": amount},
+    )
+    set_flash(request, f"Invoice {invoice_number} created and the load moved to Invoiced.")
+    return redirect("/receivables")
+
+
+@app.post("/invoices/{invoice_id}/edit")
+async def edit_invoice(request: Request, invoice_id: int):
+    user = require_permission(request, "money.manage")
+    form = await verified_form(request)
+    invoice = query_one(
+        "SELECT * FROM invoices WHERE id=? AND organization_id=?",
+        (invoice_id, user["organization_id"]),
+    )
+    if not invoice:
+        raise HTTPException(404, "Invoice not found")
+    amount = round(number(form.get("amount")), 2)
+    if amount <= 0:
+        raise HTTPException(400, "Invoice amount must be positive")
+    paid = query_one(
+        "SELECT COALESCE(SUM(amount),0) AS total FROM invoice_payments WHERE invoice_id=? AND organization_id=?",
+        (invoice_id, user["organization_id"]),
+    )
+    paid_total = round(float(paid["total"] if paid else 0), 2)
+    if str(invoice["status"]).lower() == "paid" and paid_total <= 0:
+        paid_total = round(float(invoice["amount"] or 0), 2)
+    if amount + 0.005 < paid_total:
+        raise HTTPException(409, "Invoice amount cannot be less than payments already recorded")
+    status = "Paid" if amount <= paid_total + 0.005 else ("Partially Paid" if paid_total > 0 else "Unpaid")
+    paid_date = invoice["paid_date"] if status == "Paid" else None
+    with db_session() as conn:
+        conn.execute(
+            """UPDATE invoices SET invoice_number=?,customer=?,amount=?,invoice_date=?,due_date=?,status=?,paid_date=?,notes=?
+            WHERE id=? AND organization_id=?""",
+            (str(form.get("invoice_number") or "").strip(), str(form.get("customer") or "").strip(), amount,
+             str(form.get("invoice_date") or invoice["invoice_date"]), str(form.get("due_date") or invoice["due_date"]),
+             status, paid_date, str(form.get("notes") or "").strip(), invoice_id, user["organization_id"]),
+        )
+    record_audit_event(
+        "invoice.updated", int(user["organization_id"]), int(user["id"]),
+        {"invoice_id": invoice_id, "amount": amount, "status": status},
+    )
+    set_flash(request, "Invoice updated. Existing payment history was retained.")
+    return redirect("/receivables")
+
+
+@app.post("/invoices/{invoice_id}/payment")
+async def record_invoice_payment(request: Request, invoice_id: int):
+    user = require_permission(request, "money.manage")
+    form = await verified_form(request)
+    invoice = query_one(
+        "SELECT * FROM invoices WHERE id=? AND organization_id=?",
+        (invoice_id, user["organization_id"]),
+    )
+    if not invoice:
+        raise HTTPException(404, "Invoice not found")
+    amount = round(number(form.get("amount")), 2)
+    if amount <= 0:
+        raise HTTPException(400, "Payment amount must be positive")
+    paid_date = str(form.get("paid_date") or date.today().isoformat())
+    idempotency_key = str(form.get("idempotency_key") or "").strip()[:200]
+    if not idempotency_key:
+        idempotency_key = f"manual:{invoice_id}:{paid_date}:{amount:.2f}:{str(form.get('payment_reference') or '').strip()}"
+    payment_reference = str(form.get("payment_reference") or "").strip()[:200]
+    payment_created = False
+    try:
+        with db_session() as conn:
+            existing = conn.execute(
+                "SELECT id FROM invoice_payments WHERE organization_id=? AND idempotency_key=?",
+                (user["organization_id"], idempotency_key),
+            ).fetchone()
+            if not existing:
+                current = conn.execute(
+                    "SELECT COALESCE(SUM(amount),0) AS total FROM invoice_payments WHERE invoice_id=? AND organization_id=?",
+                    (invoice_id, user["organization_id"]),
+                ).fetchone()
+                paid_total = round(float(current["total"] if current else 0), 2)
+                if str(invoice["status"]).lower() == "paid" and paid_total <= 0:
+                    paid_total = round(float(invoice["amount"] or 0), 2)
+                balance = round(float(invoice["amount"] or 0) - paid_total, 2)
+                if amount > balance + 0.005:
+                    raise HTTPException(409, f"Payment exceeds the remaining balance of {money(balance)}")
+                conn.execute(
+                    """INSERT INTO invoice_payments
+                    (organization_id,invoice_id,amount,paid_date,payment_reference,notes,idempotency_key,recorded_by)
+                    VALUES (?,?,?,?,?,?,?,?)""",
+                    (user["organization_id"], invoice_id, amount, paid_date, payment_reference,
+                     str(form.get("notes") or "").strip(), idempotency_key, user["id"]),
+                )
+                payment_created = True
+            totals = conn.execute(
+                "SELECT COALESCE(SUM(amount),0) AS total FROM invoice_payments WHERE invoice_id=? AND organization_id=?",
+                (invoice_id, user["organization_id"]),
+            ).fetchone()
+            paid_total = round(float(totals["total"] if totals else 0), 2)
+            invoice_amount = round(float(invoice["amount"] or 0), 2)
+            fully_paid = paid_total >= invoice_amount - 0.005
+            new_status = "Paid" if fully_paid else "Partially Paid"
+            conn.execute(
+                "UPDATE invoices SET status=?,paid_date=? WHERE id=? AND organization_id=?",
+                (new_status, paid_date if fully_paid else None, invoice_id, user["organization_id"]),
+            )
+            if invoice["load_id"]:
+                load = conn.execute(
+                    "SELECT status_code FROM loads WHERE id=? AND organization_id=?",
+                    (invoice["load_id"], user["organization_id"]),
+                ).fetchone()
+                current_state = normalize_state(load["status_code"]) if load else None
+                target_state = LoadState.PAID if fully_paid else LoadState.PARTIALLY_PAID
+                if current_state in {LoadState.INVOICED, LoadState.PARTIALLY_PAID} and current_state != target_state:
+                    _transition_workflow(
+                        conn, organization_id=int(user["organization_id"]), load_id=int(invoice["load_id"]),
+                        target=target_state, actor_user_id=int(user["id"]),
+                        idempotency_key=f"invoice-payment:{invoice_id}:{idempotency_key}",
+                        reason=f"Invoice payment recorded: {money(amount)}",
+                    )
+    except sqlite3.IntegrityError as exc:
+        raise HTTPException(409, "This payment was already recorded with that reference") from exc
+    if payment_created:
+        record_audit_event(
+            "invoice.payment_recorded", int(user["organization_id"]), int(user["id"]),
+            {"invoice_id": invoice_id, "amount": amount, "payment_reference": payment_reference},
+        )
+        set_flash(request, f"Payment of {money(amount)} recorded. The invoice balance was recalculated.")
+    else:
+        set_flash(request, "That receipt was already recorded; the invoice balance was left unchanged.")
     return redirect("/receivables")
 
 

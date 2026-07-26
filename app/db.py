@@ -13,6 +13,7 @@ from typing import Any, Iterable
 from .v016_migration import migrate_v016_foundation
 from .phase2_migration import migrate_phase2_ratecon_dispatch
 from .phase3_migration import migrate_phase3_delivery_to_cash
+from .phase4_migration import migrate_phase4_delivery_to_cash
 from .offsite_backup import upload_backup_if_configured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -886,6 +887,7 @@ def init_db(seed: bool = False) -> None:
         migrate_v016_foundation(conn)
         migrate_phase2_ratecon_dispatch(conn)
         migrate_phase3_delivery_to_cash(conn)
+        migrate_phase4_delivery_to_cash(conn)
         conn.commit()
     if seed:
         if not SNAPSHOT_PATH.exists():
@@ -907,7 +909,7 @@ def seed_snapshot_data(force: bool = False) -> None:
             return
         if force:
             for table in (
-                "document_audits", "startup_checklist_progress", "detention_claims", "invoices", "generated_documents", "onboarding_applications",
+                "document_audits", "startup_checklist_progress", "invoice_payments", "detention_claims", "invoices", "generated_documents", "onboarding_applications",
                 "compliance_items", "idle_periods", "payments", "loads", "weekly_fuel",
                 "drivers", "vehicles", "quick_links", "overhead_items", "users", "organizations",
             ):
@@ -1096,6 +1098,7 @@ ORGANIZATION_EXPORT_TABLES = (
     "compliance_items",
     "onboarding_applications",
     "invoices",
+    "invoice_payments",
     "detention_claims",
     "generated_documents",
     "document_audits",
