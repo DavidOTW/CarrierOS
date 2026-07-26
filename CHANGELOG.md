@@ -1,5 +1,11 @@
 # Changelog
 
+## Next phase - controlled history migration
+
+- Added an authenticated CSV migration tool with a 50-row preview limit, UTF-8 handling, required-column mapping, date/revenue validation, active driver and unit matching, status normalization, and duplicate detection.
+- Imports require an explicit confirmation after preview, write all records in one transaction, create the load status/revenue/assignment records used by current reporting, and roll back the batch if any write fails.
+- Added migration navigation, setup checklist links, mobile-friendly review tables, and regression tests for clean imports and rejected rows.
+
 ## 0.16.0a15 - Account-scoped referral dashboards
 
 - Kept the paid OTW driver referral program and its management navigation limited to the configured CarrierOS referral-administrator account.
@@ -121,3 +127,15 @@
 - Added editable/cancelable loads and editable/voidable payments.
 - Added Excel-style load filtering, sorting, reporting, and export.
 - Corrected owner-pay and driver-balance workflows.
+# Next release
+
+- Added an authenticated Getting Started checklist that guides a carrier through
+  assumptions, equipment, driver pay, a first quote, a first load, and a safe
+  spreadsheet transition.
+- Added public Switching and Data & Security pages, plus a downloadable load
+  mapping CSV template to make the product easier to evaluate before signup.
+- Reordered the authenticated navigation around the daily dispatch workflow,
+  renamed Today to Dashboard, added a Dispatch shortcut, and made the mobile
+  menu independently scrollable so Log out remains reachable.
+- Added public marketing copy that explains a reversible, carrier-assisted
+  switch without inventing customer results or overstating security controls.

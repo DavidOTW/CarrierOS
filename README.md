@@ -28,6 +28,11 @@ Production RateCon upload refuses to run until encrypted private storage is expl
 - Docker packaging with a non-root process, dynamic platform port, health check, and persistent data volume
 - Daily consistent SQLite backups with retention, Render disk snapshots, and authenticated company-data export
 - Public Privacy Policy and Terms of Service pages
+- A guided `/getting-started` activation checklist, public `/switching` migration handoff,
+  public `/security` data-controls page, and a downloadable `/switching/template.csv`
+  load-mapping template. Authenticated users can use `/migration` to preview and explicitly
+  confirm a validated CSV history import; imports are tenant-scoped, duplicate-checked,
+  transactionally rolled back on error, and never happen silently.
 
 The earlier V1 roadmap and Phase 1 boundary remain in `docs/V1_PRODUCT_REQUIREMENTS.md`, `docs/V1_ARCHITECTURE.md`, `docs/V1_IMPLEMENTATION_PLAN.md`, and `docs/V1_RISK_REGISTER.md`; the v0.16 documents above are authoritative for the current four-PR program. Commercial routing, production OCR, live GPS/ELD/HOS, automated SMS delivery, invoice/payment automation, settlement approval, collections, and accounting sync are not available in the deployed v0.16.0a2 application. Phase 2 extraction and Phase 3 delivery documents propose facts for human review; they do not make financial decisions or provide accounting advice.
 
