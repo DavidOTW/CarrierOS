@@ -481,7 +481,7 @@ ADDITIONAL_SEO_PAGES: dict[str, dict[str, Any]] = {
         "heading": "A delivered load is not finished until the revenue is followed through.",
         "lead": (
             "CarrierOS helps small carriers track invoice readiness, receivable status, aging, "
-            "payments, and detention support beside the load that earned the revenue."
+            "partial or final receipts, and detention support beside the load that earned the revenue."
         ),
         "audience": (
             "For owners and back-office teams that need a practical view of outstanding "
@@ -494,16 +494,16 @@ ADDITIONAL_SEO_PAGES: dict[str, dict[str, Any]] = {
             "CarrierOS keeps those follow-up items visible."
         ),
         "benefits": [
-            ("Invoice readiness", "See whether delivery and required paperwork are ready for the carrier's invoicing process."),
+            ("Invoice readiness", "See whether delivery and required paperwork are ready before creating the linked receivable record."),
             ("Aging view", "Track invoice date, due date, open balance, and aging status from the information entered."),
-            ("Payment records", "Record customer payments against load receivables for operating follow-up."),
+            ("Payment records", "Record partial or final customer receipts against load receivables and see the remaining balance."),
             ("Detention support", "Keep qualifying event times, notes, and supporting documents connected to the claim workflow."),
         ],
         "workflow_title": "Carry the load record through revenue collection",
         "workflow": [
             ("Complete the delivery record", "Confirm load status and collect the required delivery support."),
-            ("Track the receivable", "Record invoice timing, amount, due date, and open balance."),
-            ("Follow exceptions", "Review aging, missing support, detention, disputes, and recorded payment status."),
+            ("Create and track the receivable", "Link the load to invoice timing, amount, due date, and open balance."),
+            ("Record receipts and follow exceptions", "Apply partial or final receipts, then review aging, missing support, detention, and disputes."),
         ],
         "deep_dives": [
             (
