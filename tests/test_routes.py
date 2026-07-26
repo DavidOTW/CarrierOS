@@ -111,6 +111,7 @@ def test_public_marketing_home_uses_launch_pricing_and_real_app_links(
         assert '/signup?plan=starter_fleet' in response.text
         assert '<link rel="canonical" href="https://otwcarrieros.com/">' in response.text
         assert 'type="application/ld+json"' in response.text
+        assert '"telephone": "+16156519772"' in response.text
         assert 'Small Fleet Trucking Software' in response.text
         assert '/driver-settlement-software' in response.text
         assert "Marine Corps combat veteran" in response.text

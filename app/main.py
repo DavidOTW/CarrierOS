@@ -153,6 +153,7 @@ MIGRATION_MAX_BYTES = 5 * 1024 * 1024
 SUPPORT_EMAIL = os.getenv(
     "CARRIEROS_SUPPORT_EMAIL", "david@outsidethewirelogistics.com"
 ).strip().lower()
+SUPPORT_PHONE = os.getenv("CARRIEROS_SUPPORT_PHONE", "+16156519772").strip()
 REFERRAL_ADMIN_EMAIL = os.getenv(
     "CARRIEROS_REFERRAL_ADMIN_EMAIL", SUPPORT_EMAIL
 ).strip().lower()
@@ -1049,6 +1050,14 @@ def seo_context(
             "name": "Outside The Wire Logistics LLC",
             "url": "https://www.outsidethewirelogistics.com/",
             "email": SUPPORT_EMAIL,
+            "telephone": SUPPORT_PHONE,
+            "contactPoint": {
+                "@type": "ContactPoint",
+                "contactType": "customer support",
+                "telephone": SUPPORT_PHONE,
+                "email": SUPPORT_EMAIL,
+                "availableLanguage": ["English"],
+            },
             "brand": {
                 "@type": "Brand",
                 "@id": f"{CANONICAL_BASE_URL}/#brand",
