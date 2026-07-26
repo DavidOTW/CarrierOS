@@ -1,5 +1,11 @@
 # Changelog
 
+## Next phase - controlled history migration
+
+- Added an authenticated CSV migration tool with a 50-row preview limit, UTF-8 handling, required-column mapping, date/revenue validation, active driver and unit matching, status normalization, and duplicate detection.
+- Imports require an explicit confirmation after preview, write all records in one transaction, create the load status/revenue/assignment records used by current reporting, and roll back the batch if any write fails.
+- Added migration navigation, setup checklist links, mobile-friendly review tables, and regression tests for clean imports and rejected rows.
+
 ## 0.16.0a4 - Phase 4 draft
 
 - Added a non-mutating production release-readiness gate for live billing, secure document storage, managed malware scanning, database integrity, schema version, and verified backup evidence.

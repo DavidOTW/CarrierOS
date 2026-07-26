@@ -1,0 +1,26 @@
+{% extends "base.html" %}{% block title %}History migration &middot; CarrierOS{% endblock %}
+{% block content %}
+<div class="page-title"><div><span class="workspace-kicker">Controlled data move</span><h2>Import load history safely</h2><p>Upload a small CSV, review every row, fix any mismatches, then explicitly confirm the import. Nothing is written during preview.</p></div><div class="actions"><a class="btn btn-secondary" href="/switching/template.csv">Download CSV template</a><a class="btn btn-secondary" href="/switching">Read switching plan</a></div></div>
+
+<section class="migration-intro card">
+  <div><span class="setup-kicker">FIRST PASS</span><h3>Bring over the history you trust</h3><p>Start with up to {{ max_rows }} rows. Driver and unit names must match active profiles exactly so pay and equipment reporting stay connected.</p></div>
+  <div class="migration-guard"><strong>No silent writes</strong><span>Preview first<br>Confirm second<br>Rollback on error</span></div>
+</section>
+
+<section class="card migration-upload">
+  <div class="section-title"><div><h3>1. Upload a CSV export</h3><p>Use UTF-8 CSV with the template headers, or map equivalent names. Your original workbook stays untouched.</p></div></div>
+  <form action="/migration/preview" method="post" enctype="multipart/form-data" class="migration-form">
+    <label for="document">CSV file</label><input id="document" name="document" type="file" accept=".csv,text/csv" required>
+    <button class="btn btn-primary" type="submit">Preview rows &rarr;</button>
+  </form>
+</section>
+
+<section class="card migration-columns">
+  <div class="section-title"><div><h3>Accepted columns</h3><p>Required fields are marked. Optional fields improve the first profitability review.</p></div></div>
+  <div class="migration-column-grid"><div><strong>Required</strong><span>Load number</span><span>Pickup date</span><span>Delivery date</span><span>Driver</span><span>Revenue</span></div><div><strong>Optional</strong><span>Status, Unit, Broker</span><span>Origin, Destination</span><span>Loaded miles, Deadhead miles</span><span>Fuel override, Tolls / misc</span><span>Other direct costs, Notes</span></div></div>
+</section>
+
+{% if errors %}<section class="card migration-errors"><div class="section-title"><div><h3>Fix these items before importing</h3><p>{{ errors|length }} validation message{% if errors|length != 1 %}s{% endif %} found. No rows were written.</p></div></div><div class="table-wrap"><table><thead><tr><th>Row</th><th>Field</th><th>Message</th></tr></thead><tbody>{% for error in errors %}<tr><td>{{ error.row }}</td><td>{{ error.field }}</td><td>{{ error.message }}</td></tr>{% endfor %}</tbody></table></div></section>{% endif %}
+
+{% if rows %}<section class="card migration-preview"><div class="section-title"><div><h3>2. Review preview</h3><p>{{ rows|length }} row{% if rows|length != 1 %}s{% endif %} passed validation. Confirm only after checking the driver, dates, revenue, and status.</p></div>{% if ready %}<span class="badge good">Ready to import</span>{% endif %}</div><div class="table-wrap"><table><thead><tr><th>Load</th><th>Dates</th><th>Driver / unit</th><th>Lane</th><th>Revenue</th><th>Status</th></tr></thead><tbody>{% for row in rows %}<tr><td><strong>{{ row.load_number }}</strong><small>CSV row {{ row.source_row }}</small></td><td>{{ row.pickup_date }}<small>to {{ row.delivery_date }}</small></td><td>{{ row.driver_name }}{% if row.vehicle_name %}<small>{{ row.vehicle_name }}</small>{% endif %}</td><td>{{ row.origin or '—' }}<small>{{ row.destination or '—' }}</small></td><td>{{ money(row.revenue) }}</td><td>{{ row.status }}</td></tr>{% endfor %}</tbody></table></div>{% if ready %}<form action="/migration/confirm" method="post" class="migration-confirm"><input type="hidden" name="preview_token" value="{{ preview_token }}"><label><input type="checkbox" name="confirm_import" value="1" required> I reviewed these rows and want CarrierOS to create them as new load records.</label><button class="btn btn-primary" type="submit">Confirm import of {{ rows|length }} row{% if rows|length != 1 %}s{% endif %} &rarr;</button></form>{% endif %}</section>{% endif %}
+{% endblock %}

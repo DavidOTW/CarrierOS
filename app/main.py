@@ -126,6 +126,8 @@ if BILLING_MODE not in {"stripe", "beta"}:
     raise RuntimeError("CARRIEROS_BILLING_MODE must be 'stripe' or 'beta'.")
 TRIAL_DAYS = 14
 TERMS_VERSION = "2026-07-21-audit-v2"
+MIGRATION_MAX_ROWS = 50
+MIGRATION_MAX_BYTES = 5 * 1024 * 1024
 SUPPORT_EMAIL = os.getenv(
     "CARRIEROS_SUPPORT_EMAIL", "david@outsidethewirelogistics.com"
 ).strip().lower()
@@ -710,10 +712,10 @@ SETUP_STEP_DEFINITIONS = (
     },
     {
         "key": "migration",
-        "label": "Plan your spreadsheet switch",
-        "detail": "Download the import template, map your history, and keep an export of your current records.",
-        "href": "/switching",
-        "action": "View switching plan",
+        "label": "Reconcile your spreadsheet history",
+        "detail": "Preview a small CSV export, resolve duplicates or name mismatches, and import only after you confirm the rows.",
+        "href": "/migration",
+        "action": "Open migration tool",
     },
 )
 
@@ -1968,6 +1970,340 @@ def switching_template(request: Request):
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="carrieros-load-import-template.csv"'},
     )
+
+
+MIGRATION_HEADER_ALIASES = {
+    "load_number": ("load_number", "load", "load_id", "load_number_id"),
+    "pickup_date": ("pickup_date", "pickup", "pickup_at", "pickup_date_time"),
+    "delivery_date": ("delivery_date", "delivery", "delivery_at", "delivery_date_time"),
+    "status": ("status", "load_status", "workflow_status"),
+    "driver": ("driver", "driver_name", "driver_payee", "payee"),
+    "unit": ("unit", "truck", "vehicle", "power_unit", "unit_number"),
+    "broker": ("broker", "customer", "broker_customer", "broker_name"),
+    "origin": ("origin", "pickup_location", "pickup_city", "from"),
+    "destination": ("destination", "delivery_location", "delivery_city", "to"),
+    "revenue": ("revenue", "gross_revenue", "linehaul", "rate", "load_revenue"),
+    "loaded_miles": ("loaded_miles", "loaded_mile", "paid_miles"),
+    "deadhead_miles": ("deadhead_miles", "empty_miles", "deadhead"),
+    "fuel_override": ("fuel_override", "fuel_cost", "fuel"),
+    "tolls_misc": ("tolls_misc", "tolls", "tolls_miscellaneous", "tolls_misc_cost"),
+    "other_direct_costs": ("other_direct_costs", "direct_costs", "other_costs", "misc_costs"),
+    "notes": ("notes", "memo", "comments"),
+}
+MIGRATION_REQUIRED_FIELDS = ("load_number", "pickup_date", "delivery_date", "driver", "revenue")
+MIGRATION_STATUS_ALIASES = {
+    "booked": ("Booked", LoadState.BOOKED_AWAITING_RATECON),
+    "booked awaiting ratecon": ("Booked — Awaiting RateCon", LoadState.BOOKED_AWAITING_RATECON),
+    "booked — awaiting ratecon": ("Booked — Awaiting RateCon", LoadState.BOOKED_AWAITING_RATECON),
+    "booked - awaiting ratecon": ("Booked — Awaiting RateCon", LoadState.BOOKED_AWAITING_RATECON),
+    "ratecon received": ("RateCon Received", LoadState.RATECON_REVIEW),
+    "ratecon review": ("RateCon Review", LoadState.RATECON_REVIEW),
+    "needs assignment": ("Needs Assignment", LoadState.NEEDS_ASSIGNMENT),
+    "planned": ("Needs Assignment", LoadState.NEEDS_ASSIGNMENT),
+    "dispatched": ("Dispatched — Awaiting Driver Acknowledgment", LoadState.DISPATCHED_AWAITING_ACK),
+    "in transit": ("In Transit", LoadState.IN_TRANSIT),
+    "at pickup": ("At Pickup", LoadState.AT_PICKUP),
+    "at delivery": ("At Delivery", LoadState.AT_DELIVERY),
+    "delivered": ("Delivered", LoadState.DELIVERED_DOCUMENTS_PENDING),
+    "invoiced": ("Invoiced", LoadState.INVOICED),
+    "partially paid": ("Partially Paid", LoadState.PARTIALLY_PAID),
+    "paid": ("Paid", LoadState.PAID),
+    "closed": ("Closed", LoadState.CLOSED),
+    "cancelled": ("Cancelled", LoadState.CANCELLED),
+    "canceled": ("Cancelled", LoadState.CANCELLED),
+}
+
+
+def _migration_header_key(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().casefold()).strip("_")
+
+
+def _migration_number(value: Any, *, field: str) -> tuple[float | None, str | None]:
+    raw = str(value or "").strip().replace(",", "").replace("$", "")
+    if not raw:
+        return None, None
+    try:
+        parsed = float(raw)
+    except (TypeError, ValueError):
+        return None, f"{field} must be a number"
+    if parsed < 0:
+        return None, f"{field} cannot be negative"
+    return parsed, None
+
+
+def _migration_status(value: Any) -> tuple[str, LoadState] | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return MIGRATION_STATUS_ALIASES["booked"]
+    return MIGRATION_STATUS_ALIASES.get(raw.casefold())
+
+
+def _migration_column_map(headers: list[str]) -> dict[str, str]:
+    normalized = {_migration_header_key(header): header for header in headers}
+    mapping: dict[str, str] = {}
+    for canonical, aliases in MIGRATION_HEADER_ALIASES.items():
+        for alias in aliases:
+            if alias in normalized:
+                mapping[canonical] = normalized[alias]
+                break
+    return mapping
+
+
+def _migration_preview_context(
+    organization_id: int,
+    raw_rows: list[dict[str, Any]],
+    headers: list[str],
+) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+    """Normalize and validate rows without writing any customer data."""
+
+    errors: list[dict[str, str]] = []
+    mapping = _migration_column_map(headers)
+    for field in MIGRATION_REQUIRED_FIELDS:
+        if field not in mapping:
+            errors.append({"row": "Header", "field": field, "message": f"Missing required column: {field.replace('_', ' ')}"})
+    if len(raw_rows) > MIGRATION_MAX_ROWS:
+        errors.append({"row": "File", "field": "row count", "message": f"Use {MIGRATION_MAX_ROWS} rows or fewer per import."})
+
+    drivers = query_all(
+        "SELECT id,name,vehicle_id FROM drivers WHERE organization_id=? AND active=1",
+        (organization_id,),
+    )
+    vehicles = query_all(
+        "SELECT id,name FROM vehicles WHERE organization_id=? AND active=1",
+        (organization_id,),
+    )
+    driver_by_name = {str(row["name"]).strip().casefold(): row for row in drivers}
+    vehicle_by_name = {str(row["name"]).strip().casefold(): row for row in vehicles}
+    existing = {
+        str(row["load_number"]).strip().casefold()
+        for row in query_all("SELECT load_number FROM loads WHERE organization_id=?", (organization_id,))
+    }
+    seen: set[str] = set()
+    normalized_rows: list[dict[str, Any]] = []
+    for source_index, source in enumerate(raw_rows, start=2):
+        def cell(field: str) -> str:
+            return str(source.get(mapping.get(field, ""), "") or "").strip()
+
+        load_number = cell("load_number")
+        row_errors: list[str] = []
+        if not load_number:
+            row_errors.append("Load number is required")
+        elif len(load_number) > 100:
+            row_errors.append("Load number is too long")
+        elif load_number.casefold() in existing:
+            row_errors.append("Load number already exists in this workspace")
+        elif load_number.casefold() in seen:
+            row_errors.append("Load number is duplicated in this file")
+        seen.add(load_number.casefold())
+
+        pickup = parse_date(cell("pickup_date"))
+        delivery = parse_date(cell("delivery_date"))
+        if not pickup:
+            row_errors.append("Pickup date must be YYYY-MM-DD")
+        if not delivery:
+            row_errors.append("Delivery date must be YYYY-MM-DD")
+        if pickup and delivery and delivery < pickup:
+            row_errors.append("Delivery date cannot be before pickup date")
+
+        driver_name = cell("driver")
+        driver = driver_by_name.get(driver_name.casefold()) if driver_name else None
+        if not driver:
+            row_errors.append("Driver must exactly match an active driver profile")
+        vehicle_name = cell("unit")
+        vehicle = vehicle_by_name.get(vehicle_name.casefold()) if vehicle_name else None
+        if vehicle_name and not vehicle:
+            row_errors.append("Unit must exactly match an active equipment profile")
+        if not vehicle and driver and driver["vehicle_id"]:
+            vehicle = next((item for item in vehicles if int(item["id"]) == int(driver["vehicle_id"])), None)
+        status_pair = _migration_status(cell("status"))
+        if not status_pair:
+            row_errors.append("Status is not recognized; use Booked, Delivered, Cancelled, or a workflow status")
+        numeric: dict[str, float | None] = {}
+        for field, label in (
+            ("revenue", "Revenue"), ("loaded_miles", "Loaded miles"), ("deadhead_miles", "Deadhead miles"),
+            ("fuel_override", "Fuel override"), ("tolls_misc", "Tolls / misc"), ("other_direct_costs", "Other direct costs"),
+        ):
+            value, error = _migration_number(cell(field), field=label)
+            numeric[field] = value
+            if error or (field == "revenue" and value is None):
+                row_errors.append(error or "Revenue is required")
+        for text_field in ("broker", "origin", "destination", "notes"):
+            if len(cell(text_field)) > 500:
+                row_errors.append(f"{text_field.replace('_', ' ').title()} is too long")
+        if row_errors:
+            errors.extend({"row": str(source_index), "field": "row", "message": message} for message in row_errors)
+            continue
+        display_status, state = status_pair
+        normalized_rows.append(
+            {
+                "source_row": source_index,
+                "load_number": load_number,
+                "pickup_date": pickup.isoformat(),
+                "delivery_date": delivery.isoformat(),
+                "driver_id": int(driver["id"]),
+                "driver_name": str(driver["name"]),
+                "vehicle_id": int(vehicle["id"]) if vehicle else None,
+                "vehicle_name": str(vehicle["name"]) if vehicle else "",
+                "broker": cell("broker"),
+                "origin": cell("origin"),
+                "destination": cell("destination"),
+                "status": display_status,
+                "status_code": state.value,
+                "revenue": numeric["revenue"],
+                "loaded_miles": numeric["loaded_miles"] or 0,
+                "deadhead_miles": numeric["deadhead_miles"] or 0,
+                "fuel_override": numeric["fuel_override"],
+                "tolls_misc": numeric["tolls_misc"] or 0,
+                "other_direct_costs": numeric["other_direct_costs"] or 0,
+                "notes": cell("notes"),
+            }
+        )
+    return normalized_rows, errors
+
+
+def _migration_serializer() -> URLSafeTimedSerializer:
+    return URLSafeTimedSerializer(SESSION_SECRET, salt="carrieros-migration-preview-v1")
+
+
+def _read_migration_token(token: str, organization_id: int) -> list[dict[str, Any]]:
+    try:
+        payload = _migration_serializer().loads(token, max_age=15 * 60)
+    except SignatureExpired as exc:
+        raise HTTPException(410, "This migration preview expired. Upload the CSV again.") from exc
+    except BadSignature as exc:
+        raise HTTPException(400, "Migration preview could not be verified. Upload the CSV again.") from exc
+    if int(payload.get("organization_id", -1)) != int(organization_id):
+        raise HTTPException(403, "Migration preview belongs to another workspace")
+    rows = payload.get("rows")
+    if not isinstance(rows, list) or len(rows) > MIGRATION_MAX_ROWS:
+        raise HTTPException(400, "Migration preview is invalid")
+    return rows
+
+
+def _insert_migrated_load(conn: Any, organization_id: int, user_id: int, row: dict[str, Any]) -> int:
+    load_public_uuid = str(uuid.uuid4())
+    created_at = utc_now_iso()
+    cursor = conn.execute(
+        """INSERT INTO loads
+        (organization_id,public_uuid,status_code,updated_at,load_number,pickup_date,delivery_date,driver_id,vehicle_id,
+         broker,origin,destination,status,revenue,loaded_miles,deadhead_miles,fuel_override,tolls_misc,other_direct_costs,
+         notes,include_in_model,source_row)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            organization_id, load_public_uuid, row["status_code"], created_at, row["load_number"], row["pickup_date"],
+            row["delivery_date"], row["driver_id"], row["vehicle_id"], row["broker"], row["origin"], row["destination"],
+            row["status"], row["revenue"], row["loaded_miles"], row["deadhead_miles"], row["fuel_override"],
+            row["tolls_misc"], row["other_direct_costs"], row["notes"], 1, row["source_row"],
+        ),
+    )
+    load_id = int(cursor.lastrowid)
+    conn.execute(
+        """INSERT INTO load_status_history
+        (organization_id,load_id,prior_status,new_status,changed_by,idempotency_key,reason)
+        VALUES (?,?,NULL,?,?,?,?)""",
+        (
+            organization_id, load_id, row["status_code"], user_id,
+            f"migration:{load_public_uuid}:initial", "CSV migration import",
+        ),
+    )
+    conn.execute(
+        """INSERT INTO load_revenue_items
+        (public_uuid,organization_id,load_id,category,description,amount_cents,stage,source)
+        VALUES (?,?,?,'LINEHAUL','Imported load revenue',?,'BOOKED','csv_migration')""",
+        (str(uuid.uuid4()), organization_id, load_id, money_to_cents(row["revenue"], field="Load revenue")),
+    )
+    power_unit = conn.execute(
+        "SELECT id FROM power_units WHERE organization_id=? AND legacy_vehicle_id=?",
+        (organization_id, row["vehicle_id"]),
+    ).fetchone()
+    if power_unit:
+        conn.execute(
+            """INSERT INTO load_assignments
+            (public_uuid,organization_id,load_id,driver_id,power_unit_id,assignment_stage,
+             provisional,deadhead_miles_micros,route_source)
+            VALUES (?,?,?,?,?,'LEGACY_BOOKED',0,?,'csv_migration')""",
+            (
+                str(uuid.uuid4()), organization_id, load_id, row["driver_id"], power_unit["id"],
+                round(float(row["deadhead_miles"] or 0) * 1_000_000),
+            ),
+        )
+    return load_id
+
+
+@app.get("/migration", response_class=HTMLResponse)
+def migration_page(request: Request):
+    require_user(request)
+    return render(request, "migration.html", {"rows": [], "errors": [], "ready": False, "max_rows": MIGRATION_MAX_ROWS})
+
+
+@app.post("/migration/preview", response_class=HTMLResponse)
+async def migration_preview(request: Request):
+    user = require_user(request)
+    form = await verified_form(request)
+    upload = form.get("document")
+    filename = str(getattr(upload, "filename", "") or "").strip()
+    if not upload or not filename.lower().endswith(".csv"):
+        return render(request, "migration.html", {"rows": [], "errors": [{"row": "File", "field": "file", "message": "Choose a CSV file exported from your workbook."}], "ready": False, "max_rows": MIGRATION_MAX_ROWS}, status_code=422)
+    payload = await upload.read(MIGRATION_MAX_BYTES + 1)
+    if len(payload) > MIGRATION_MAX_BYTES:
+        return render(request, "migration.html", {"rows": [], "errors": [{"row": "File", "field": "file", "message": "CSV files must be 5 MB or smaller."}], "ready": False, "max_rows": MIGRATION_MAX_ROWS}, status_code=422)
+    try:
+        text = payload.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = payload.decode("utf-8", errors="replace")
+    reader = csv.DictReader(io.StringIO(text))
+    headers = list(reader.fieldnames or [])
+    raw_rows = [dict(row) for row in reader]
+    rows, errors = _migration_preview_context(int(user["organization_id"]), raw_rows, headers)
+    preview_token = ""
+    if rows and not errors:
+        preview_token = _migration_serializer().dumps({"organization_id": int(user["organization_id"]), "rows": rows, "filename": filename})
+    return render(
+        request,
+        "migration.html",
+        {"rows": rows, "errors": errors, "ready": bool(rows and not errors), "preview_token": preview_token, "filename": filename, "max_rows": MIGRATION_MAX_ROWS},
+        status_code=200 if not errors else 422,
+    )
+
+
+@app.post("/migration/confirm")
+async def migration_confirm(request: Request):
+    user = require_user(request)
+    form = await verified_form(request)
+    token = str(form.get("preview_token") or "").strip()
+    if not token or not yes(form.get("confirm_import")):
+        raise HTTPException(400, "Confirm the reviewed rows before importing")
+    rows = _read_migration_token(token, int(user["organization_id"]))
+    load_ids: list[int] = []
+    try:
+        with db_session() as conn:
+            incoming = {str(row["load_number"]).casefold() for row in rows}
+            existing = {
+                str(row["load_number"]).casefold()
+                for row in conn.execute("SELECT load_number FROM loads WHERE organization_id=?", (user["organization_id"],)).fetchall()
+            }
+            if incoming & existing:
+                raise HTTPException(409, "One or more load numbers were added after the preview. Upload the CSV again.")
+            for row in rows:
+                load_ids.append(_insert_migrated_load(conn, int(user["organization_id"]), int(user["id"]), row))
+            conn.execute(
+                """UPDATE organizations SET source_filename=COALESCE(source_filename,'CSV migration'),
+                source_sync_date=? WHERE id=?""",
+                (utc_now_iso(), user["organization_id"]),
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("CSV migration failed")
+        raise HTTPException(500, "The import was rolled back because a row could not be saved") from exc
+    record_audit_event(
+        "migration.import_completed",
+        organization_id=int(user["organization_id"]),
+        user_id=int(user["id"]),
+        details={"count": len(load_ids), "load_ids": load_ids},
+    )
+    set_flash(request, f"Imported {len(load_ids)} load{'s' if len(load_ids) != 1 else ''}. Review the Loads page before using the records operationally.")
+    return redirect("/loads")
 
 
 def quick_links_context(

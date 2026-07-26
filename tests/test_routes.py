@@ -258,7 +258,7 @@ def test_signup_empty_workspace_and_authenticated_pages(monkeypatch: pytest.Monk
             "/dashboard", "/loads", "/loads/new", "/vehicles", "/drivers", "/fuel",
             "/payments", "/quotes", "/rate-quotes", "/rate-quotes/new", "/financials", "/idle", "/settings",
             "/compliance", "/onboarding", "/documents", "/receivables", "/links", "/billing",
-            "/audits", "/growth", "/startup", "/getting-started",
+            "/audits", "/growth", "/startup", "/getting-started", "/migration",
             "/manifest.webmanifest", "/service-worker.js",
         ):
             response = client.get(page)
