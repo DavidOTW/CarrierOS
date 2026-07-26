@@ -37,11 +37,23 @@ evidence for review, not an automatic authorization to deploy. The operator
 must still review the migration, backup/restore rehearsal, billing smoke test,
 tenant isolation checks, and rollback plan before promotion.
 
-## Scope of this Phase 4 slice
+## Scope of the delivered Phase 4 slice
 
-This change does not claim that PostgreSQL, Alembic, MFA, object-storage
-encryption, background workers, observability, or a full staging gate are
-finished. Those remain the next Phase 4 work items. The readiness gate makes
-those future controls visible while preventing a test Stripe key, manual
-malware fallback, or unverified database from being mistaken for a launch
-approval.
+The delivery-to-cash slice now closes the first financial loop after delivery:
+
+- Delivered loads with evidence can be converted into a linked invoice and the
+  load advances through `READY_TO_INVOICE` to `INVOICED`.
+- Office users can edit invoice details and record idempotent partial or final
+  receipts. Each receipt is append-only in `invoice_payments` and retains the
+  date, reference, notes, and actor.
+- Invoice aging shows amount billed, amount received, and remaining balance.
+  A linked load advances to `PARTIALLY_PAID` or `PAID` only after the recorded
+  receipts cover the invoice amount.
+- Every invoice creation, edit, and receipt is tenant-scoped and added to the
+  audit event stream. CarrierOS still requires a human to verify the external
+  remittance before recording a receipt.
+
+PostgreSQL, Alembic, MFA, object-storage encryption, background workers,
+observability, full staging gates, automated broker invoicing, bank
+reconciliation, and settlement approval remain future hardening work. The
+application does not claim those capabilities are automated.
