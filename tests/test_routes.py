@@ -63,7 +63,6 @@ def test_launch_pricing_uses_active_power_units() -> None:
         for code, plan in main_module.PLAN_LIMITS.items()
     ] == [
         ("free_operator", 1, 0),
-        ("carrier_startup", 0, 10),
         ("owner_operator", 2, 25),
         ("starter_fleet", 5, 50),
         ("small_fleet", 10, 75),
@@ -99,8 +98,9 @@ def test_public_marketing_home_uses_launch_pricing_and_real_app_links(
         assert response.status_code == 200
         assert "Run the fleet" in response.text
         assert "live demo" in response.text.lower()
-        assert "Pre-authority" in response.text
-        assert "$10" in response.text
+        assert "Free for 1 active unit" in response.text
+        assert "No payment until 2+ units" in response.text
+        assert "$10" not in response.text
         assert "Carrier startup checklist" in response.text
         assert "Up to 2 active power units" in response.text
         assert "$25" in response.text
@@ -121,7 +121,7 @@ def test_public_marketing_home_uses_launch_pricing_and_real_app_links(
         assert "20 years of experience" in response.text
         assert 'href="https://www.linkedin.com/in/davidbryant89"' in response.text
         assert 'href="/carrier-startup-checklist"' in response.text
-        assert "See the startup plan" in response.text
+        assert "Use the free startup guide" in response.text
         assert '<a class="public-signin" href="/login">Log in</a>' in response.text
         assert '"@type": "Person"' in response.text
         assert response.headers["cache-control"].startswith("public")
@@ -157,8 +157,8 @@ def test_search_pages_sitemap_and_crawl_controls(
             assert 'content="index, follow' in response.text
             assert '"@type": "FAQPage"' in response.text
         startup = client.get("/carrier-startup-checklist")
-        assert 'href="/signup?plan=carrier_startup"' in startup.text
-        assert "Start the $10 startup plan" in startup.text
+        assert 'href="/signup?plan=free_operator"' in startup.text
+        assert "Start free" in startup.text
 
         sitemap = client.get("/sitemap.xml")
         assert sitemap.status_code == 200
