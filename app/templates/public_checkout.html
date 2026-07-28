@@ -7,20 +7,20 @@
   {% set nav_primary_label = 'Open live demo' %}
   {% include "_public_navigation.html" %}
   <section class="public-checkout-hero">
-    <span class="public-release"><i></i> Secure Stripe checkout &middot; 14-day trial</span>
+    <span class="public-release"><i></i> Start free with 1 unit &middot; no payment until 2+ units</span>
     <h1>Choose the workspace that fits your fleet.</h1>
-    <p>Create your private CarrierOS workspace first. The next step takes you to Stripe's hosted checkout to collect a payment method securely.</p>
+    <p>Create your private CarrierOS workspace with one active power unit at no cost. Choose a paid plan only when you need 2 or more units; paid plans use Stripe Checkout and include a 14-day trial.</p>
   </section>
   <section class="public-section public-pricing" id="plans" data-analytics-view="view_pricing">
-    <div class="public-section-intro public-centered"><span class="public-eyebrow">Simple subscription plans</span><h2>Price the fleet, not the office.</h2><p>Unlimited driver records and office users. Plans are based on active power units.</p></div>
+    <div class="public-section-intro public-centered"><span class="public-eyebrow">Simple subscription plans</span><h2>Start free with one unit.</h2><p>No payment is required until you need 2 or more active power units. Paid plans are monthly and include a 14-day trial.</p></div>
     <div class="public-plans">
       {% for code, option in plans.items() %}
-      <article class="{% if code == selected_plan %}featured{% endif %}"><h3>{{ option.name }}</h3><p>{% if option.units == 0 %}Pre-authority &middot; 0 active units{% else %}Up to {{ option.units }} active power units{% endif %}</p><div><strong>{{ money(option.price) }}</strong><span>/ month</span></div><small>{% if option.units == 0 %}Startup checklist and equipment finance planning.{% else %}Dispatch, driver pay, loads, and profit tracking.{% endif %}</small><a href="/signup?plan={{ code }}" data-analytics-location="pricing_plan_{{ code }}" class="public-btn {% if code == selected_plan %}public-btn-orange{% else %}public-btn-light{% endif %}">Start my 14-day trial <span aria-hidden="true">&rarr;</span></a></article>
+      <article class="{% if code == selected_plan %}featured{% endif %}"><h3>{{ option.name }}</h3><p>{% if code == 'free_operator' %}1 active power unit{% elif option.units == 0 %}Pre-authority &middot; 0 active units{% else %}Up to {{ option.units }} active power units{% endif %}</p><div><strong>{{ money(option.price) }}</strong><span>/ month</span></div><small>{% if code == 'free_operator' %}Free forever for one unit. No payment until 2+ units.{% elif option.units == 0 %}Startup checklist and equipment finance planning.{% else %}Dispatch, driver pay, loads, and profit tracking.{% endif %}</small><a href="/signup?plan={{ code }}" data-analytics-location="pricing_plan_{{ code }}" class="public-btn {% if code == selected_plan %}public-btn-orange{% else %}public-btn-light{% endif %}>{% if code == 'free_operator' %}Start free{% else %}Start my 14-day trial{% endif %} <span aria-hidden="true">&rarr;</span></a></article>
       {% endfor %}
       <article><h3>Custom Fleet</h3><p>More than 20 active power units</p><div><strong>Custom</strong></div><small>Guided setup for larger operations.</small><a href="mailto:{{ support_email }}?subject=CarrierOS%20Custom%20Fleet" class="public-btn public-btn-light">Request a quote <span aria-hidden="true">&rarr;</span></a></article>
     </div>
     <div class="public-checkout-total" aria-live="polite">
-      <div><span class="public-eyebrow">Selected plan</span><strong>{{ plans[selected_plan].name }}</strong><p>Your total after the 14-day trial is <b>{{ money(plans[selected_plan].price) }} per month</b>. Cancel before the trial ends to avoid a charge.</p></div>
+      <div><span class="public-eyebrow">Selected plan</span><strong>{{ plans[selected_plan].name }}</strong><p>{% if selected_plan == 'free_operator' %}Your total is <b>$0 per month</b> for one active unit. No payment is required until you need 2 or more units.{% else %}Your total after the 14-day trial is <b>{{ money(plans[selected_plan].price) }} per month</b>. Cancel before the trial ends to avoid a charge.{% endif %}</p></div>
       <div class="public-checkout-total-amount"><strong>{{ money(plans[selected_plan].price) }}</strong><span>per month</span></div>
     </div>
   </section>

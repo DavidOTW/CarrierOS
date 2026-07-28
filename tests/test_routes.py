@@ -62,6 +62,7 @@ def test_launch_pricing_uses_active_power_units() -> None:
         (code, plan["units"], plan["price"])
         for code, plan in main_module.PLAN_LIMITS.items()
     ] == [
+        ("free_operator", 1, 0),
         ("carrier_startup", 0, 10),
         ("owner_operator", 2, 25),
         ("starter_fleet", 5, 50),
@@ -105,8 +106,9 @@ def test_public_marketing_home_uses_launch_pricing_and_real_app_links(
         assert "$25" in response.text
         assert "Up to 20 active power units" in response.text
         assert "$100" in response.text
-        assert "14-day free trial" in response.text
-        assert "no payment method" not in response.text.lower()
+        assert "14-day trial" in response.text
+        assert "No payment until 2+ units" in response.text
+        assert "no payment method" not in response.text.lower() or "no payment until 2+ units" in response.text.lower()
         assert "Start free beta" not in response.text
         assert '/signup?plan=starter_fleet' in response.text
         assert '<link rel="canonical" href="https://otwcarrieros.com/">' in response.text

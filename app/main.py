@@ -184,12 +184,21 @@ class SensitiveAccessLogFilter(logging.Filter):
 logging.getLogger("uvicorn.access").addFilter(SensitiveAccessLogFilter())
 
 
-def customer_signups_open() -> bool:
+FREE_PLAN_CODE = "free_operator"
+
+
+def customer_signups_open(plan_code: str | None = None) -> bool:
+    # The one-unit workspace is intentionally free, so it remains available
+    # even while paid Stripe activation or review is in progress.
+    if plan_code == FREE_PLAN_CODE:
+        return True
     return not (
         IS_PRODUCTION and BILLING_MODE == "stripe" and not stripe_live_configured()
     )
 
+
 PLAN_LIMITS = {
+    FREE_PLAN_CODE: {"name": "Free Operator", "units": 1, "price": 0},
     "carrier_startup": {"name": "Carrier Startup", "units": 0, "price": 10},
     "owner_operator": {"name": "Owner-Operator", "units": 2, "price": 25},
     "starter_fleet": {"name": "Starter Fleet", "units": 5, "price": 50},
@@ -998,12 +1007,12 @@ def render(request: Request, name: str, context: dict[str, Any] | None = None, s
         "billing_mode": BILLING_MODE,
         "signups_open": customer_signups_open(),
         "signup_href": (
-            "/signup"
-            if customer_signups_open()
+            "/signup?plan=free_operator"
+            if customer_signups_open(FREE_PLAN_CODE)
             else f"mailto:{SUPPORT_EMAIL}?subject=CarrierOS%20launch%20access"
         ),
         "signup_cta": (
-            "Start free trial" if customer_signups_open() else "Get launch access"
+            "Start free" if customer_signups_open(FREE_PLAN_CODE) else "Get launch access"
         ),
         "email_delivery_ready": smtp_configured(),
         "csrf_token": csrf_token,
@@ -1448,11 +1457,11 @@ def index(request: Request):
 
 
 @app.get("/checkout", response_class=HTMLResponse)
-def public_checkout(request: Request, plan: str = "owner_operator"):
+def public_checkout(request: Request, plan: str = FREE_PLAN_CODE):
     """Public pricing/checkout entry point for CarrierOS and Squarespace CTAs."""
     if current_user(request):
         return redirect("/billing")
-    selected_plan = plan if plan in PLAN_LIMITS else "owner_operator"
+    selected_plan = plan if plan in PLAN_LIMITS else FREE_PLAN_CODE
     return render(
         request,
         "public_checkout.html",
@@ -1463,7 +1472,7 @@ def public_checkout(request: Request, plan: str = "owner_operator"):
             **seo_context(
                 "/checkout",
                 "CarrierOS Plans & Checkout | Fleet Operations Software",
-                "Choose a CarrierOS plan for carrier startup planning or a small fleet, then create a private workspace and start a 14-day trial.",
+                "Start with one active power unit at no cost. Add a paid capacity plan only when you need two or more units; paid plans include a 14-day trial.",
             ),
         },
     )
@@ -2247,12 +2256,12 @@ async def mark_referral_commission_paid(request: Request, commission_id: int):
 
 
 @app.get("/signup", response_class=HTMLResponse)
-def signup_page(request: Request, plan: str = "owner_operator", ref: str | None = None):
+def signup_page(request: Request, plan: str = FREE_PLAN_CODE, ref: str | None = None):
     if current_user(request):
         return redirect("/dashboard")
-    if not customer_signups_open():
+    if not customer_signups_open(plan):
         return render(request, "launch_pending.html", {"public_page": True})
-    selected_plan = plan if plan in PLAN_LIMITS else "owner_operator"
+    selected_plan = plan if plan in PLAN_LIMITS else FREE_PLAN_CODE
     referral_partner = _referral_signup_context(request, ref)
     return render(
         request,
@@ -2276,22 +2285,23 @@ def _acquisition_value(form: Any, name: str, *, limit: int = 200) -> str | None:
 
 @app.post("/signup", response_class=HTMLResponse)
 async def signup(request: Request):
-    if not customer_signups_open():
-        return render(request, "launch_pending.html", {"public_page": True}, 503)
     if signup_rate_limited(request):
+
         return render(request, "signup.html", {
             "error": "Too many accounts were created from this connection. Try again in one hour.",
             "plans": PLAN_LIMITS,
-            "selected_plan": "owner_operator",
+            "selected_plan": FREE_PLAN_CODE,
             "public_page": True,
         }, 429)
     form = await verified_form(request)
+    plan_code = str(form.get("plan", FREE_PLAN_CODE))
+    if not customer_signups_open(plan_code):
+        return render(request, "launch_pending.html", {"public_page": True}, 503)
     full_name = str(form.get("full_name", "")).strip()
     company_name = str(form.get("company_name", "")).strip()
     email = str(form.get("email", "")).strip().lower()
     password = str(form.get("password", ""))
     accepted_terms = yes(form.get("accepted_terms"))
-    plan_code = str(form.get("plan", "owner_operator"))
     referral_code = normalize_referral_code(
         form.get("referral_code") or request.session.get("referral_code")
     )
@@ -2307,8 +2317,9 @@ async def signup(request: Request):
         "click_id": _acquisition_value(form, "acquisition_click_id", limit=255),
     }
     if plan_code not in PLAN_LIMITS:
-        plan_code = "owner_operator"
+        plan_code = FREE_PLAN_CODE
     plan = PLAN_LIMITS[plan_code]
+    free_plan = plan_code == FREE_PLAN_CODE
     error = None
     if not full_name or not company_name or "@" not in email:
         error = "Enter your name, company, and a valid email address."
@@ -2329,8 +2340,20 @@ async def signup(request: Request):
             "referral_code": referral_partner["referral_code"] if referral_partner else "",
         }, 400)
 
-    trial_ends_at = (date.today() + timedelta(days=TRIAL_DAYS)).isoformat() if BILLING_MODE == "beta" else None
-    subscription_status = "trialing" if BILLING_MODE == "beta" else "incomplete"
+    trial_ends_at = (
+        None
+        if free_plan
+        else (date.today() + timedelta(days=TRIAL_DAYS)).isoformat()
+        if BILLING_MODE == "beta"
+        else None
+    )
+    subscription_status = (
+        "active"
+        if free_plan
+        else "trialing"
+        if BILLING_MODE == "beta"
+        else "incomplete"
+    )
     accepted_at = utc_now_iso()
     referral_partner_id: int | None = None
     with db_session() as conn:
@@ -2388,7 +2411,7 @@ async def signup(request: Request):
     request.session.clear()
     request.session["user_id"] = user_id
     request.session["csrf_token"] = secrets.token_urlsafe(32)
-    return redirect("/dashboard" if BILLING_MODE == "beta" else "/billing?new=1")
+    return redirect("/dashboard" if BILLING_MODE == "beta" or free_plan else "/billing?new=1")
 
 
 @app.get("/forgot-password", response_class=HTMLResponse)
@@ -2548,9 +2571,15 @@ async def billing_checkout(request: Request):
         )
         return redirect("/billing")
     form = await verified_form(request)
-    plan_code = str(form.get("plan", user.get("plan_code") or "owner_operator"))
+    plan_code = str(form.get("plan", user.get("plan_code") or FREE_PLAN_CODE))
     if plan_code not in PLAN_LIMITS:
         raise HTTPException(status_code=400, detail="Unknown plan")
+    if plan_code == FREE_PLAN_CODE:
+        set_flash(
+            request,
+            "The one-unit CarrierOS workspace is free. Select a paid plan when you need two or more active units.",
+        )
+        return redirect("/billing")
     if user.get("billing_subscription_reference") and str(user.get("subscription_status")) not in {
         "canceled", "incomplete_expired"
     }:

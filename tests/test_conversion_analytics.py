@@ -55,10 +55,11 @@ def test_signup_page_has_trust_copy_and_tracks_real_funnel_steps(
     with TestClient(app) as client:
         response = client.get("/signup?plan=starter_fleet")
         assert response.status_code == 200
-        assert "No charge today" in response.text
+        assert "No payment required until 2+ active units" in response.text
         assert "Purple Heart Marine Corps combat veteran" in response.text
         assert "Book a 15-minute walkthrough" in response.text
-        assert "Start your 14-day trial" in response.text
+        assert "14-day trial" in response.text
+        assert "Create your CarrierOS workspace" in response.text
         assert 'data-analytics-event="view_signup"' in response.text
         assert "beginSignup" in response.text
         assert "signup_submit" in response.text
