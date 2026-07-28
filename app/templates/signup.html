@@ -1,12 +1,12 @@
-{% extends "base.html" %}{% block title %}Start your trial &middot; CarrierOS{% endblock %}
+{% extends "base.html" %}{% block title %}Create your CarrierOS workspace{% endblock %}
 {% block content %}
 <span hidden data-analytics-event="view_signup" data-analytics-plan="{{ selected_plan }}"></span>
 <div class="login-page">
   <section class="login-hero signup-hero">
     <div class="brand" style="border:0;padding:0;margin-bottom:32px"><div class="brand-mark">CO</div><div><strong>CarrierOS</strong><small style="color:#cae0eb">Your fleet. Your numbers.</small></div></div>
-    <span class="signup-no-charge">14-day trial &middot; No charge today</span>
+    <span class="signup-no-charge">{% if selected_plan == 'free_operator' %}Free for 1 active unit &middot; No payment required{% else %}14-day trial &middot; No charge today{% endif %}</span>
     <h1>Built for carriers who need the whole picture.</h1>
-    <p>Create a private workspace for dispatch, driver pay, documents, receivables, compliance, and load-level profit. Stripe securely saves your payment method on the next step; billing begins only after the trial unless you cancel.</p>
+    <p>Create a private workspace for dispatch, driver pay, documents, receivables, compliance, and load-level profit. {% if selected_plan == 'free_operator' %}One active power unit is free forever; payment begins only when you need a second unit.{% else %}Stripe securely saves your payment method on the next step; billing begins only after the trial unless you cancel.{% endif %}</p>
     <div class="login-bullets">
       <span>&check; Transparent monthly pricing</span>
       <span>&check; Unlimited driver records and office users</span>
@@ -20,26 +20,26 @@
     </aside>
   </section>
   <section class="login-panel"><div class="login-card">
-    <ol class="signup-steps" aria-label="Trial setup progress"><li class="active"><span>1</span>Account</li><li><span>2</span>Secure Stripe</li><li><span>3</span>Trial active</li></ol>
-    <h2>Start your 14-day trial</h2><p class="muted">First, create the owner account for your company.</p>
+    <ol class="signup-steps" aria-label="Workspace setup progress"><li class="active"><span>1</span>Account</li><li><span>2</span>{% if selected_plan == 'free_operator' %}Workspace{% else %}Secure Stripe{% endif %}</li><li><span>3</span>{% if selected_plan == 'free_operator' %}Ready{% else %}Trial active{% endif %}</li></ol>
+    <h2>{% if selected_plan == 'free_operator' %}Start free with one unit{% else %}Start your 14-day trial{% endif %}</h2><p class="muted">First, create the owner account for your company.</p>
     {% if error %}<div class="notice bad">{{ error }}</div>{% endif %}
     {% if referral_partner %}<div class="notice good"><strong>Referral applied.</strong> Your account was referred by {{ referral_partner.display_name }}. Their recurring referral credit does not increase your subscription price.</div>{% endif %}
     {% set values = values or {} %}
     <div class="signup-plan-summary" aria-live="polite">
       <div><span>Selected plan</span><strong data-signup-plan-name>{{ plans[selected_plan].name }}</strong></div>
       <div><span>Due today</span><strong>$0</strong></div>
-      <p><b data-signup-plan-price>{{ money(plans[selected_plan].price) }}/month</b> after the 14-day trial. Cancel before the trial ends to avoid a charge.</p>
+      <p><b data-signup-plan-price>{% if selected_plan == 'free_operator' %}Free forever for 1 active unit{% else %}{{ money(plans[selected_plan].price) }}/month after the 14-day trial. Cancel before the trial ends to avoid a charge.{% endif %}</b></p>
     </div>
     <form method="post" action="/signup" data-signup-form>
       {% if referral_code %}<input type="hidden" name="referral_code" value="{{ referral_code }}">{% endif %}
       <div class="field"><label for="signup-full-name">Your name</label><input id="signup-full-name" name="full_name" value="{{ values.full_name or '' }}" autocomplete="name" required></div>
       <div class="field"><label for="signup-company">Company name</label><input id="signup-company" name="company_name" value="{{ values.company_name or '' }}" autocomplete="organization" required></div>
       <div class="field"><label for="signup-email">Business email</label><input id="signup-email" type="email" name="email" value="{{ values.email or '' }}" autocomplete="email" required></div>
-      <div class="field"><label for="signup-plan">Starting plan</label><select id="signup-plan" name="plan">{% for code, plan in plans.items() %}<option value="{{ code }}" data-plan-name="{{ plan.name }}" data-plan-price="{{ money(plan.price) }}" {% if code == selected_plan %}selected{% endif %}>{{ plan.name }} &middot; {% if plan.units == 0 %}startup planning, 0 units{% else %}up to {{ plan.units }} units{% endif %} &middot; {{ money(plan.price) }}/month after trial</option>{% endfor %}</select></div>
+      <div class="field"><label for="signup-plan">Starting plan</label><select id="signup-plan" name="plan">{% for code, plan in plans.items() %}<option value="{{ code }}" data-plan-name="{{ plan.name }}" data-plan-price="{{ money(plan.price) }}" data-plan-free="{{ 'true' if code == 'free_operator' else 'false' }}" {% if code == selected_plan %}selected{% endif %}>{{ plan.name }} &middot; {% if code == 'free_operator' %}1 unit, free forever{% elif plan.units == 0 %}startup planning, 0 units{% else %}up to {{ plan.units }} units{% endif %} &middot; {% if code == 'free_operator' %}no payment until 2+ units{% else %}{{ money(plan.price) }}/month after trial{% endif %}</option>{% endfor %}</select></div>
       <div class="field"><label for="signup-password">Password</label><input id="signup-password" type="password" name="password" autocomplete="new-password" minlength="12" required><small>12+ characters with uppercase, lowercase, a number, and a symbol.</small></div>
       <div class="field inline" style="margin-top:14px"><input id="accepted_terms" type="checkbox" name="accepted_terms" required><label for="accepted_terms">I agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and acknowledge the <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</label></div>
-      <div class="form-actions"><button class="btn btn-primary signup-submit" type="submit">Create workspace &amp; start my 14-day trial</button></div>
-      <p class="signup-security">No charge today. Your next step is Stripe&rsquo;s secure checkout; CarrierOS never stores your complete card or bank details.</p>
+      <div class="form-actions"><button class="btn btn-primary signup-submit" type="submit">{% if selected_plan == 'free_operator' %}Create free workspace{% else %}Create workspace &amp; start my 14-day trial{% endif %}</button></div>
+      <p class="signup-security">{% if selected_plan == 'free_operator' %}No payment details required. Upgrade securely through Stripe only when you need 2 or more active units.{% else %}No charge today. Your next step is Stripe&rsquo;s secure checkout; CarrierOS never stores your complete card or bank details.{% endif %}</p>
     </form>
     <div class="signup-help">
       <a href="/demo" data-analytics-location="signup_help">Watch the live product demo</a>
@@ -60,7 +60,7 @@
       const option = planSelect.selectedOptions[0];
       if (!option) return;
       planName.textContent = option.dataset.planName || option.textContent;
-      planPrice.textContent = `${option.dataset.planPrice || ''}/month`;
+      planPrice.textContent = option.dataset.planFree === 'true' ? 'Free forever for 1 active unit' : `${option.dataset.planPrice || ''}/month after trial`;
       if (track) {
         window.carrierAnalytics?.track('plan_selected', {
           plan: option.value || 'unspecified'
