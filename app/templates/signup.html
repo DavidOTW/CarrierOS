@@ -4,9 +4,9 @@
 <div class="login-page">
   <section class="login-hero signup-hero">
     <div class="brand" style="border:0;padding:0;margin-bottom:32px"><div class="brand-mark">CO</div><div><strong>CarrierOS</strong><small style="color:#cae0eb">Your fleet. Your numbers.</small></div></div>
-    <span class="signup-no-charge">{% if selected_plan == 'free_operator' %}Free for 1 active unit &middot; No payment required{% else %}14-day trial &middot; No charge today{% endif %}</span>
+    <span class="signup-no-charge">No payment required until 2+ active units &middot; paid plans include a 14-day trial</span>
     <h1>Built for carriers who need the whole picture.</h1>
-    <p>Create a private workspace for dispatch, driver pay, documents, receivables, compliance, and load-level profit. {% if selected_plan == 'free_operator' %}One active power unit is free forever; payment begins only when you need a second unit.{% else %}Stripe securely saves your payment method on the next step; billing begins only after the trial unless you cancel.{% endif %}</p>
+    <p>Create a private workspace for dispatch, driver pay, documents, receivables, compliance, and load-level profit. One active power unit is free forever; choose a paid monthly plan only when you need a second unit. Paid plans use Stripe securely and include a 14-day trial.</p>
     <div class="login-bullets">
       <span>&check; Transparent monthly pricing</span>
       <span>&check; Unlimited driver records and office users</span>
@@ -20,8 +20,8 @@
     </aside>
   </section>
   <section class="login-panel"><div class="login-card">
-    <ol class="signup-steps" aria-label="Workspace setup progress"><li class="active"><span>1</span>Account</li><li><span>2</span>{% if selected_plan == 'free_operator' %}Workspace{% else %}Secure Stripe{% endif %}</li><li><span>3</span>{% if selected_plan == 'free_operator' %}Ready{% else %}Trial active{% endif %}</li></ol>
-    <h2>{% if selected_plan == 'free_operator' %}Start free with one unit{% else %}Start your 14-day trial{% endif %}</h2><p class="muted">First, create the owner account for your company.</p>
+    <ol class="signup-steps" aria-label="Workspace setup progress"><li class="active"><span>1</span>Account</li><li><span>2</span>Secure setup</li><li><span>3</span>Workspace ready</li></ol>
+    <h2>Create your CarrierOS workspace</h2><p class="muted">First, create the owner account for your company.</p>
     {% if error %}<div class="notice bad">{{ error }}</div>{% endif %}
     {% if referral_partner %}<div class="notice good"><strong>Referral applied.</strong> Your account was referred by {{ referral_partner.display_name }}. Their recurring referral credit does not increase your subscription price.</div>{% endif %}
     {% set values = values or {} %}
@@ -38,8 +38,8 @@
       <div class="field"><label for="signup-plan">Starting plan</label><select id="signup-plan" name="plan">{% for code, plan in plans.items() %}<option value="{{ code }}" data-plan-name="{{ plan.name }}" data-plan-price="{{ money(plan.price) }}" data-plan-free="{{ 'true' if code == 'free_operator' else 'false' }}" {% if code == selected_plan %}selected{% endif %}>{{ plan.name }} &middot; {% if code == 'free_operator' %}1 unit, free forever{% elif plan.units == 0 %}startup planning, 0 units{% else %}up to {{ plan.units }} units{% endif %} &middot; {% if code == 'free_operator' %}no payment until 2+ units{% else %}{{ money(plan.price) }}/month after trial{% endif %}</option>{% endfor %}</select></div>
       <div class="field"><label for="signup-password">Password</label><input id="signup-password" type="password" name="password" autocomplete="new-password" minlength="12" required><small>12+ characters with uppercase, lowercase, a number, and a symbol.</small></div>
       <div class="field inline" style="margin-top:14px"><input id="accepted_terms" type="checkbox" name="accepted_terms" required><label for="accepted_terms">I agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and acknowledge the <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</label></div>
-      <div class="form-actions"><button class="btn btn-primary signup-submit" type="submit">{% if selected_plan == 'free_operator' %}Create free workspace{% else %}Create workspace &amp; start my 14-day trial{% endif %}</button></div>
-      <p class="signup-security">{% if selected_plan == 'free_operator' %}No payment details required. Upgrade securely through Stripe only when you need 2 or more active units.{% else %}No charge today. Your next step is Stripe&rsquo;s secure checkout; CarrierOS never stores your complete card or bank details.{% endif %}</p>
+      <div class="form-actions"><button class="btn btn-primary signup-submit" type="submit">Create workspace</button></div>
+      <p class="signup-security">No payment is required for one active unit. If you choose a paid plan, Stripe&rsquo;s secure checkout handles payment details and CarrierOS never stores your complete card or bank details.</p>
     </form>
     <div class="signup-help">
       <a href="/demo" data-analytics-location="signup_help">Watch the live product demo</a>
