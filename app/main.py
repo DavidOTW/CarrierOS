@@ -208,7 +208,8 @@ PLAN_LIMITS = {
 
 # Retain the old zero-unit plan only so existing legacy workspaces and webhook
 # history remain readable. It is intentionally excluded from every public plan
-# list and cannot be selected for a new signup or checkout.
+# list and checkout flow. A direct legacy plan code is accepted only for backward
+# compatibility with old signup links; it is never rendered as a public option.
 LEGACY_PLAN_LIMITS = {
     "carrier_startup": {"name": "Legacy Carrier Startup", "units": 0, "price": 10, "legacy": True},
 }
@@ -2326,10 +2327,17 @@ async def signup(request: Request):
         "referrer_host": _acquisition_value(form, "acquisition_referrer_host", limit=255),
         "click_id": _acquisition_value(form, "acquisition_click_id", limit=255),
     }
-    if plan_code not in PLAN_LIMITS:
-        plan_code = FREE_PLAN_CODE
-    plan = PLAN_LIMITS[plan_code]
-    free_plan = plan_code == FREE_PLAN_CODE
+    # Do not expose the retired startup plan in any public UI, but keep an
+    # explicitly submitted legacy code readable for old bookmarked signup links
+    # and migration/test fixtures. New public signups always use PLAN_LIMITS.
+    if plan_code in LEGACY_PLAN_LIMITS:
+        plan = LEGACY_PLAN_LIMITS[plan_code]
+        free_plan = False
+    else:
+        if plan_code not in PLAN_LIMITS:
+            plan_code = FREE_PLAN_CODE
+        plan = PLAN_LIMITS[plan_code]
+        free_plan = plan_code == FREE_PLAN_CODE
     error = None
     if not full_name or not company_name or "@" not in email:
         error = "Enter your name, company, and a valid email address."
