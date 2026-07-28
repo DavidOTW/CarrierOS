@@ -198,13 +198,24 @@ def customer_signups_open(plan_code: str | None = None) -> bool:
 
 
 PLAN_LIMITS = {
+    # Public plans. One active power unit is free; paid capacity starts at two units.
     FREE_PLAN_CODE: {"name": "Free Operator", "units": 1, "price": 0},
-    "carrier_startup": {"name": "Carrier Startup", "units": 0, "price": 10},
     "owner_operator": {"name": "Owner-Operator", "units": 2, "price": 25},
     "starter_fleet": {"name": "Starter Fleet", "units": 5, "price": 50},
     "small_fleet": {"name": "Small Fleet", "units": 10, "price": 75},
     "growing_fleet": {"name": "Growing Fleet", "units": 20, "price": 100},
 }
+
+# Retain the old zero-unit plan only so existing legacy workspaces and webhook
+# history remain readable. It is intentionally excluded from every public plan
+# list and checkout flow. A direct legacy plan code is accepted only for backward
+# compatibility with old signup links; it is never rendered as a public option.
+LEGACY_PLAN_LIMITS = {
+    "carrier_startup": {"name": "Legacy Carrier Startup", "units": 0, "price": 10, "legacy": True},
+}
+
+def plan_for_code(plan_code: str | None, default: str = "owner_operator") -> dict[str, Any]:
+    return PLAN_LIMITS.get(str(plan_code or "")) or LEGACY_PLAN_LIMITS.get(str(plan_code or "")) or PLAN_LIMITS[default]
 
 QUICK_LINK_CATEGORIES = (
     "Load board",
@@ -305,7 +316,7 @@ SEO_PAGES = {
         "lead": "CarrierOS gives aspiring owner-operators a step-by-step planning workspace for authority, safety, cash, equipment, records, and the operating math behind the first truck.",
         "audience": "For people preparing to start a U.S. carrier, purchase their first truck, or move from driving into owner-operator and small-fleet ownership.",
         "problem_title": "The first truck comes with more than a truck payment.",
-        "problem_copy": "A new carrier needs a coordinated plan for registration, insurance, safety, cash reserves, equipment, records, and freight decisions. The Carrier Startup plan keeps those questions visible before the first load is booked.",
+        "problem_copy": "A new carrier needs a coordinated plan for registration, insurance, safety, cash reserves, equipment, records, and freight decisions. The free startup guide keeps those questions visible before the first load is booked.",
         "benefits": [
             ("Authority and registration", "Keep the major registration, filing, and operating-authority questions in one checklist with official-source links."),
             ("Safety and compliance", "Organize the records and renewal dates that should be reviewed before operations begin."),
@@ -319,7 +330,7 @@ SEO_PAGES = {
             ("Open the operations workspace", "Upgrade when you are ready to manage loads, dispatch, driver pay, payments, and profit in one place."),
         ],
         "faqs": [
-            ("What does the Carrier Startup plan include?", "The $10 per month startup plan is designed for 0 active power units and includes the guided checklist, official-source tutorials, document audit center, and equipment finance mentor."),
+            ("What does the Carrier Startup plan include?", "The startup guide is included as a free educational resource; it includes the guided checklist, official-source tutorials, document audit center, and equipment finance mentor. No payment is required until you need a second active power unit."),
             ("Does CarrierOS register my company or provide legal advice?", "No. CarrierOS organizes planning questions and links to official resources; it does not file registrations or replace legal, tax, insurance, accounting, or regulatory professionals."),
             ("Can I upgrade when I buy my first truck?", "Yes. Upgrade to an operating plan when you are ready to manage active power units, loads, drivers, dispatch, and profitability."),
         ],
@@ -2316,10 +2327,17 @@ async def signup(request: Request):
         "referrer_host": _acquisition_value(form, "acquisition_referrer_host", limit=255),
         "click_id": _acquisition_value(form, "acquisition_click_id", limit=255),
     }
-    if plan_code not in PLAN_LIMITS:
-        plan_code = FREE_PLAN_CODE
-    plan = PLAN_LIMITS[plan_code]
-    free_plan = plan_code == FREE_PLAN_CODE
+    # Do not expose the retired startup plan in any public UI, but keep an
+    # explicitly submitted legacy code readable for old bookmarked signup links
+    # and migration/test fixtures. New public signups always use PLAN_LIMITS.
+    if plan_code in LEGACY_PLAN_LIMITS:
+        plan = LEGACY_PLAN_LIMITS[plan_code]
+        free_plan = False
+    else:
+        if plan_code not in PLAN_LIMITS:
+            plan_code = FREE_PLAN_CODE
+        plan = PLAN_LIMITS[plan_code]
+        free_plan = plan_code == FREE_PLAN_CODE
     error = None
     if not full_name or not company_name or "@" not in email:
         error = "Enter your name, company, and a valid email address."
@@ -2529,7 +2547,7 @@ def billing(request: Request, checkout: str | None = None, new: int = 0):
     user = current_user(request)
     if not user:
         return redirect("/login")
-    plan = PLAN_LIMITS.get(str(user.get("plan_code")), PLAN_LIMITS["owner_operator"])
+    plan = plan_for_code(str(user.get("plan_code")))
     return render(request, "billing.html", {
         "plan": plan,
         "plans": PLAN_LIMITS,
@@ -2917,7 +2935,7 @@ def _apply_subscription_event(conn: Any, subscription: Any, event_type: str) -> 
     plan_code = plan_code_for_price(price_id) or str(metadata.get("carrieros_plan_code") or "")
     if plan_code not in PLAN_LIMITS:
         plan_code = str(organization["plan_code"])
-    plan = PLAN_LIMITS.get(plan_code, PLAN_LIMITS["owner_operator"])
+    plan = plan_for_code(plan_code)
     status = "canceled" if event_type == "customer.subscription.deleted" else str(
         object_value(subscription, "status") or organization["subscription_status"]
     )

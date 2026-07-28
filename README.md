@@ -22,7 +22,7 @@ Production RateCon upload refuses to run until encrypted private storage is expl
 - Privacy-first document audits for text-based RateCon PDFs, business-bank PDF/CSV exports, and bill PDFs; raw uploads are discarded after structured findings and a checksum are produced
 - A carrier-startup checklist with official-source tutorials plus equipment purchase/finance scenario mentoring
 - Seven driver-pay structures: profit split, contractor gross split, owner-operator split, flat rate per load, loaded-mile rate, total-mile rate, and day rate
-- A $10/month pre-authority startup plan with zero active units, plus plans for 2, 5, 10, and 20 active power units at $25, $50, $75, and $100 per month
+- A free one-unit operating plan with no card, plus paid plans for 2, 5, 10, and 20 active power units at $25, $50, $75, and $100 per month; the carrier-startup checklist is included as a free educational guide
 - Stripe-hosted subscription Checkout, Customer Portal, webhook-driven entitlements, and a card-on-file 14-day trial
 - A private OTW-administered driver referral program with unique links, first-touch signup attribution, recurring 50% commission ledgers, a 30-day confirmation hold, and refund/dispute adjustments
 - Docker packaging with a non-root process, dynamic platform port, health check, and persistent data volume

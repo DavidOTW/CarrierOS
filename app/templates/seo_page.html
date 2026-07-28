@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block title %}{{ seo_title }}{% endblock %}
 {% block content %}
-{% set page_signup_href = '/signup?plan=carrier_startup' if seo_slug == 'carrier-startup-checklist' and signups_open else signup_href %}
-{% set page_signup_cta = 'Start the $10 startup plan' if seo_slug == 'carrier-startup-checklist' and signups_open else signup_cta %}
+{% set page_signup_href = signup_href %}
+{% set page_signup_cta = signup_cta %}
 <main class="public-marketing seo-landing" id="top">
   {% set nav_current = 'solutions' %}
   {% set nav_primary_href = page_signup_href %}
