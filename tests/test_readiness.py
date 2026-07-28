@@ -64,7 +64,7 @@ def test_production_never_opens_signup_with_test_stripe_keys(
     monkeypatch.setattr(main_module, "BILLING_MODE", "stripe")
     assert stripe_billing.stripe_live_configured() is False
     with TestClient(app) as client:
-        response = client.get("/signup")
+        response = client.get("/signup?plan=owner_operator")
         assert response.status_code == 200
         assert "Customer billing is almost ready" in response.text
         assert "test checkout" in response.text
