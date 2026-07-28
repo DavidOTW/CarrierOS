@@ -9,12 +9,16 @@ from typing import Any, Mapping
 import stripe
 
 
+# Public paid plans begin at two active units. The zero-unit startup price is
+# retained only for webhook history and existing legacy subscriptions.
 PLAN_PRICE_ENV = {
-    "carrier_startup": "STRIPE_PRICE_CARRIER_STARTUP",
     "owner_operator": "STRIPE_PRICE_OWNER_OPERATOR",
     "starter_fleet": "STRIPE_PRICE_STARTER_FLEET",
     "small_fleet": "STRIPE_PRICE_SMALL_FLEET",
     "growing_fleet": "STRIPE_PRICE_GROWING_FLEET",
+}
+LEGACY_PLAN_PRICE_ENV = {
+    "carrier_startup": "STRIPE_PRICE_CARRIER_STARTUP",
 }
 
 
@@ -89,7 +93,7 @@ def stripe_live_configured() -> bool:
 
 
 def price_id_for_plan(plan_code: str) -> str:
-    env_name = PLAN_PRICE_ENV.get(plan_code)
+    env_name = PLAN_PRICE_ENV.get(plan_code) or LEGACY_PLAN_PRICE_ENV.get(plan_code)
     if not env_name:
         raise BillingConfigurationError("Unknown CarrierOS plan.")
     return _required_env(env_name)
@@ -98,7 +102,7 @@ def price_id_for_plan(plan_code: str) -> str:
 def plan_code_for_price(price_id: str | None) -> str | None:
     if not price_id:
         return None
-    for plan_code, env_name in PLAN_PRICE_ENV.items():
+    for plan_code, env_name in {**PLAN_PRICE_ENV, **LEGACY_PLAN_PRICE_ENV}.items():
         if os.getenv(env_name, "").strip() == price_id:
             return plan_code
     return None
