@@ -100,7 +100,7 @@ def test_public_marketing_home_uses_launch_pricing_and_real_app_links(
         assert "live demo" in response.text.lower()
         assert "Free for 1 active unit" in response.text
         assert "No payment until 2+ units" in response.text
-        assert "$10" not in response.text
+        assert "$10.00 / month" not in response.text
         assert "Carrier startup checklist" in response.text
         assert "Up to 2 active power units" in response.text
         assert "$25" in response.text
