@@ -1450,7 +1450,7 @@ def sitemap() -> Response:
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
-    description = "Small fleet trucking software for owner-operators and carriers with 1–20 trucks. Connect dispatch, driver pay, delivery documents, receivables, and estimated profit per load."
+    description = "Free small fleet trucking software for owner-operators and carriers with 1–20 trucks. Start with one active unit at no cost, then connect dispatch, driver pay, delivery documents, receivables, and estimated profit per load as you grow."
     return render(
         request,
         "marketing.html",
