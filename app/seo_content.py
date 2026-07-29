@@ -138,14 +138,14 @@ SEO_PAGE_ENHANCEMENTS: dict[str, dict[str, Any]] = {
             (
                 "Move from planning into operations",
                 (
-                    "The zero-active-unit plan is for preparation. When the first unit is "
+                    "The free startup workspace is for preparation. When the first unit is "
                     "ready, the company can move into an operating plan and use the same "
                     "CarrierOS account for quotes, loads, drivers, pay estimates, receivables, "
                     "and profitability."
                 ),
                 (
-                    "Start with a private planning workspace.",
-                    "Upgrade when active equipment is ready to operate.",
+                    "Start with a private planning workspace that is free for one active unit.",
+                    "Upgrade when a second active unit is ready to operate.",
                     "Continue verifying regulatory, tax, insurance, and legal decisions independently.",
                 ),
             ),
