@@ -21,7 +21,7 @@
     <aside class="seo-hero-card" aria-label="CarrierOS product summary">
       <span>Carrier-built software</span>
       <strong>Know the load.<br>Know the pay.<br>Know the profit.</strong>
-      <ul><li>Browser-based workspace</li><li>Plans for 1–20 power units</li><li>Unlimited driver records</li><li>14-day trial before monthly billing</li></ul>
+      <ul><li>Browser-based workspace</li><li>1 active power unit free forever</li><li>Plans for 2–20 paid power units</li><li>Unlimited driver records</li><li>14-day trial before monthly billing</li></ul><p class="seo-free-callout"><strong>Start free:</strong> no card is required for your first active unit. Add paid capacity only when you add a second unit.</p>
       <a href="/">See CarrierOS pricing &rarr;</a>
     </aside>
   </section>
@@ -67,7 +67,7 @@
     <div>{% for question, answer in page.faqs %}<details><summary>{{ question }}</summary><p>{{ answer }}</p></details>{% endfor %}</div>
   </section>
 
-  <section class="public-launch"><span class="public-eyebrow">See the workflow before signing up</span><h2>Explore CarrierOS with a fictional sample fleet.</h2><p>Try dispatch, driver pay, load profitability, and pricing without creating an account.</p><div><a class="public-btn public-btn-orange" href="/demo">Open the live demo <span aria-hidden="true">&rarr;</span></a><a class="public-btn public-btn-outline" href="{{ page_signup_href }}">{{ page_signup_cta }}</a></div></section>
+  <section class="public-launch"><span class="public-eyebrow">See the workflow before signing up</span><h2>Explore CarrierOS with a fictional sample fleet.</h2><p>Try dispatch, driver pay, load profitability, and pricing without creating an account—or start your own workspace free with one active unit.</p><div><a class="public-btn public-btn-orange" href="/demo">Open the live demo <span aria-hidden="true">&rarr;</span></a><a class="public-btn public-btn-outline" href="{{ page_signup_href }}">{{ page_signup_cta }}</a></div></section>
   <footer class="public-footer"><a class="public-brand" href="/"><span class="public-brand-mark"><i></i><i></i><i></i></span><span>Carrier<span>OS</span></span></a><p>A product of <a href="https://www.outsidethewirelogistics.com/">Outside The Wire Logistics LLC</a>.</p><nav><a href="/">CarrierOS home</a><a href="/solutions">Solutions</a><a href="/help">Help center</a><a href="/demo">Live demo</a><a href="/login">Customer login</a><a href="mailto:{{ support_email }}">Contact</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav><small>Operational estimates depend on user-entered assumptions. Review results before relying on them.</small></footer>
 </main>
 {% endblock %}
