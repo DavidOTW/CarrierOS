@@ -229,7 +229,7 @@ QUICK_LINK_LIMIT = 30
 SEO_PAGES = {
     "small-fleet-trucking-software": {
         "title": "Small Fleet Trucking Software | CarrierOS",
-        "description": "Small fleet trucking software for owner-operators and carriers with 1–20 trucks. Connect dispatch, driver pay, expenses, and estimated profit per load.",
+        "description": "Small fleet trucking software for owner-operators and carriers with 1–20 trucks. Start with one active unit free, then connect dispatch, driver pay, expenses, and estimated profit per load as you grow.",
         "eyebrow": "Small fleet trucking software",
         "heading": "Run a small trucking fleet without running it from five spreadsheets.",
         "lead": "CarrierOS gives owner-operators and small carrier teams one browser-based workspace for loads, driver pay, operating costs, receivables, and the profit each load actually keeps.",
@@ -256,7 +256,7 @@ SEO_PAGES = {
     },
     "driver-settlement-software": {
         "title": "Driver Pay Tracking for Small Fleets | CarrierOS",
-        "description": "Driver pay tracking for small trucking fleets. Estimate seven driver pay structures, record payments, and keep load pay and carrier profit connected.",
+        "description": "Driver pay tracking for small trucking fleets. Start free with one active unit, estimate seven driver pay structures, record payments, and keep load pay and carrier profit connected.",
         "eyebrow": "Driver pay tracking",
         "heading": "Driver pay that follows the agreement—not a one-size-fits-all formula.",
         "lead": "CarrierOS helps small carriers calculate, review, and track driver pay across seven compensation structures while keeping the load economics visible.",
@@ -283,7 +283,7 @@ SEO_PAGES = {
     },
     "load-profitability-calculator": {
         "title": "Truck Load Profitability Calculator | CarrierOS",
-        "description": "Calculate truck load profitability using revenue, miles, fuel, driver pay, maintenance, fixed costs, fees, and overhead. Try the free CarrierOS live demo.",
+        "description": "Calculate truck load profitability using revenue, miles, fuel, driver pay, maintenance, fixed costs, fees, and overhead in the free one-unit CarrierOS workspace.",
         "eyebrow": "Truck load profitability calculator",
         "heading": "Know what a load can keep—not only what it pays per mile.",
         "lead": "CarrierOS turns a load's rate, miles, fuel, driver pay, direct costs, fixed costs, and company assumptions into a clearer estimate of carrier profit and margin.",
@@ -310,7 +310,7 @@ SEO_PAGES = {
     },
     "carrier-startup-checklist": {
         "title": "How to Start a Trucking Company | CarrierOS",
-        "description": "A practical carrier startup checklist for aspiring owner-operators. Organize authority, safety, cash, equipment, and first-load readiness in one guided workspace.",
+        "description": "A practical free carrier startup checklist for aspiring owner-operators. Organize authority, safety, cash, equipment, and first-load readiness in one guided workspace before adding paid units.",
         "eyebrow": "Carrier startup checklist",
         "heading": "Start your carrier with a plan for the first load.",
         "lead": "CarrierOS gives aspiring owner-operators a step-by-step planning workspace for authority, safety, cash, equipment, records, and the operating math behind the first truck.",
@@ -330,7 +330,7 @@ SEO_PAGES = {
             ("Open the operations workspace", "Upgrade when you are ready to manage loads, dispatch, driver pay, payments, and profit in one place."),
         ],
         "faqs": [
-            ("What does the Carrier Startup plan include?", "The startup guide is included as a free educational resource; it includes the guided checklist, official-source tutorials, document audit center, and equipment finance mentor. No payment is required until you need a second active power unit."),
+            ("What is included in the free carrier startup guide?", "The guide includes a free educational checklist, official-source tutorials, document audit center, and equipment finance mentor. Your first active power unit is also free; payment is only required when you add a second active power unit."),
             ("Does CarrierOS register my company or provide legal advice?", "No. CarrierOS organizes planning questions and links to official resources; it does not file registrations or replace legal, tax, insurance, accounting, or regulatory professionals."),
             ("Can I upgrade when I buy my first truck?", "Yes. Upgrade to an operating plan when you are ready to manage active power units, loads, drivers, dispatch, and profitability."),
         ],
