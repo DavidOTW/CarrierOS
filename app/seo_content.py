@@ -138,14 +138,14 @@ SEO_PAGE_ENHANCEMENTS: dict[str, dict[str, Any]] = {
             (
                 "Move from planning into operations",
                 (
-                    "The zero-active-unit plan is for preparation. When the first unit is "
+                    "The free startup workspace is for preparation. When the first unit is "
                     "ready, the company can move into an operating plan and use the same "
                     "CarrierOS account for quotes, loads, drivers, pay estimates, receivables, "
                     "and profitability."
                 ),
                 (
-                    "Start with a private planning workspace.",
-                    "Upgrade when active equipment is ready to operate.",
+                    "Start with a private planning workspace that is free for one active unit.",
+                    "Upgrade when a second active unit is ready to operate.",
                     "Continue verifying regulatory, tax, insurance, and legal decisions independently.",
                 ),
             ),
@@ -164,8 +164,7 @@ ADDITIONAL_SEO_PAGES: dict[str, dict[str, Any]] = {
     "small-fleet-tms": {
         "title": "Small Fleet TMS for 1–20 Trucks | CarrierOS",
         "description": (
-            "A practical small fleet TMS for carriers with 1–20 trucks. Connect rate "
-            "checks, dispatch, loads, driver pay, receivables, documents, and estimated profit."
+            "A practical small fleet TMS for carriers with 1–20 trucks. Start with one active unit free, then connect rate checks, dispatch, loads, driver pay, receivables, documents, and estimated profit."
         ),
         "card_copy": "Connect the offer-to-cash workflow without enterprise TMS overhead.",
         "eyebrow": "Small fleet TMS",
@@ -628,7 +627,7 @@ ADDITIONAL_SEO_PAGES: dict[str, dict[str, Any]] = {
         "title": "Owner-Operator Business Software | CarrierOS",
         "description": (
             "Owner-operator business software for rate checks, loads, expenses, documents, "
-            "receivables, and estimated profit. Start with up to two active power units."
+            "receivables, and estimated profit. Start with one active power unit free; paid capacity begins at two."
         ),
         "card_copy": "See the business behind the truck, from broker offer to estimated profit.",
         "eyebrow": "Owner-operator business software",
@@ -704,8 +703,7 @@ ADDITIONAL_SEO_PAGES: dict[str, dict[str, Any]] = {
     "box-truck-fleet-management-software": {
         "title": "Box Truck Fleet Management Software | CarrierOS",
         "description": (
-            "Box truck fleet management software for owner-operators and small carriers. "
-            "Track quotes, dispatch, drivers, costs, pay, receivables, and estimated load profit."
+            "Box truck fleet management software for owner-operators and small carriers. Start with one active unit free, then track quotes, dispatch, drivers, costs, pay, receivables, and estimated load profit."
         ),
         "card_copy": "Manage box-truck freight with cost, pay, and receivable context.",
         "eyebrow": "Box truck fleet management",
@@ -782,7 +780,7 @@ ADDITIONAL_SEO_PAGES: dict[str, dict[str, Any]] = {
         "title": "Hotshot Trucking Software for Small Carriers | CarrierOS",
         "description": (
             "Hotshot trucking software for rate checks, dispatch, truck and trailer records, "
-            "driver pay, expenses, documents, receivables, and estimated load profit."
+            "driver pay, expenses, documents, receivables, and estimated load profit. Start with one active unit free."
         ),
         "card_copy": "Connect hotshot rates, deadhead, equipment, pay, costs, and load results.",
         "eyebrow": "Hotshot trucking software",
