@@ -247,7 +247,7 @@ def test_public_demo_mirrors_current_workspace_and_referral_scope(
             "Growth mentor",
             "Document audits",
             "Startup guide",
-            "Onboarding",
+            "Invite office users",
             "Referral &amp; sharing",
             "Settings",
             "Billing",
