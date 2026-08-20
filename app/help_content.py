@@ -500,17 +500,17 @@ _GUIDES: tuple[dict[str, Any], ...] = (
         "slug": "onboarding",
         "group": "admin",
         "icon": "ON",
-        "title": "Onboarding",
+        "title": "Invite office users",
         "route": "/onboarding",
         "summary": "Invite an office user into the correct private company workspace with an appropriate role.",
         "purpose": (
-            "Onboarding creates a time-limited invitation for a user to join the organization. "
+            "This tab creates a time-limited invitation for a user to join the organization. "
             "The selected role controls what that user can view or manage."
         ),
         "steps": (
             "Enter the person's name and business email.",
             "Choose the least-privilege role that matches the work they must perform.",
-            "Create the invitation and send the private onboarding link to that person through a trusted channel.",
+            "Create the invitation and send the private invite link to that person through a trusted channel.",
             "Ask the invitee to set their own password and confirm access.",
             "Review company users and remove or change access when responsibilities end.",
         ),

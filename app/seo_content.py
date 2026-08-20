@@ -614,7 +614,7 @@ ADDITIONAL_SEO_PAGES: dict[str, dict[str, Any]] = {
             ("Does CarrierOS verify FMCSA compliance?", "No. CarrierOS tracks selected user-entered records and dates. The carrier must verify status with FMCSA, state agencies, insurers, ELD and safety providers, and qualified professionals."),
             ("Can compliance dates affect an assignment review?", "CarrierOS can surface recorded expiration concerns for human review, but the carrier remains responsible for the legal and safety decision."),
             ("Does CarrierOS replace a DQ file or ELD?", "No. It does not replace required driver qualification files, ELD records, maintenance programs, clearinghouse processes, or official systems."),
-            ("Can startup checklist items be tracked before the first truck?", "Yes. The Carrier Startup plan organizes readiness questions and official-source links before active operations begin."),
+            ("Can startup checklist items be tracked before the first truck?", "Yes. The startup guide organizes readiness questions and official-source links before active operations begin."),
         ],
         "related": (
             "carrier-startup-checklist",
