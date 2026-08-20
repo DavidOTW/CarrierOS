@@ -26,7 +26,7 @@
         <span class="public-eyebrow">{{ guide_group.title }}</span>
         <h1>{{ guide.title }}</h1>
         <p>{{ guide.summary }}</p>
-        <div class="help-article-actions">{% if user %}<a class="public-btn public-btn-orange" href="{{ guide.route }}">Open {{ guide.title }} <span aria-hidden="true">&rarr;</span></a>{% else %}<a class="public-btn public-btn-orange" href="/signup">Start free trial <span aria-hidden="true">&rarr;</span></a><a class="public-btn public-btn-light" href="/demo">Explore the demo</a>{% endif %}</div>
+        <div class="help-article-actions">{% if user %}<a class="public-btn public-btn-orange" href="{{ guide.route }}">Open {{ guide.title }} <span aria-hidden="true">&rarr;</span></a>{% else %}<a class="public-btn public-btn-orange" href="/signup?plan=free_operator">Start free <span aria-hidden="true">&rarr;</span></a><a class="public-btn public-btn-light" href="/demo">Explore the demo</a>{% endif %}</div>
       </header>
 
       <section class="help-article-section">
