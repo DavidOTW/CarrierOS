@@ -5,7 +5,7 @@
     <div class="brand" style="border:0;padding:0;margin-bottom:32px"><div class="brand-mark">CO</div><div><strong>CarrierOS</strong><small style="color:#cae0eb">Fleet financial command center</small></div></div>
     <h1>Know the money before you move the freight.</h1>
     <p>Load profit, flexible driver pay, lane quoting, fixed-cost coverage, compliance, receivables, and operating documents in one mobile-ready workspace.</p>
-    <div class="login-bullets"><span>&check; Private company workspace</span><span>&check; Seven driver-pay structures</span><span>&check; Fourteen-day live trial</span></div>
+    <div class="login-bullets"><span>&check; Private company workspace</span><span>&check; Seven driver-pay structures</span><span>&check; Free for 1 unit &middot; 14-day trial on paid plans</span></div>
   </section>
   <section class="login-panel"><div class="login-card">
     <h2>Sign in</h2><p class="muted">Open your CarrierOS workspace.</p>
@@ -16,7 +16,7 @@
       <div class="field" style="margin-top:13px"><label>Password</label><input type="password" name="password" autocomplete="current-password" required></div>
       <div class="form-actions"><button class="btn btn-primary" style="width:100%">Sign in</button></div>
     </form>
-    <div class="demo-box"><strong>New to CarrierOS?</strong><br>{% if signups_open %}<a href="/signup">Start a free 14-day trial</a>{% else %}<a href="mailto:{{ support_email }}?subject=CarrierOS%20launch%20updates">Get launch updates</a>{% endif %}<br><span class="muted"><a href="/forgot-password">Forgot your password?</a></span><br><a href="/terms">Terms</a> &middot; <a href="/privacy">Privacy</a></div>
+    <div class="demo-box"><strong>New to CarrierOS?</strong><br>{% if signups_open %}<a href="/signup?plan=free_operator">Start free</a>{% else %}<a href="mailto:{{ support_email }}?subject=CarrierOS%20launch%20updates">Get launch updates</a>{% endif %}<br><span class="muted"><a href="/forgot-password">Forgot your password?</a></span><br><a href="/terms">Terms</a> &middot; <a href="/privacy">Privacy</a></div>
   </div></section>
 </div>
 {% endblock %}
