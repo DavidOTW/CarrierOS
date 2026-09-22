@@ -47,6 +47,11 @@ CREATE TABLE IF NOT EXISTS organizations (
     default_report_month TEXT NOT NULL DEFAULT '2026-07-01',
     source_filename TEXT,
     source_sync_date TEXT,
+    cash_balance_today REAL NOT NULL DEFAULT 0,
+    cash_floor REAL NOT NULL DEFAULT 10000,
+    ar_collection_rate_pct REAL NOT NULL DEFAULT 80,
+    planned_fixed_cost_change_date TEXT,
+    planned_fixed_cost_change_monthly REAL NOT NULL DEFAULT 0,
     plan_code TEXT NOT NULL DEFAULT 'owner_operator',
     active_unit_limit INTEGER NOT NULL DEFAULT 2,
     subscription_status TEXT NOT NULL DEFAULT 'trialing',
@@ -638,6 +643,11 @@ ORGANIZATION_MIGRATIONS = (
     ("ratecon_due_hours", "ALTER TABLE organizations ADD COLUMN ratecon_due_hours INTEGER NOT NULL DEFAULT 4"),
     ("location_stale_hours", "ALTER TABLE organizations ADD COLUMN location_stale_hours INTEGER NOT NULL DEFAULT 24"),
     ("default_payment_days", "ALTER TABLE organizations ADD COLUMN default_payment_days INTEGER NOT NULL DEFAULT 30"),
+    ("cash_balance_today", "ALTER TABLE organizations ADD COLUMN cash_balance_today REAL NOT NULL DEFAULT 0"),
+    ("cash_floor", "ALTER TABLE organizations ADD COLUMN cash_floor REAL NOT NULL DEFAULT 10000"),
+    ("ar_collection_rate_pct", "ALTER TABLE organizations ADD COLUMN ar_collection_rate_pct REAL NOT NULL DEFAULT 80"),
+    ("planned_fixed_cost_change_date", "ALTER TABLE organizations ADD COLUMN planned_fixed_cost_change_date TEXT"),
+    ("planned_fixed_cost_change_monthly", "ALTER TABLE organizations ADD COLUMN planned_fixed_cost_change_monthly REAL NOT NULL DEFAULT 0"),
 )
 
 DRIVER_MIGRATIONS = (

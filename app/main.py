@@ -67,6 +67,8 @@ from .release_readiness import evaluate_release_readiness
 from .growth import STARTUP_STEPS, equipment_finance_audit, growth_mentor_findings
 from .help_content import HELP_GROUPS, HELP_GUIDE_LIST, HELP_GUIDES
 from .seo_content import ADDITIONAL_SEO_PAGES, SEO_PAGE_ENHANCEMENTS, SOLUTION_GROUPS
+from .demo_data import FREE_TIER_COPY, build_public_sample_data
+from .cockpit import build_ceo_cockpit
 from .db import (
     as_dict,
     create_database_backup,
@@ -130,7 +132,7 @@ from .referrals import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
-VERSION = "0.16.0a17"
+VERSION = "0.16.0a19"
 ENVIRONMENT = os.getenv("CARRIEROS_ENV", "development").strip().lower()
 IS_PRODUCTION = ENVIRONMENT == "production"
 CANONICAL_BASE_URL = os.getenv(
@@ -346,6 +348,7 @@ INDEXABLE_PATHS = {
     "/demo",
     "/switching",
     "/security",
+    "/pricing",
     "/checkout",
     "/solutions",
     "/help",
@@ -430,11 +433,14 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # but allow only the Stripe origins required by the checkout handoff.
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; img-src 'self' data: https://*.stripe.com "
-            "https://www.google-analytics.com https://www.googletagmanager.com; "
+            "https://www.google-analytics.com https://analytics.google.com "
+            "https://*.analytics.google.com https://www.google.com https://www.googletagmanager.com; "
             "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' "
             "https://js.stripe.com https://www.googletagmanager.com; "
             "connect-src 'self' https://api.stripe.com https://checkout.stripe.com https://r.stripe.com "
+            "https://www.googletagmanager.com "
             "https://www.google-analytics.com https://region1.google-analytics.com "
+            "https://analytics.google.com https://*.analytics.google.com https://www.google.com "
             "https://stats.g.doubleclick.net; "
             "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://checkout.stripe.com; "
             "font-src 'self'; frame-ancestors 'none'; "
@@ -1012,6 +1018,8 @@ def render(request: Request, name: str, context: dict[str, Any] | None = None, s
         "money": money,
         "percent": percent,
         "today": date.today(),
+        "public_sample": build_public_sample_data(),
+        "free_tier_copy": FREE_TIER_COPY,
         "version": VERSION,
         "support_email": SUPPORT_EMAIL,
         "google_analytics_measurement_id": GOOGLE_ANALYTICS_MEASUREMENT_ID,
@@ -1096,7 +1104,7 @@ def seo_context(
             "@id": f"{CANONICAL_BASE_URL}/#founder",
             "name": "David Bryant",
             "jobTitle": "Founder of CarrierOS and Outside The Wire Logistics LLC",
-            "description": "United States Marine Corps combat veteran, Purple Heart recipient, and logistics leader with 20 years of experience.",
+            "description": "United States Marine Corps combat veteran, Purple Heart recipient, and logistics leader with nearly two decades of experience.",
             "award": "Purple Heart",
             "sameAs": [FOUNDER_LINKEDIN_URL],
         },
@@ -1329,7 +1337,7 @@ def invoice_aging(row: Any) -> dict[str, Any]:
 
 def invoice_rows_for_organization(organization_id: int) -> list[dict[str, Any]]:
     rows = query_all(
-        """SELECT i.*,l.load_number,
+        """SELECT i.*,l.load_number,l.delivery_date,l.revenue AS load_revenue,
         COALESCE(SUM(p.amount), 0) AS amount_paid
         FROM invoices i
         LEFT JOIN loads l ON l.id=i.load_id AND l.organization_id=i.organization_id
@@ -1396,6 +1404,7 @@ def robots() -> Response:
         "/billing",
         "/audits",
         "/compliance",
+        "/cockpit",
         "/dashboard",
         "/detention/",
         "/documents",
@@ -1434,6 +1443,7 @@ def sitemap() -> Response:
         "/demo",
         "/switching",
         "/security",
+        "/pricing",
         "/checkout",
         "/solutions",
         "/help",
@@ -1484,6 +1494,25 @@ def public_checkout(request: Request, plan: str = FREE_PLAN_CODE):
                 "/checkout",
                 "CarrierOS Plans & Checkout | Fleet Operations Software",
                 "Start with one active power unit at no cost. Add a paid capacity plan only when you need two or more units; paid plans include a 14-day trial.",
+            ),
+        },
+    )
+
+
+@app.get("/pricing", response_class=HTMLResponse)
+def public_pricing(request: Request, plan: str = FREE_PLAN_CODE):
+    selected_plan = plan if plan in PLAN_LIMITS else FREE_PLAN_CODE
+    return render(
+        request,
+        "public_checkout.html",
+        {
+            "public_page": True,
+            "plans": PLAN_LIMITS,
+            "selected_plan": selected_plan,
+            **seo_context(
+                "/pricing",
+                "CarrierOS Pricing | Free for One Active Power Unit",
+                "Start with one active power unit free forever with no card required. Pay only when you add a second unit.",
             ),
         },
     )
@@ -3097,6 +3126,21 @@ def dashboard(request: Request, month: str | None = None):
             "&utm_medium=referral_link"
             "&utm_campaign=spread_the_word"
         ),
+    })
+
+
+@app.get("/cockpit", response_class=HTMLResponse)
+def ceo_cockpit(request: Request, as_of: str | None = None):
+    user = require_user(request)
+    selected_as_of = parse_date(as_of) or date.today()
+    if selected_as_of > date.today():
+        selected_as_of = date.today()
+    bundle, state = get_state(int(user["organization_id"]))
+    invoices = invoice_rows_for_organization(int(user["organization_id"]))
+    cockpit = build_ceo_cockpit(bundle, state, invoices, as_of=selected_as_of)
+    return render(request, "cockpit.html", {
+        "cockpit": cockpit,
+        "settings": bundle["settings"],
     })
 
 
@@ -6317,7 +6361,9 @@ async def update_settings(request: Request):
             min_total_profit=?,min_profit_per_day=?,min_revenue_per_total_mile=?,
             quote_counteroffer_pct=?,ratecon_due_hours=?,location_stale_hours=?,default_payment_days=?,
             supported_start_date=?,supported_end_date=?,max_active_days=?,tax_reserve_pct=?,
-            growth_reserve_pct=?,reporting_start_month=?,default_report_month=? WHERE id=?""",
+            growth_reserve_pct=?,reporting_start_month=?,default_report_month=?,
+            cash_balance_today=?,cash_floor=?,ar_collection_rate_pct=?,
+            planned_fixed_cost_change_date=?,planned_fixed_cost_change_monthly=? WHERE id=?""",
             (
                 str(form.get("name", "")).strip(), str(form.get("owner_name", "")).strip(), str(form.get("owner_email", "")).strip(),
                 number(form.get("fallback_diesel_price")), number(form.get("processing_fee_pct")), number(form.get("admin_fee_per_load")),
@@ -6329,7 +6375,10 @@ async def update_settings(request: Request):
                 integer(form.get("default_payment_days"), 30),
                 str(form.get("supported_start_date", "")), str(form.get("supported_end_date", "")), integer(form.get("max_active_days"), 31),
                 number(form.get("tax_reserve_pct")), number(form.get("growth_reserve_pct")), str(form.get("reporting_start_month", "")),
-                str(form.get("default_report_month", "")), user["organization_id"],
+                str(form.get("default_report_month", "")), number(form.get("cash_balance_today")),
+                max(0, number(form.get("cash_floor"))), max(0, min(100, number(form.get("ar_collection_rate_pct"), 80))),
+                str(form.get("planned_fixed_cost_change_date", "")) or None,
+                number(form.get("planned_fixed_cost_change_monthly")), user["organization_id"],
             ),
         )
         for row in query_all("SELECT id FROM overhead_items WHERE organization_id=?", (user["organization_id"],)):

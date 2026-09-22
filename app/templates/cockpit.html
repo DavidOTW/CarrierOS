@@ -1,0 +1,74 @@
+{% extends "base.html" %}{% block title %}CEO Cockpit &middot; CarrierOS{% endblock %}
+{% block content %}
+<div class="workspace-heading cockpit-heading">
+  <div><span class="workspace-kicker">Owner decision center</span><h2>CEO cockpit</h2><p>See cash pressure, break-even pace, customer concentration, team performance, and data-quality actions from one live operating view.</p></div>
+  <form class="cockpit-date" method="get" action="/cockpit"><label for="cockpit-as-of">As of</label><input id="cockpit-as-of" type="date" name="as_of" value="{{ cockpit.as_of.isoformat() }}" max="{{ today.isoformat() }}"><button class="btn btn-secondary btn-small">Refresh</button></form>
+</div>
+
+{% if not cockpit.included_loads %}<div class="notice info"><strong>Your cockpit is ready for data.</strong> Add or import dated loads to calculate year-to-date contribution, break-even pace, scorecards, and decisions. Cash settings can be entered under <a href="/settings">Settings</a>.</div>{% endif %}
+
+<section class="cockpit-hero" aria-label="Year-to-date owner summary">
+  <article><span>Revenue booked</span><strong>{{ money(cockpit.revenue) }}</strong><small>{{ cockpit.included_loads }} included load{{ '' if cockpit.included_loads == 1 else 's' }} in {{ cockpit.as_of.year }}</small></article>
+  <article><span>Contribution</span><strong class="{% if cockpit.contribution >= 0 %}positive{% else %}negative{% endif %}">{{ money(cockpit.contribution) }}</strong><small>{{ percent(cockpit.contribution_margin) }} before fixed costs and overhead</small></article>
+  <article><span>Modeled operating surplus</span><strong class="{% if cockpit.modeled_surplus >= 0 %}positive{% else %}negative{% endif %}">{{ money(cockpit.modeled_surplus) }}</strong><small>{{ percent(cockpit.surplus_margin) }} of booked revenue</small></article>
+  <article><span>Uncollected A/R</span><strong class="{% if cockpit.open_ar > 0 %}warning{% endif %}">{{ money(cockpit.open_ar) }}</strong><small>{{ cockpit.open_invoices|length }} open &middot; oldest {{ cockpit.oldest_open }} days</small></article>
+</section>
+
+<div class="cockpit-grid cockpit-grid-primary">
+  <section class="card cockpit-decisions">
+    <div class="section-title"><div><span class="workspace-kicker">Act first</span><h3>Owner decisions</h3><p>Sorted toward cash and margin actions.</p></div><span class="badge {% if cockpit.decisions %}warn{% else %}good{% endif %}">{{ cockpit.decisions|length }} action{{ '' if cockpit.decisions|length == 1 else 's' }}</span></div>
+    <div class="decision-list">{% for item in cockpit.decisions %}<a class="decision-row {{ item.tone }}" href="{{ item.href }}"><span aria-hidden="true"></span><div><strong>{{ item.title }}</strong><small>{{ item.detail }}</small></div><b aria-hidden="true">&rarr;</b></a>{% else %}<div class="empty">No owner actions are flagged for this date.</div>{% endfor %}</div>
+  </section>
+
+  <section class="card cockpit-cash">
+    <div class="section-title"><div><span class="workspace-kicker">Next 30 days</span><h3>Cash outlook</h3><p>Planning estimate based on current records.</p></div><a href="/settings">Edit inputs</a></div>
+    <div class="cash-result {% if cockpit.cash_headroom < 0 %}bad{% else %}good{% endif %}"><span>Projected cash</span><strong>{{ money(cockpit.projected_cash) }}</strong><small>{% if cockpit.cash_headroom >= 0 %}{{ money(cockpit.cash_headroom) }} above your floor{% else %}{{ money(cockpit.cash_headroom|abs) }} below your floor{% endif %}</small></div>
+    <div class="kpi-list compact">
+      <div class="kpi-row"><span>Opening bank balance</span><strong>{{ money(cockpit.cash_balance) }}</strong></div>
+      <div class="kpi-row"><span>Expected A/R collections &middot; {{ percent(cockpit.collection_rate) }}</span><strong class="positive">+{{ money(cockpit.expected_collections) }}</strong></div>
+      <div class="kpi-row"><span>Fixed costs + overhead</span><strong class="negative">-{{ money(cockpit.monthly_fixed) }}</strong></div>
+      <div class="kpi-row"><span>Driver / contractor pay due</span><strong class="negative">-{{ money(cockpit.driver_pay_due) }}</strong></div>
+      <div class="kpi-row"><span>Cash floor</span><strong>{{ money(cockpit.cash_floor) }}</strong></div>
+    </div>
+  </section>
+</div>
+
+<section class="card cockpit-break-even">
+  <div class="section-title"><div><span class="workspace-kicker">Capacity target</span><h3>Weekly break-even</h3><p>What the company must bill to cover modeled monthly fixed costs at the current contribution margin.</p></div><a href="/financials">Open financials</a></div>
+  <div class="break-even-grid">
+    <article><span>Fixed + overhead / month</span><strong>{{ money(cockpit.monthly_fixed) }}</strong><small>{{ money(cockpit.weekly_fixed) }} per week</small></article>
+    <article><span>Revenue needed / week</span><strong>{{ money(cockpit.break_even_weekly) }}</strong><small>{{ money(cockpit.break_even_monthly) }} per month</small></article>
+    <article><span>Actual revenue pace / week</span><strong class="{% if cockpit.actual_revenue_weekly >= cockpit.break_even_weekly %}positive{% else %}negative{% endif %}">{{ money(cockpit.actual_revenue_weekly) }}</strong><small>{% if cockpit.break_even_weekly %}{{ money(cockpit.actual_revenue_weekly - cockpit.break_even_weekly) }} vs target{% else %}Waiting for a positive margin{% endif %}</small></article>
+    <article><span>Loads needed / week</span><strong>{{ '%.1f'|format(cockpit.loads_needed_weekly) }}</strong><small>{{ '%.1f'|format(cockpit.loads_needed_per_unit) }} per active unit &middot; {{ cockpit.active_units }} unit{{ '' if cockpit.active_units == 1 else 's' }}</small></article>
+  </div>
+  {% if cockpit.planned_change_date or cockpit.planned_fixed_change %}<div class="renewal-scenario"><div><span>Planned fixed-cost scenario{% if cockpit.planned_change_date %} &middot; {{ cockpit.planned_change_date.strftime('%b %d, %Y') }}{% endif %}</span><strong>{{ money(cockpit.future_fixed) }} / month</strong></div><div><span>Break-even after change</span><strong>{{ money(cockpit.future_break_even_weekly) }} / week</strong></div><small>{{ money(cockpit.planned_fixed_change) }} monthly change entered in Settings.</small></div>{% endif %}
+</section>
+
+<div class="cockpit-grid">
+  <section class="card">
+    <div class="section-title"><div><span class="workspace-kicker">Money on the street</span><h3>Receivables by age</h3></div><a href="/receivables">Work A/R</a></div>
+    <div class="ar-summary"><div><span>Delivered, not invoiced</span><strong>{{ money(cockpit.delivered_not_invoiced_amount) }}</strong><small>{{ cockpit.delivered_not_invoiced|length }} load{{ '' if cockpit.delivered_not_invoiced|length == 1 else 's' }}</small></div><div><span>Proof blocked</span><strong>{{ money(cockpit.proof_blocked_amount) }}</strong><small>{{ cockpit.proof_blocked|length }} need delivery evidence</small></div><div><span>Booked / in transit</span><strong>{{ money(cockpit.unearned_amount) }}</strong><small>{{ cockpit.unearned_loads|length }} not yet earned</small></div></div>
+    <div class="table-wrap"><table><thead><tr><th>Age</th><th>Amount</th><th>Loads</th><th>Share</th></tr></thead><tbody>{% for row in cockpit.ar_buckets %}<tr><td>{{ row.label }}</td><td><strong>{{ money(row.amount) }}</strong></td><td>{{ row.count }}</td><td>{{ percent(row.share) }}</td></tr>{% endfor %}</tbody></table></div>
+  </section>
+  <section class="card">
+    <div class="section-title"><div><span class="workspace-kicker">Control center</span><h3>Model checks</h3></div><span class="badge {% if cockpit.review_checks %}warn{% else %}good{% endif %}">{{ cockpit.review_checks }} review</span></div>
+    <div class="check-list">{% for check in cockpit.checks %}<a href="{{ check.href }}"><span class="badge {% if check.status == 'PASS' %}good{% else %}warn{% endif %}">{{ check.status }}</span><strong>{{ check.label }}</strong><b>{{ check.actual }}</b></a>{% endfor %}</div>
+    <p class="small muted">Checks reconcile CarrierOS records and model inputs; they are not a bank reconciliation or external accounting audit.</p>
+  </section>
+</div>
+
+<section class="card" id="broker-scorecard">
+  <div class="section-title"><div><span class="workspace-kicker">Customer mix</span><h3>Broker scorecard</h3><p>Revenue, contribution, concentration, and open A/R by customer name.</p></div>{% if cockpit.broker_alias_groups %}<span class="badge warn">{{ cockpit.broker_alias_groups|length }} naming review</span>{% endif %}</div>
+  <div class="table-wrap table-cards"><table><thead><tr><th>Broker / customer</th><th>Loads</th><th>Revenue</th><th>Revenue share</th><th>Contribution</th><th>Margin</th><th>Open A/R</th><th>Oldest</th><th>Verdict</th></tr></thead><tbody>{% for row in cockpit.broker_scorecard %}<tr><td data-label="Broker"><strong>{{ row.name }}</strong></td><td data-label="Loads">{{ row.loads }}</td><td data-label="Revenue">{{ money(row.revenue) }}</td><td data-label="Revenue share">{{ percent(row.share) }}</td><td data-label="Contribution" class="{% if row.contribution >= 0 %}positive{% else %}negative{% endif %}">{{ money(row.contribution) }}</td><td data-label="Margin">{{ percent(row.margin) }}</td><td data-label="Open A/R">{{ money(row.open_ar) }}</td><td data-label="Oldest">{% if row.oldest_open %}{{ row.oldest_open }} days{% else %}&mdash;{% endif %}</td><td data-label="Verdict"><span class="badge {{ row.tone }}">{{ row.verdict }}</span></td></tr>{% else %}<tr><td colspan="9" class="empty">No broker activity in this period.</td></tr>{% endfor %}</tbody></table></div>
+</section>
+
+<section class="card">
+  <div class="section-title"><div><span class="workspace-kicker">Team economics</span><h3>Driver scorecard</h3><p>Contribution per load compares the value left after variable operating cost and load pay.</p></div><span>{{ money(cockpit.company_contribution_per_load) }} company average / load</span></div>
+  <div class="table-wrap table-cards"><table><thead><tr><th>Driver / payee</th><th>Plan</th><th>Loads</th><th>Revenue</th><th>Contribution</th><th>Margin</th><th>Contribution / load</th><th>Pay share</th><th>Ledger due</th><th>Verdict</th></tr></thead><tbody>{% for row in cockpit.driver_scorecard %}<tr><td data-label="Driver"><strong>{{ row.name }}</strong><small>{{ 'Active' if row.active else 'Inactive' }}</small></td><td data-label="Plan">{{ row.pay_model }}</td><td data-label="Loads">{{ row.loads }}</td><td data-label="Revenue">{{ money(row.revenue) }}</td><td data-label="Contribution" class="{% if row.contribution >= 0 %}positive{% else %}negative{% endif %}">{{ money(row.contribution) }}</td><td data-label="Margin">{{ percent(row.margin) }}</td><td data-label="Contribution / load">{{ money(row.contribution_per_load) }}</td><td data-label="Pay share">{{ percent(row.pay_share) }}</td><td data-label="Ledger due">{{ money(row.ledger_due) }}</td><td data-label="Verdict"><span class="badge {{ row.tone }}">{{ row.verdict }}</span></td></tr>{% else %}<tr><td colspan="10" class="empty">No driver profiles yet.</td></tr>{% endfor %}</tbody></table></div>
+</section>
+
+<section class="card">
+  <div class="section-title"><div><span class="workspace-kicker">Equipment decisions</span><h3>Unit profitability</h3><p>Modeled company profit after the fixed cost allocated to each load.</p></div><a href="/vehicles">Manage units</a></div>
+  <div class="table-wrap table-cards"><table><thead><tr><th>Unit</th><th>Loads</th><th>Revenue</th><th>Company profit</th><th>Margin</th><th>Verdict</th></tr></thead><tbody>{% for row in cockpit.unit_scorecard %}<tr><td data-label="Unit"><strong>{{ row.name }}</strong></td><td data-label="Loads">{{ row.loads }}</td><td data-label="Revenue">{{ money(row.revenue) }}</td><td data-label="Company profit" class="{% if row.profit >= 0 %}positive{% else %}negative{% endif %}">{{ money(row.profit) }}</td><td data-label="Margin">{{ percent(row.margin) }}</td><td data-label="Verdict"><span class="badge {{ row.tone }}">{{ row.verdict }}</span></td></tr>{% else %}<tr><td colspan="6" class="empty">No unit-level results in this period.</td></tr>{% endfor %}</tbody></table></div>
+</section>
+{% endblock %}

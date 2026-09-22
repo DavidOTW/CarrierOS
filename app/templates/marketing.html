@@ -9,7 +9,7 @@
 
   <section class="public-hero">
     <div class="public-hero-copy">
-      <span class="public-release"><i></i> {% if signups_open %}Free for 1 active unit &middot; no payment until 2+ units{% else %}Live demo open &middot; launch access available{% endif %}</span>
+      <span class="public-release"><i></i> {% if signups_open %}{{ free_tier_copy }}{% else %}Live demo open &middot; launch access available{% endif %}</span>
       <h1>Run the fleet.<br>Know the <em>profit.</em></h1>
       <p>CarrierOS turns a broker offer into a cost-based profit check before you book, then keeps dispatch, driver pay, delivery documents, receivables, and load-level profit connected in one clear workspace.</p>
       <div class="public-hero-actions"><a class="public-btn public-btn-orange" href="{{ signup_href }}">Start free with 1 unit <span aria-hidden="true">&rarr;</span></a><a class="public-btn public-btn-light" href="/demo">Explore the live demo</a></div>
@@ -18,15 +18,15 @@
     <div class="public-product" aria-label="CarrierOS dashboard preview">
       <div class="public-window-bar"><span><i></i><i></i><i></i></span><strong>FLEET OVERVIEW</strong><small>Sample data</small></div>
       <div class="public-preview-metrics">
-        <article><span>Gross revenue</span><strong>$38,740</strong><small>+12.4% this month</small></article>
+        <article><span>Gross revenue</span><strong>$38,740</strong><small>+12.4% {{ public_sample.month_to_date_label }}</small></article>
         <article><span>Carrier profit</span><strong>$9,486</strong><small>24.5% margin</small></article>
         <article><span>Active loads</span><strong>8</strong><small>3 delivering today</small></article>
       </div>
       <section class="public-preview-loads">
         <div class="public-preview-heading"><span>Active loads</span><small>FICTIONAL SAMPLE</small></div>
-        <div class="public-preview-load"><i class="blue"></i><div><strong>OTW-1048</strong><small>Nashville, TN &rarr; Charlotte, NC</small></div><div><strong>$3,250</strong><small>Revenue</small></div><div><strong>$912</strong><small>Profit</small></div></div>
-        <div class="public-preview-load"><i class="green"></i><div><strong>OTW-1047</strong><small>Louisville, KY &rarr; Atlanta, GA</small></div><div><strong>$2,890</strong><small>Revenue</small></div><div><strong>$784</strong><small>Profit</small></div></div>
-        <div class="public-preview-load"><i class="orange"></i><div><strong>OTW-1046</strong><small>Memphis, TN &rarr; Dallas, TX</small></div><div><strong>$4,680</strong><small>Revenue</small></div><div><strong>$1,246</strong><small>Profit</small></div></div>
+        {% for load in public_sample.marketing_loads %}
+        <div class="public-preview-load"><i class="{{ load.status_class }}"></i><div><strong>{{ load.number }}</strong><small>{{ load.origin }} &rarr; {{ load.destination }}</small></div><div><strong>{{ load.revenue }}</strong><small>Revenue</small></div><div><strong>{{ load.profit }}</strong><small>Profit</small></div></div>
+        {% endfor %}
       </section>
       <div class="public-preview-profit"><div class="public-mini-donut"></div><span>Revenue allocation</span><p><strong>39%</strong> driver pay &middot; <strong>36%</strong> direct cost &middot; <strong>25%</strong> carrier profit</p></div>
     </div>
@@ -38,14 +38,14 @@
     <div class="public-founder-copy">
       <span class="public-eyebrow">Veteran-founded &middot; Carrier-built</span>
       <h2>CarrierOS was built by someone who knows logistics under pressure.</h2>
-      <p>I&rsquo;m David Bryant&mdash;a United States Marine Corps combat veteran, Purple Heart recipient, and logistics leader with 20 years of experience. I built CarrierOS because owner-operators and small fleets deserve a clear operating picture without enterprise complexity.</p>
-      <div class="public-founder-credentials" aria-label="Founder credentials"><span>U.S. Marine Corps</span><span>Purple Heart recipient</span><span>20 years in logistics</span></div>
+      <p>I&rsquo;m David Bryant&mdash;a United States Marine Corps combat veteran, Purple Heart recipient, and logistics leader with nearly two decades of experience. I built CarrierOS because owner-operators and small fleets deserve a clear operating picture without enterprise complexity.</p>
+      <div class="public-founder-credentials" aria-label="Founder credentials"><span>U.S. Marine Corps</span><span>Purple Heart recipient</span><span>Nearly two decades in logistics</span></div>
       <a class="public-founder-link" href="{{ founder_linkedin_url }}" target="_blank" rel="noopener noreferrer">Connect with David on LinkedIn <span aria-hidden="true">&rarr;</span></a>
     </div>
     <aside class="public-founder-card" aria-label="Why David built CarrierOS">
       <span>FOUNDER&rsquo;S MISSION</span>
       <strong>Turn operational pressure into clear, repeatable decisions.</strong>
-      <p>Two decades of logistics experience shape the practical system behind every load, driver-pay estimate, payment record, and profit decision in CarrierOS.</p>
+      <p>Nearly two decades of logistics experience shape the practical system behind every load, driver-pay estimate, payment record, and profit decision in CarrierOS.</p>
       <div><span>Mission</span><i></i><span>Clarity</span><i></i><span>Profit</span></div>
     </aside>
   </section>
@@ -55,7 +55,7 @@
     <div class="public-story-grid">
       <article class="public-story-card"><span>01 &middot; Rate Quote</span><h3>Know the profit before you say yes.</h3><p>Compare the offer against loaded and deadhead miles, fuel, driver pay, fixed cost, margin, and your own thresholds.</p><div class="public-route-map"><i></i><i></i><i></i></div></article>
       <article class="public-story-card public-story-dark"><span>02 &middot; Profit</span><h3>Know what the load actually kept.</h3><p>Compare revenue against fuel, driver pay, direct cost, overhead, and reserves.</p><div class="public-profit-bars"><i style="height:38%"></i><i style="height:62%"></i><i style="height:48%"></i><i style="height:82%"></i><i style="height:70%"></i></div></article>
-      <article class="public-story-card public-story-green"><span>03 &middot; Driver Pay</span><h3>Make driver pay clear and repeatable.</h3><p>Use the compensation model that fits each driver and show how the estimate was calculated.</p><div class="public-settlement"><span>Estimated driver pay</span><strong>$1,842.50</strong><small>Fictional sample &middot; Week 29</small></div></article>
+      <article class="public-story-card public-story-green"><span>03 &middot; Driver Pay</span><h3>Make driver pay clear and repeatable.</h3><p>Use the compensation model that fits each driver and show how the estimate was calculated.</p><div class="public-settlement"><span>Estimated driver pay</span><strong>$1,842.50</strong><small>Fictional sample &middot; {{ public_sample.week_label }}</small></div></article>
     </div>
   </section>
 
@@ -67,9 +67,9 @@
   <section class="public-formula"><div><span class="public-eyebrow">The number that matters</span><h2>Your profit split is already solid. CarrierOS keeps it visible.</h2><p>The demo shows exactly how revenue becomes driver pay and carrier net using fictional sample values.</p></div><div class="public-formula-card"><span>Load revenue</span><strong>$4,680</strong><span>Allowed load costs</span><strong>&minus; $1,720</strong><b>= $2,960 split base</b><span>Driver share (40%)</span><strong>&minus; $1,184</strong><div><span>Carrier net before overhead</span><strong>$1,776</strong></div></div></section>
 
   <section class="public-section public-pricing" id="pricing" data-analytics-view="view_pricing">
-    <div class="public-section-intro public-centered"><span class="public-eyebrow">Simple subscription plans</span><h2>Start free with one unit.</h2><p>Your first active power unit is free forever—no card required. No payment until 2+ units. Add paid capacity only when you need 2 or more active power units; paid plans include unlimited driver records and office users plus a 14-day trial.</p></div>
+    <div class="public-section-intro public-centered"><span class="public-eyebrow">Simple subscription plans</span><h2>Start free with one unit.</h2><p>{{ free_tier_copy }} Paid plans include unlimited driver records and office users plus a 14-day trial.</p></div>
     <div class="public-plans">
-      {% for code, plan in plans.items() %}<article class="{% if code in ['free_operator', 'starter_fleet'] %}featured{% endif %}">{% if code == 'free_operator' %}<span class="public-plan-badge">Start here · $0</span>{% elif code == 'starter_fleet' %}<span class="public-plan-badge">Popular</span>{% endif %}<h3>{{ plan.name }}</h3><p>{% if code == 'free_operator' %}1 active power unit{% elif plan.units == 0 %}Pre-authority &middot; 0 active units{% else %}Up to {{ plan.units }} active power units{% endif %}</p><div><strong>{{ money(plan.price) }}</strong><span>/ month</span></div><small>{% if code == 'free_operator' %}Free forever for one active unit. No card required; upgrade only when you add a second unit.{% elif plan.units == 0 %}Upgrade when the first unit is ready.{% else %}Unlimited drivers and office users.{% endif %}</small><ul>{% if code == 'free_operator' %}<li>Dispatch and load tracking</li><li>Driver pay and profit visibility</li><li>Unlimited driver records</li><li>Upgrade only when you add a second unit</li>{% elif plan.units == 0 %}<li>Guided carrier startup checklist</li><li>Official agency tutorials</li><li>Equipment finance mentor</li><li>Private planning workspace</li>{% else %}<li>Pre-book rate profit checks</li><li>Dispatch and load tracking</li><li>All seven pay structures</li><li>Private company workspace</li>{% endif %}</ul><a href="/checkout?plan={{ code }}">{% if code == 'free_operator' %}Start free{% else %}{{ signup_cta }}{% endif %} <span aria-hidden="true">&rarr;</span></a></article>{% endfor %}
+      {% for code, plan in plans.items() %}<article class="{% if code in ['free_operator', 'starter_fleet'] %}featured{% endif %}">{% if code == 'free_operator' %}<span class="public-plan-badge">Start here · $0</span>{% elif code == 'starter_fleet' %}<span class="public-plan-badge">Popular</span>{% endif %}<h3>{{ plan.name }}</h3><p>{% if code == 'free_operator' %}1 active power unit{% elif plan.units == 0 %}Pre-authority &middot; 0 active units{% else %}Up to {{ plan.units }} active power units{% endif %}</p><div><strong>{{ money(plan.price) }}</strong><span>/ month</span></div><small>{% if code == 'free_operator' %}{{ free_tier_copy }}{% elif plan.units == 0 %}Upgrade when the first unit is ready.{% else %}Unlimited drivers and office users.{% endif %}</small><ul>{% if code == 'free_operator' %}<li>Dispatch and load tracking</li><li>Driver pay and profit visibility</li><li>Unlimited driver records</li><li>Upgrade only when you add a second unit</li>{% elif plan.units == 0 %}<li>Guided carrier startup checklist</li><li>Official agency tutorials</li><li>Equipment finance mentor</li><li>Private planning workspace</li>{% else %}<li>Pre-book rate profit checks</li><li>Dispatch and load tracking</li><li>All seven pay structures</li><li>Private company workspace</li>{% endif %}</ul><a href="/checkout?plan={{ code }}">{% if code == 'free_operator' %}Start free{% else %}{{ signup_cta }}{% endif %} <span aria-hidden="true">&rarr;</span></a></article>{% endfor %}
       <article><h3>Custom Fleet</h3><p>More than 20 active power units</p><div><strong>Custom</strong></div><small>A plan shaped around your operation.</small><ul><li>Everything in Growing Fleet</li><li>Custom fleet capacity</li><li>Guided setup conversation</li><li>Unlimited drivers and office users</li></ul><a href="mailto:{{ support_email }}?subject=CarrierOS%20Custom%20Fleet">Request a quote <span aria-hidden="true">&rarr;</span></a></article>
     </div>
   </section>

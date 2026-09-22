@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.16.0a19 - CEO cockpit and load-file controls
+
+- Added a live CEO cockpit with year-to-date revenue, contribution, modeled surplus, cash outlook, A/R aging, delivered-not-invoiced work, and owner action priorities.
+- Added weekly break-even and capacity targets, an optional future fixed-cost scenario, and broker, driver, and unit profitability scorecards.
+- Added model checks for excluded loads, missing unit/pay setup, duplicate load IDs, possible broker aliases, and invoice/load amount differences.
+- Added tenant-level cash-floor, collection-rate, and planned fixed-cost inputs without changing pricing or driver-pay formulas.
+
 ## Next phase - delivery-to-cash closure
 
 - Added Phase 4 invoice and receipt workflow: delivered loads can become linked invoices and advance through `READY_TO_INVOICE` to `INVOICED`.

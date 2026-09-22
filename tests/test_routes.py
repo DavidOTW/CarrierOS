@@ -98,8 +98,7 @@ def test_public_marketing_home_uses_launch_pricing_and_real_app_links(
         assert response.status_code == 200
         assert "Run the fleet" in response.text
         assert "live demo" in response.text.lower()
-        assert "Free for 1 active unit" in response.text
-        assert "No payment until 2+ units" in response.text
+        assert "1 active power unit free forever — no card required. Pay only when you add a second unit." in response.text
         assert "$10.00 / month" not in response.text
         assert "Carrier startup checklist" in response.text
         assert "Up to 2 active power units" in response.text
@@ -107,8 +106,6 @@ def test_public_marketing_home_uses_launch_pricing_and_real_app_links(
         assert "Up to 20 active power units" in response.text
         assert "$100" in response.text
         assert "14-day trial" in response.text
-        assert "No payment until 2+ units" in response.text
-        assert "no payment method" not in response.text.lower() or "no payment until 2+ units" in response.text.lower()
         assert "Start free beta" not in response.text
         assert '/signup?plan=starter_fleet' in response.text
         assert '<link rel="canonical" href="https://otwcarrieros.com/">' in response.text
@@ -118,7 +115,8 @@ def test_public_marketing_home_uses_launch_pricing_and_real_app_links(
         assert '/driver-settlement-software' in response.text
         assert "Marine Corps combat veteran" in response.text
         assert "Purple Heart recipient" in response.text
-        assert "20 years of experience" in response.text
+        assert "nearly two decades of experience" in response.text
+        assert "20 years of experience" not in response.text
         assert 'href="https://www.linkedin.com/in/davidbryant89"' in response.text
         assert 'href="/carrier-startup-checklist"' in response.text
         assert "Use the free startup guide" in response.text
@@ -171,6 +169,7 @@ def test_search_pages_sitemap_and_crawl_controls(
         assert robots.status_code == 200
         assert "Sitemap: https://otwcarrieros.com/sitemap.xml" in robots.text
         assert "Disallow: /dashboard" in robots.text
+        assert "Disallow: /cockpit" in robots.text
 
         login = client.get("/login")
         assert 'content="noindex, nofollow"' in login.text
@@ -231,6 +230,7 @@ def test_public_demo_mirrors_current_workspace_and_referral_scope(
         assert response.status_code == 200
         for workspace in (
             "Dashboard",
+            "CEO cockpit",
             "Dispatch",
             "Rate quotes",
             "RateCon inbox",
@@ -330,7 +330,7 @@ def test_signup_empty_workspace_and_authenticated_pages(monkeypatch: pytest.Monk
         assert "sk_test" not in readiness.text
         assert signup(client, "owner@example.com").status_code == 303
         for page in (
-            "/dashboard", "/dispatch", "/loads", "/loads/new", "/vehicles", "/drivers", "/fuel",
+            "/dashboard", "/cockpit", "/dispatch", "/loads", "/loads/new", "/vehicles", "/drivers", "/fuel",
             "/payments", "/quotes", "/rate-quotes", "/rate-quotes/new", "/financials", "/idle", "/settings",
             "/compliance", "/onboarding", "/documents", "/receivables", "/links", "/billing",
             "/audits", "/growth", "/startup", "/getting-started", "/migration",
@@ -606,6 +606,10 @@ def test_security_headers_and_no_default_credentials(monkeypatch: pytest.MonkeyP
         assert "https://www.googletagmanager.com" in csp
         assert "https://www.google-analytics.com" in csp
         assert "https://region1.google-analytics.com" in csp
+        assert "https://analytics.google.com" in csp
+        assert "https://*.analytics.google.com" in csp
+        assert "https://www.google.com" in csp
+        assert "https://www.googletagmanager.com" in csp
         assert page.headers["cache-control"] == "no-store"
         assert page.headers["cross-origin-opener-policy"] == "same-origin"
         assert "ChangeMe" not in page.text

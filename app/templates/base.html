@@ -43,6 +43,7 @@
   <meta name="theme-color" content="#0f2f46">
   <meta name="author" content="Outside The Wire Logistics LLC">
   <meta name="google-site-verification" content="p9i3Hm7KxwLc1INuRGmRfeFNVX0S-JLsm3f8oDezB0A">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="CarrierOS">
@@ -84,6 +85,7 @@
     <nav class="nav">
       <div class="nav-section">Daily workflow</div>
       <a class="{% if request.url.path == '/dashboard' %}active{% endif %}" href="/dashboard"><span class="nav-icon">DB</span>Dashboard</a>
+      <a class="{% if request.url.path == '/cockpit' %}active{% endif %}" href="/cockpit"><span class="nav-icon">CEO</span>CEO cockpit</a>
       <a class="{% if request.url.path.startswith('/dispatch') %}active{% endif %}" href="/dispatch"><span class="nav-icon">DS</span>Dispatch</a>
       <a class="{% if request.url.path.startswith('/rate-quotes') or request.url.path.startswith('/quotes') %}active{% endif %}" href="/rate-quotes"><span class="nav-icon">RQ</span>Rate quotes</a>
       <a class="{% if request.url.path.startswith('/ratecons') %}active{% endif %}" href="/ratecons"><span class="nav-icon">RC</span>RateCon inbox</a>
@@ -121,7 +123,7 @@
         {% if user %}<div class="user-avatar">{{ user.full_name[:1]|upper }}</div><div class="user-chip"><strong>{{ user.full_name }}</strong><a href="/logout">Log out</a></div>{% endif %}
       </div>
       <details class="mobile-nav"><summary>Menu</summary><div class="mobile-menu-panel">
-        <a href="/dashboard">Dashboard</a><a href="/dispatch">Dispatch</a><a href="/rate-quotes">Rate quotes</a><a href="/ratecons">RateCon inbox</a><a href="/loads">Loads</a><a href="/drivers">Drivers &amp; equipment</a><a href="/financials">Money</a><a href="/payments">Driver pay</a><a href="/idle">Reports</a><a href="/links">Shortcuts</a><a href="/help">Help center</a><a href="/compliance">Compliance</a><a href="/documents">Documents</a><a href="/receivables">A/R</a><a href="/fuel">Fuel</a><a href="/getting-started">Getting started</a><a href="/migration">Import history</a><a href="/growth">Growth mentor</a><a href="/audits">Audits</a><a href="/startup">Startup</a><a href="/onboarding">Onboarding</a>{% if referral_admin %}<a href="/referrals">Referral program</a>{% endif %}<a href="/settings">Settings</a><a href="/billing">Billing</a><a href="/logout">Log out</a>
+        <a href="/dashboard">Dashboard</a><a href="/cockpit">CEO cockpit</a><a href="/dispatch">Dispatch</a><a href="/rate-quotes">Rate quotes</a><a href="/ratecons">RateCon inbox</a><a href="/loads">Loads</a><a href="/drivers">Drivers &amp; equipment</a><a href="/financials">Money</a><a href="/payments">Driver pay</a><a href="/idle">Reports</a><a href="/links">Shortcuts</a><a href="/help">Help center</a><a href="/compliance">Compliance</a><a href="/documents">Documents</a><a href="/receivables">A/R</a><a href="/fuel">Fuel</a><a href="/getting-started">Getting started</a><a href="/migration">Import history</a><a href="/growth">Growth mentor</a><a href="/audits">Audits</a><a href="/startup">Startup</a><a href="/onboarding">Onboarding</a>{% if referral_admin %}<a href="/referrals">Referral program</a>{% endif %}<a href="/settings">Settings</a><a href="/billing">Billing</a><a href="/logout">Log out</a>
       </div></details>
     </header>
     <div class="content">{% if flash %}<div class="notice {{ flash_kind or 'good' }}">{{ flash }}</div>{% endif %}
@@ -370,14 +372,15 @@
       'min_company_profit_per_mile', 'min_total_profit', 'min_profit_per_day',
       'min_revenue_per_total_mile', 'fallback_diesel_price', 'monthly_cost', 'purchase_price',
       'down_payment', 'monthly_insurance', 'other_monthly_costs', 'revenue_per_mile',
-      'diesel_price', 'cash_reserve'
+      'diesel_price', 'cash_reserve', 'cash_balance_today', 'cash_floor',
+      'planned_fixed_cost_change_monthly'
     ]);
     const percentNames = new Set([
       'processing_fee_pct', 'payroll_burden_pct', 'owner_distribution_pct',
       'target_margin_pct', 'target_max_deadhead_pct', 'quote_counteroffer_pct',
       'tax_reserve_pct', 'growth_reserve_pct', 'driver_profit_split_pct',
       'contractor_gross_split_pct', 'owner_operator_split_pct', 'factoring_pct',
-      'quick_pay_pct', 'apr_pct', 'driver_pay_pct'
+      'quick_pay_pct', 'apr_pct', 'driver_pay_pct', 'ar_collection_rate_pct'
     ]);
     const formatFor = (input) => {
       if (input.dataset.format === 'money' || input.dataset.format === 'currency') return 'money';
