@@ -6,6 +6,7 @@
 - Added weekly break-even and capacity targets, an optional future fixed-cost scenario, and broker, driver, and unit profitability scorecards.
 - Added model checks for excluded loads, missing unit/pay setup, duplicate load IDs, possible broker aliases, and invoice/load amount differences.
 - Added tenant-level cash-floor, collection-rate, and planned fixed-cost inputs without changing pricing or driver-pay formulas.
+- Updated pypdf to 6.16.1 to resolve the dependency-audit advisories reported during release validation.
 
 ## Next phase - delivery-to-cash closure
 
