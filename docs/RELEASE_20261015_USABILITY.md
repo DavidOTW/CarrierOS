@@ -12,6 +12,8 @@ was `9191423`. The customer application is https://otwcarrieros.com. The
 - Correct simultaneous Money/Driver pay selection on the Driver pay page.
 - Add visible keyboard focus indicators, with an inset, lighter sidebar outline.
 - Advance the displayed release and static cache identifier together.
+- Update pypdf from 6.16.1 to 6.20.1 after CI found eight known vulnerabilities
+  in the pre-existing dependency pin. No document permission or storage changes.
 
 No calculation, schema, stored-record, access, billing, pricing, legal, or
 entitlement changes. No production records were created for testing.
@@ -40,6 +42,7 @@ the native focus indicator on the skip destination for location feedback.
   stays in a single column. No form submissions to production.
 - Ruff and Python compilation passed. The existing test tied to a hard-coded
   cache version now checks that the service worker matches the application release.
+- Final local suite: 128 tests passed. CI also runs the dependency security audit.
 
 ## Publication and rollback
 
