@@ -46,8 +46,10 @@ the native focus indicator on the skip destination for location feedback.
 
 ## Publication and rollback
 
-Use the existing GitHub `main` to Render automatic deployment. Confirm the new
-release through `/health` and the new stylesheet before reporting deployment.
+Use the existing GitHub `main` and Render service `srv-d9fg7ljh523c73f6b220`.
+The service dashboard confirms the baseline live commit is `9191423` and its
+recent deployments were manual. Deploy the reviewed merged commit on that
+service, then confirm the new release through `/health` and the new stylesheet.
 No Squarespace link change is needed when it already points to otwcarrieros.com.
 
 Rollback by reverting this release commit on `main` and redeploying, or selecting
