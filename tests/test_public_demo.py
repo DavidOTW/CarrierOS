@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.demo_data import FREE_TIER_COPY, build_public_sample_data
-from app.main import app
+from app.main import VERSION, app
 
 
 def test_public_sample_data_uses_one_relative_date_anchor() -> None:
@@ -109,4 +109,4 @@ def test_public_shell_and_service_worker_fail_cleanly_offline(
 
     assert '<meta name="mobile-web-app-capable" content="yes">' in home.text
     assert "new Response('Offline',{status:503" in worker.text
-    assert "carrieros-v0.16.0a19" in worker.text
+    assert f"carrieros-v{VERSION}" in worker.text
